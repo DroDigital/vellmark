@@ -16,6 +16,9 @@ use vellmark_render::{Camera, FrameInput, Renderer, ShaderLibrary, View};
 use vellmark_ui::Canvas;
 use vellmark_sim::{buttons, FixedClock, PlayerInput, Snapshot, World, WorldConfig};
 
+/// The scene a new game starts in. The yard, until the valley exists.
+const START_SCENE: &str = "scene.yard";
+
 struct Screen {
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
@@ -104,7 +107,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
 
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
-    let Content { base, mut strings, glyphs } = match boot::load_content() {
+    let Content { base, mut strings, assets } = match boot::load_content() {
         Ok(c) => c,
         Err(detail) => return fail(sid!("sys.packs.missing"), &detail),
     };
@@ -159,9 +162,16 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
     #[cfg(not(feature = "dev"))]
     let shaders = ShaderLibrary::embedded();
-    let mut renderer = match Renderer::new(&gpu, &mut registry, &shaders, screen.config.format, &glyphs) {
+    let mut renderer = match Renderer::new(&gpu, &mut registry, &shaders, screen.config.format, &assets.borrow()) {
         Ok(r) => r,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
+    };
+    let scene = match vellmark_render::load_scene(&gpu, &base, START_SCENE) {
+        Ok((scene, on_gpu)) => {
+            renderer.set_scene(on_gpu);
+            scene
+        }
+        Err(detail) => return fail(sid!("sys.packs.missing"), &detail),
     };
     registry.seal();
     log::line(&format!("renderer ready, presenting {:?} as {:?}", screen.config.format, screen.config.present_mode));
@@ -183,7 +193,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
 
     let mut world = World::new(WorldConfig::default());
-    world.add_player(Vec3::ZERO, 0.0);
+    // The simulation holds the feet; the scene's spawn is given as an eye.
+    let spawn = scene.spawn;
+    world.add_player(Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]), spawn[3]);
     let mut previous: Arc<Snapshot> = world.snapshot();
     let mut current: Arc<Snapshot> = previous.clone();
 
@@ -286,7 +298,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
         #[cfg(feature = "dev")]
-        dev_tools.draw(&mut canvas, &glyphs, screen.size(), window.pixel_density(), frame_time, timers.latest(), &registry);
+        dev_tools.draw(&mut canvas, &assets.glyphs, screen.size(), window.pixel_density(), frame_time, timers.latest(), &registry);
 
         if let Some(run) = perf.as_mut() {
             match run.frame(frame_time, timers.latest(), 1.0) {
@@ -316,6 +328,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 time_of_day: hour,
                 seconds: started.elapsed().as_secs_f32(),
                 glyph_layer,
+                close_reading: 0.0,
+                tuning: Default::default(),
+                reveal_mask: false,
                 ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());

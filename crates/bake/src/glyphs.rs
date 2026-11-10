@@ -23,7 +23,7 @@ pub const MIPS: u32 = 5;
 /// that the distance field has room and neighbouring cells never touch.
 const FILL: f64 = 0.80;
 /// Bump when the bake changes what it writes for the same inputs.
-const VERSION: &str = "glyphs-5";
+const VERSION: &str = "glyphs-6";
 
 struct Outline {
     contours: Vec<Contour>,
@@ -329,7 +329,8 @@ fn glyph_info(advance: f32, centre: f32, texels: &[u8]) -> GlyphInfo {
         }
         *slot = 0.5 * (lo + hi);
     }
-    GlyphInfo { advance, centre, min_cover, max_cover, tone }
+    let mean_distance = alpha.iter().map(|&a| a as f32 / 255.0).sum::<f32>() / alpha.len() as f32;
+    GlyphInfo { advance, centre, min_cover, max_cover, mean_distance, tone }
 }
 
 /// Halves a square RGBA image by averaging blocks of four. Distances average well, so

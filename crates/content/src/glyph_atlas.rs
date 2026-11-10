@@ -15,6 +15,7 @@
 //! for each face:      ascent f32, descent f32 (em), cell_ems f32 (ems across a cell),
 //!                     baseline f32 (down the cell, 0 to 1)
 //!   for each of 95:   advance f32, centre f32 (em), min_cover f32, max_cover f32,
+//!                     mean_distance f32,
 //!                     TONE_STEPS thresholds f32
 //! texels              RGBA8, for each level, for each face, for each glyph
 //! ```
@@ -44,6 +45,9 @@ pub struct GlyphInfo {
     /// The least and most of the cell this glyph can cover by shifting its threshold.
     pub min_cover: f32,
     pub max_cover: f32,
+    /// The mean of the true distance over the whole cell, 0 to 1. When a glyph is drawn
+    /// so small that its edge is a soft ramp, its mean coverage follows from this.
+    pub mean_distance: f32,
     /// The threshold that makes the glyph cover `i / (TONE_STEPS - 1)` of its cell,
     /// clamped to what it can reach. 0.5 draws the glyph as designed.
     pub tone: [f32; TONE_STEPS],
@@ -117,7 +121,7 @@ impl GlyphAtlas {
                 out.extend_from_slice(&v.to_le_bytes());
             }
             for g in &face.glyphs {
-                for v in [g.advance, g.centre, g.min_cover, g.max_cover] {
+                for v in [g.advance, g.centre, g.min_cover, g.max_cover, g.mean_distance] {
                     out.extend_from_slice(&v.to_le_bytes());
                 }
                 for v in g.tone {
@@ -161,12 +165,12 @@ impl GlyphAtlas {
             let (ascent, descent, cell_ems, baseline) = (r.f32()?, r.f32()?, r.f32()?, r.f32()?);
             let mut glyphs = Vec::with_capacity(GLYPHS_PER_FACE);
             for _ in 0..GLYPHS_PER_FACE {
-                let (advance, centre, min_cover, max_cover) = (r.f32()?, r.f32()?, r.f32()?, r.f32()?);
+                let (advance, centre, min_cover, max_cover, mean_distance) = (r.f32()?, r.f32()?, r.f32()?, r.f32()?, r.f32()?);
                 let mut tone = [0.0; TONE_STEPS];
                 for t in &mut tone {
                     *t = r.f32()?;
                 }
-                glyphs.push(GlyphInfo { advance, centre, min_cover, max_cover, tone });
+                glyphs.push(GlyphInfo { advance, centre, min_cover, max_cover, mean_distance, tone });
             }
             faces.push(FaceInfo { ascent, descent, cell_ems, baseline, glyphs });
         }

@@ -1,0 +1,75 @@
+// The yard of Phase S01: one walled yard with a door, a bench, a hanging sign, a
+// cloth, and a lantern. North is -Z. A visitor starts in the south, looking north at
+// the door. Metres throughout.
+(
+    spawn: (eye: (0.0, 1.68, 4.0), yaw: 0.0, pitch: 0.0),
+    boxes: [
+        // The ground.
+        (material: "earth", min: (-14.0, -0.5, -14.0), max: (14.0, 0.0, 14.0)),
+
+        // The north wall, in three pieces around the doorway, with its coping.
+        (material: "masonry", min: (-7.0, 0.0, -6.4), max: (-0.65, 3.2, -6.0)),
+        (material: "masonry", min: (0.65, 0.0, -6.4), max: (7.0, 3.2, -6.0)),
+        (material: "masonry", min: (-0.65, 2.15, -6.4), max: (0.65, 3.2, -6.0)),
+        (material: "masonry", min: (-7.06, 3.2, -6.46), max: (7.06, 3.32, -5.94)),
+
+        // The east and west walls.
+        (material: "masonry", min: (6.6, 0.0, -6.0), max: (7.0, 2.6, 5.4)),
+        (material: "masonry", min: (6.54, 2.6, -6.0), max: (7.06, 2.72, 5.46)),
+        (material: "masonry", min: (-7.0, 0.0, -6.0), max: (-6.6, 2.6, 5.4)),
+        (material: "masonry", min: (-7.06, 2.6, -6.0), max: (-6.54, 2.72, 5.46)),
+
+        // The low south wall, open in the middle.
+        (material: "masonry", min: (-6.6, 0.0, 5.0), max: (-1.6, 0.95, 5.4)),
+        (material: "masonry", min: (1.6, 0.0, 5.0), max: (6.6, 0.95, 5.4)),
+
+        // The doorstep.
+        (material: "masonry", min: (-0.85, 0.0, -6.0), max: (0.85, 0.07, -5.55)),
+
+        // The signpost: a timber post and arm, the board, and its iron hangers.
+        (material: "timber", min: (-3.27, 0.0, -1.07), max: (-3.13, 3.1, -0.93)),
+        (material: "timber", min: (-3.13, 2.78, -1.05), max: (-2.1, 2.9, -0.95)),
+        (material: "iron", min: (-2.98, 2.5, -1.012), max: (-2.96, 2.78, -0.988)),
+        (material: "iron", min: (-2.34, 2.5, -1.012), max: (-2.32, 2.78, -0.988)),
+        (material: "timber", min: (-3.05, 1.98, -1.02), max: (-2.25, 2.5, -0.98)),
+
+        // The bench, a little askew by the east wall.
+        (material: "timber", min: (4.6, 0.42, -1.2), max: (6.2, 0.48, -0.78), yaw: 7.0),
+        (material: "timber", min: (4.7, 0.0, -1.16), max: (4.78, 0.42, -0.82), yaw: 7.0),
+        (material: "timber", min: (6.02, 0.0, -1.16), max: (6.1, 0.42, -0.82), yaw: 7.0),
+
+        // A length of dyed cloth hung on the west wall, on an iron rail.
+        (material: "iron", min: (-6.6, 2.02, -3.3), max: (-6.56, 2.06, -1.3)),
+        (material: "cloth", min: (-6.585, 0.5, -3.2), max: (-6.565, 2.04, -1.4)),
+
+        // The lantern's bracket on the north wall, left of the door.
+        (material: "iron", min: (-1.42, 2.36, -6.0), max: (-1.38, 2.4, -5.62)),
+        (material: "iron", min: (-1.41, 2.28, -5.66), max: (-1.39, 2.36, -5.64)),
+        // The lantern: caps, corner bars, and glass.
+        (material: "iron", min: (-1.48, 2.26, -5.73), max: (-1.32, 2.28, -5.57)),
+        (material: "iron", min: (-1.48, 2.02, -5.73), max: (-1.32, 2.04, -5.57)),
+        (material: "iron", min: (-1.48, 2.04, -5.73), max: (-1.465, 2.26, -5.715)),
+        (material: "iron", min: (-1.335, 2.04, -5.73), max: (-1.32, 2.26, -5.715)),
+        (material: "iron", min: (-1.48, 2.04, -5.585), max: (-1.465, 2.26, -5.57)),
+        (material: "iron", min: (-1.335, 2.04, -5.585), max: (-1.32, 2.26, -5.57)),
+        (material: "glass", min: (-1.465, 2.04, -5.715), max: (-1.335, 2.26, -5.585)),
+    ],
+    objects: [
+        // The door: planks, three iron straps, and a ring plate. Its origin is the
+        // hinge, so that it can be swung.
+        (
+            key: "door",
+            position: (-0.65, 0.0, -6.2),
+            boxes: [
+                (material: "timber", min: (0.0, 0.02, -0.04), max: (1.3, 2.15, 0.04)),
+                (material: "iron", min: (0.0, 0.3, 0.04), max: (1.1, 0.37, 0.05)),
+                (material: "iron", min: (0.0, 1.05, 0.04), max: (1.1, 1.12, 0.05)),
+                (material: "iron", min: (0.0, 1.8, 0.04), max: (1.1, 1.87, 0.05)),
+                (material: "iron", min: (1.08, 0.98, 0.04), max: (1.2, 1.2, 0.055)),
+            ],
+        ),
+    ],
+    lights: [
+        (key: "lantern", position: (-1.4, 2.15, -5.65), colour: (1.0, 0.58, 0.24), strength: 14.0, radius: 11.0, casts_shadow: true),
+    ],
+)

@@ -73,6 +73,30 @@ impl Camera {
     }
 }
 
+/// A right-handed view matrix looking from `eye` towards `target`. -Z is forward.
+pub fn look_at(eye: Vec3, target: Vec3, up: Vec3) -> Mat4 {
+    let f = (target - eye).normalize();
+    let s = f.cross(up).normalize();
+    let u = s.cross(f);
+    Mat4::from_cols_array(&[
+        s.x, u.x, -f.x, 0.0,
+        s.y, u.y, -f.y, 0.0,
+        s.z, u.z, -f.z, 0.0,
+        -s.dot(eye), -u.dot(eye), f.dot(eye), 1.0,
+    ])
+}
+
+/// A right-handed orthographic projection with depth from 0 at `near` to 1 at `far`.
+pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Mat4 {
+    let (w, h, d) = (right - left, top - bottom, far - near);
+    Mat4::from_cols_array(&[
+        2.0 / w, 0.0, 0.0, 0.0,
+        0.0, 2.0 / h, 0.0, 0.0,
+        0.0, 0.0, -1.0 / d, 0.0,
+        -(right + left) / w, -(top + bottom) / h, -near / d, 1.0,
+    ])
+}
+
 /// One camera and where on the target it is drawn.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct View {

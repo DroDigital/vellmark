@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn imports_expand_once() {
         let lib = ShaderLibrary::embedded();
-        let full = lib.source("field").unwrap();
+        let full = lib.source("opaque").unwrap();
         assert_eq!(full.matches("struct ViewUniform").count(), 1);
         assert!(!full.contains("#import"));
     }

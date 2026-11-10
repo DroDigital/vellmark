@@ -5,7 +5,9 @@
 
 pub mod glyphs;
 pub mod manifest;
+pub mod materials;
 pub mod paths;
+pub mod scene;
 pub mod sha256;
 pub mod strings;
 
@@ -94,6 +96,19 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     let atlas = glyphs::bake_atlas(&inputs.third_party, inputs.cache.as_deref())?;
     report.push(format!("{GLYPH_ATLAS_KEY}: {} bytes", atlas.len()));
     base.add(AssetKind::GlyphAtlas, AssetId::from_key(GLYPH_ATLAS_KEY), atlas).map_err(|e| BakeError(e.to_string()))?;
+
+    let set = materials::bake_set(&inputs.assets.join("materials/materials.ron"))?;
+    report.push(format!("{}: {} materials at {} px", materials::MATERIAL_SET_KEY, set.materials.len(), set.size));
+    for baked in scene::bake_all(&inputs.assets.join("scenes"), &set)? {
+        for (id, mesh) in &baked.meshes {
+            base.add(AssetKind::Mesh, *id, mesh.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+        }
+        let triangles: usize = baked.meshes.iter().map(|(_, m)| m.indices.len() / 3).sum();
+        report.push(format!("{}: {} meshes, {triangles} triangles, {} lights", baked.key, baked.meshes.len(), baked.scene.lights.len()));
+        base.add(AssetKind::Scene, AssetId::from_key(&baked.key), baked.scene.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+    }
+    base.add(AssetKind::MaterialSet, AssetId::from_key(materials::MATERIAL_SET_KEY), set.to_bytes())
+        .map_err(|e| BakeError(e.to_string()))?;
 
     for (key, bytes) in paths::bake_all(&inputs.assets.join("paths"))? {
         report.push(format!("{key}: {} bytes", bytes.len()));

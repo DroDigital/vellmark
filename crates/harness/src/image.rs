@@ -66,6 +66,19 @@ impl Image {
         }
     }
 
+    /// A rectangle of the image, clamped to its edges.
+    pub fn crop(&self, x: u32, y: u32, width: u32, height: u32) -> Image {
+        let x = x.min(self.width - 1);
+        let y = y.min(self.height - 1);
+        let (w, h) = (width.min(self.width - x), height.min(self.height - y));
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for row in y..y + h {
+            let at = ((row * self.width + x) * 4) as usize;
+            rgba.extend_from_slice(&self.rgba[at..at + (w * 4) as usize]);
+        }
+        Image::new(w, h, rgba)
+    }
+
     /// Shrinks by a whole factor, averaging each block. For contact sheets and
     /// reference images.
     pub fn shrink(&self, factor: u32) -> Image {

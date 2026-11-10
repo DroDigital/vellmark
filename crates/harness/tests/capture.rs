@@ -22,7 +22,7 @@ fn no_adapter_allowed(error: &str) -> bool {
 
 #[test]
 fn two_runs_produce_identical_frames() {
-    let script = Script::load(&repo_root().join("captures/s00_field.ron")).unwrap();
+    let script = Script::load(&repo_root().join("captures/s01_yard.ron")).unwrap();
     let first = match run(&script, &options(RefMode::Ignore)) {
         Ok(r) => r,
         Err(e) if no_adapter_allowed(&e) => return eprintln!("skipped: {e}"),
@@ -44,7 +44,7 @@ fn captures_match_their_reference_images() {
     // References are rendered by Mesa's software rasteriser, which is what cloud
     // sessions and the Linux CI runner have. Other machines draw the same picture with
     // different rounding, so only that one is held to the references.
-    let script = Script::load(&repo_root().join("captures/s00_field.ron")).unwrap();
+    let script = Script::load(&repo_root().join("captures/s01_yard.ron")).unwrap();
     let report = match run(&script, &options(RefMode::Check)) {
         Ok(r) => r,
         Err(e) if no_adapter_allowed(&e) => return eprintln!("skipped: {e}"),

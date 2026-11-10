@@ -25,7 +25,7 @@ fn ink(image: &Image, rect: (u32, u32, u32, u32)) -> f32 {
 #[test]
 fn both_typefaces_draw_at_every_size() {
     let atlas = glyph_atlas(&baked_base_pack().unwrap()).unwrap();
-    let mut offscreen = match Offscreen::new(&Default::default(), &ShaderLibrary::embedded(), 640, 360) {
+    let mut offscreen = match Offscreen::new(&Default::default(), &ShaderLibrary::embedded(), 640, 360, None) {
         Ok(o) => o,
         Err(e) if e.contains("no usable graphics adapter") && std::env::var_os("VELLMARK_ALLOW_NO_GPU").is_some() => {
             return eprintln!("skipped: {e}");
@@ -49,7 +49,7 @@ fn both_typefaces_draw_at_every_size() {
     canvas.rect([600.0, 320.0, 30.0, 30.0], black);
 
     let views = [View::full(Camera::looking(glam::Vec3::new(0.0, 1.7, 0.0), 0.0, 0.0))];
-    let frame = FrameInput { views: &views, time_of_day: 12.0, seconds: 0.0, glyph_layer: true, ui: Some(&canvas) };
+    let frame = FrameInput { views: &views, time_of_day: 12.0, seconds: 0.0, glyph_layer: true, close_reading: 0.0, tuning: Default::default(), reveal_mask: false, ui: Some(&canvas) };
     let image = offscreen.frame(&frame);
     image.save(&repo_root().join("build/captures/interface/typefaces.png")).unwrap();
 

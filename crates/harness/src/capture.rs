@@ -1,7 +1,7 @@
 //! The capture tool. A script names shots; each shot is a camera, an hour, and a number
 //! of frames on a fixed clock. The same script always produces the same images.
 
-use crate::image::{contact_sheet, difference, Difference, Image};
+use crate::image::{contact_sheet, difference_masked, Difference, Image};
 use crate::refs::{self, RefResult, Tolerance};
 use crate::shimmer::{self, Shimmer};
 use glam::Vec3;
@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use vellmark_gpu::{read_texture_rgba8, wgpu, Gpu, GpuOptions, PassTimers, PipelineRegistry};
 use vellmark_content::{AssetId, AssetKind, GlyphAtlas, Pack};
-use vellmark_render::{Camera, FrameInput, Renderer, ShaderLibrary, View};
+use vellmark_render::{load_scene, Camera, FrameInput, GlyphTuning, LoadedAssets, Renderer, ShaderLibrary, View};
 
 fn one() -> u32 {
     1
@@ -53,28 +53,43 @@ pub struct Shot {
     /// Run the shimmer check over this shot's frames. Needs three or more.
     #[serde(default)]
     pub shimmer: bool,
+    /// Close reading, from 0, the realistic frame, to 1, the text frame.
+    #[serde(default)]
+    pub close_reading: f32,
+    /// Also save this part of the first frame at full size: left, top, width, height.
+    /// For judging letters pixel for pixel in a frame too large to look at whole.
+    #[serde(default)]
+    pub crop: Option<(u32, u32, u32, u32)>,
     /// Keep the first frame of this shot as a reference image.
     #[serde(default)]
     pub reference: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
 pub struct Limits {
-    /// The largest mean difference allowed between a glyph-on and glyph-off pair.
+    /// The largest mean difference allowed between a glyph-on and glyph-off pair,
+    /// beyond the reveal distance.
     pub pair_mean: f32,
+    /// The largest difference allowed in any one pixel there.
+    pub pair_max: f32,
+    /// The largest change in mean brightness the letters may cause where they show.
+    pub tone_shift: f32,
     /// The largest 99th-percentile flicker allowed in a shimmer shot.
     pub shimmer_p99: f32,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { pair_mean: 0.004, shimmer_p99: 0.02 }
+        Self { pair_mean: 0.0005, pair_max: 0.02, tone_shift: 0.03, shimmer_p99: 0.02 }
     }
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Script {
     pub name: String,
+    /// The scene to capture, by its authored key, such as `scene.yard`.
+    pub scene: String,
     pub width: u32,
     pub height: u32,
     #[serde(default)]
@@ -108,11 +123,22 @@ pub struct Options {
     pub gpu: GpuOptions,
 }
 
+/// What the glyph-on and glyph-off frames of one shot show.
+#[derive(Clone, Copy, Debug)]
+pub struct Pair {
+    /// How the two differ beyond the reveal distance. This must be next to nothing.
+    pub beyond: Difference,
+    /// The share of the frame in which letters are drawn.
+    pub revealed_share: f32,
+    /// The relative change in mean brightness where letters are drawn.
+    pub tone_shift: f32,
+}
+
 pub struct ShotResult {
     pub name: String,
     pub frames: Vec<Image>,
     pub glyph_off: Option<Image>,
-    pub pair: Option<Difference>,
+    pub pair: Option<Pair>,
     pub shimmer: Option<Shimmer>,
     pub reference: Option<RefResult>,
 }
@@ -135,7 +161,13 @@ impl Report {
         for shot in &self.shots {
             s.push_str(&format!("  {}: {} frame(s)", shot.name, shot.frames.len()));
             if let Some(d) = shot.pair {
-                s.push_str(&format!(", glyph pair mean {:.5} max {:.3}", d.mean, d.max));
+                s.push_str(&format!(
+                    ", beyond reveal: mean {:.5} max {:.3}; lettered {:.0}% of frame, tone {:+.2}%",
+                    d.beyond.mean,
+                    d.beyond.max,
+                    d.revealed_share * 100.0,
+                    d.tone_shift * 100.0
+                ));
             }
             if let Some(m) = shot.shimmer {
                 s.push_str(&format!(", shimmer mean {:.5} p99 {:.4} flickering {:.4}", m.mean, m.p99, m.flickering));
@@ -192,11 +224,22 @@ pub fn glyph_atlas(pack: &Pack) -> Result<GlyphAtlas, String> {
 }
 
 impl Offscreen {
-    pub fn new(gpu_options: &GpuOptions, shaders: &ShaderLibrary, width: u32, height: u32) -> Result<Self, String> {
+    /// `scene` is the key of the scene to draw, or `None` for an empty world.
+    pub fn new(
+        gpu_options: &GpuOptions,
+        shaders: &ShaderLibrary,
+        width: u32,
+        height: u32,
+        scene: Option<&str>,
+    ) -> Result<Self, String> {
         let gpu = Gpu::headless(gpu_options).map_err(|e| e.to_string())?;
         let mut registry = PipelineRegistry::new();
-        let atlas = glyph_atlas(&baked_base_pack()?)?;
-        let renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &atlas)?;
+        let pack = baked_base_pack()?;
+        let assets = LoadedAssets::from_pack(&pack)?;
+        let mut renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &assets.borrow())?;
+        if let Some(key) = scene {
+            renderer.set_scene(load_scene(&gpu, &pack, key)?.1);
+        }
         registry.seal();
         let timers = PassTimers::new(&gpu, true);
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -227,7 +270,7 @@ impl Offscreen {
 }
 
 pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
-    let mut offscreen = Offscreen::new(&options.gpu, &options.shaders, script.width, script.height)?;
+    let mut offscreen = Offscreen::new(&options.gpu, &options.shaders, script.width, script.height, Some(&script.scene))?;
     let mut report = Report {
         script: script.name.clone(),
         adapter: offscreen.gpu.describe(),
@@ -240,6 +283,7 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
         let frames_wanted = shot.frames.max(1);
         let mut frames = Vec::new();
         let mut glyph_off = None;
+        let mut reveal_mask: Option<Image> = None;
         for i in 0..frames_wanted {
             let t = if frames_wanted > 1 { i as f32 / (frames_wanted - 1) as f32 } else { 0.0 };
             let pose = match &shot.to {
@@ -252,26 +296,57 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 time_of_day: shot.hour,
                 seconds: i as f32 * vellmark_sim::STEP_SECONDS,
                 glyph_layer: true,
+                close_reading: shot.close_reading,
+                tuning: GlyphTuning::default(),
+                reveal_mask: false,
                 ui: None,
             };
             frames.push(offscreen.frame(&input));
             if shot.pair && i == 0 {
                 glyph_off = Some(offscreen.frame(&FrameInput { glyph_layer: false, ..input }));
+                reveal_mask = Some(offscreen.frame(&FrameInput { reveal_mask: true, ..input }));
             }
         }
 
-        let pair = match &glyph_off {
-            Some(off) => {
-                let d = difference(&frames[0], off)?;
-                if d.mean > script.limits.pair_mean {
+        // The two promises, measured. Beyond the reveal distance the frames must match.
+        // Within it they differ, as they should, but the letters must be invisible in
+        // aggregate: the mean brightness of the lettered part may not move.
+        let pair = match (&glyph_off, &reveal_mask) {
+            (Some(off), Some(mask)) => {
+                let revealed: Vec<bool> = mask.rgba.chunks_exact(4).map(|p| p[0] > 4).collect();
+                let beyond: Vec<bool> = revealed.iter().map(|r| !r).collect();
+                let far = difference_masked(&frames[0], off, Some(&beyond))?;
+                if far.mean > script.limits.pair_mean || far.max > script.limits.pair_max {
                     report.failures.push(format!(
-                        "{}: glyph-on and glyph-off differ by mean {:.5}, limit {:.5}",
-                        shot.name, d.mean, script.limits.pair_mean
+                        "{}: beyond the reveal distance, glyph-on and glyph-off differ by mean {:.5} (limit {:.5}), max {:.3} (limit {:.3})",
+                        shot.name, far.mean, script.limits.pair_mean, far.max, script.limits.pair_max
                     ));
                 }
-                Some(d)
+                let share = revealed.iter().filter(|r| **r).count() as f32 / revealed.len() as f32;
+                let (on_l, off_l) = (frames[0].luminance(), off.luminance());
+                let mean = |l: &[f32]| {
+                    let (mut sum, mut n) = (0.0f64, 0u32);
+                    for (v, r) in l.iter().zip(&revealed) {
+                        if *r {
+                            sum += *v as f64;
+                            n += 1;
+                        }
+                    }
+                    if n == 0 { 0.0 } else { (sum / n as f64) as f32 }
+                };
+                let (lit_on, lit_off) = (mean(&on_l), mean(&off_l));
+                let tone_shift = if lit_off > 0.0 { (lit_on - lit_off) / lit_off } else { 0.0 };
+                if tone_shift.abs() > script.limits.tone_shift {
+                    report.failures.push(format!(
+                        "{}: within the reveal distance the letters change mean brightness by {:+.2}% (limit {:.1}%)",
+                        shot.name,
+                        tone_shift * 100.0,
+                        script.limits.tone_shift * 100.0
+                    ));
+                }
+                Some(Pair { beyond: far, revealed_share: share, tone_shift })
             }
-            None => None,
+            _ => None,
         };
 
         let shimmer = if shot.shimmer {
@@ -315,6 +390,9 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
             }
             if let Some(off) = &glyph_off {
                 off.save(&dir.join(format!("{}_glyph_off.png", shot.name)))?;
+            }
+            if let Some((x, y, w, h)) = shot.crop {
+                frames[0].crop(x, y, w, h).save(&dir.join(format!("{}_crop.png", shot.name)))?;
             }
         }
 

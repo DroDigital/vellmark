@@ -1,0 +1,20 @@
+// The yard of Phase S01, at noon, dusk, and night, from 20 m, 6 m, 2 m, and 0.5 m.
+// Each still is captured with the glyph layer on and off. Beyond the reveal distance
+// the two must match.
+#![enable(implicit_some)]
+(
+    name: "s01_yard",
+    scene: "scene.yard",
+    width: 480,
+    height: 270,
+    shots: [
+        (name: "noon_20m", from: (eye: (0.0, 1.68, 13.5), yaw: 0.0, pitch: 0.0), hour: 12.0, pair: true, reference: true),
+        (name: "noon_6m", from: (eye: (2.6, 1.68, 0.0), yaw: 0.0, pitch: 0.0), hour: 12.0, pair: true, reference: true),
+        (name: "noon_2m", from: (eye: (2.6, 1.68, -4.0), yaw: 0.0, pitch: 0.0), hour: 12.0, pair: true, reference: true),
+        (name: "noon_05m", from: (eye: (2.6, 1.68, -5.5), yaw: 0.0, pitch: 0.0), hour: 12.0, pair: true, reference: true),
+        (name: "dusk_20m", from: (eye: (0.0, 1.68, 13.5), yaw: 0.0, pitch: 0.0), hour: 17.7, pair: true, reference: true),
+        (name: "dusk_6m", from: (eye: (-1.0, 1.68, 0.0), yaw: -4.0, pitch: 2.0), hour: 17.7, pair: true, reference: true),
+        (name: "night_20m", from: (eye: (0.0, 1.68, 13.5), yaw: 0.0, pitch: 0.0), hour: 23.0, pair: true, reference: true),
+        (name: "night_6m", from: (eye: (-1.0, 1.68, 0.0), yaw: -4.0, pitch: 2.0), hour: 23.0, pair: true, reference: true),
+    ],
+)
