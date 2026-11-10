@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+          - name: Windows
+            os: windows-2022
+          - name: macOS
+            os: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev \
+            libxtst-dev libxinerama-dev libxrender-dev libgl1-mesa-dev libegl1-mesa-dev libdrm-dev libgbm-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools xvfb
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Linux has Mesa's software renderer, so the capture tests must run there.
+      # The hosted Windows and macOS machines may offer no adapter at all; the tests
+      # that need one say so and are skipped there, and only there.
+      - name: Tests
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" != "Linux" ]; then export VELLMARK_ALLOW_NO_GPU=1; fi
+          cargo test --workspace
+
+      - name: Shipping build has no development tools
+        run: cargo build -p vellmark-app --no-default-features
+
+      - name: A window opens (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a -s "-screen 0 1280x720x24" target/debug/vellmark --frames 120 --size 640x360
+
+      # A hosted Windows or macOS machine may have no display or adapter. The result is
+      # reported and does not fail the job; the owner's Mac is the proof for macOS.
+      - name: A window opens (Windows, macOS)
+        if: runner.os != 'Linux'
+        continue-on-error: true
+        shell: bash
+        run: |
+          cargo build -p vellmark-app
+          target/debug/vellmark --frames 120 --size 640x360
+
+      - name: Capture images
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: captures
+          path: build/captures
+          if-no-files-found: ignore
+
+  licenses:
+    name: Licenses
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
+
+  macos-app:
+    name: macOS app for the owner
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: Package
+        run: scripts/package-macos.sh "${{ github.run_number }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vellmark-macos-${{ github.run_number }}
+          path: build/macos
+          if-no-files-found: error

@@ -39,6 +39,13 @@ impl Window {
         self.inner.pixel_density()
     }
 
+    /// Resizes the window so that its drawable area is this many pixels, whatever the
+    /// display's density. The performance run uses it to measure at exactly 1080p.
+    pub fn set_size_in_pixels(&mut self, width: u32, height: u32) {
+        let density = self.pixel_density().max(0.25);
+        let _ = self.inner.set_size((width as f32 / density).round() as u32, (height as f32 / density).round() as u32);
+    }
+
     pub fn set_fullscreen(&mut self, on: bool) {
         let _ = self.inner.set_fullscreen(on);
     }

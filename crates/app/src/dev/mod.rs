@@ -32,12 +32,13 @@ pub struct DevTools {
 
 impl DevTools {
     pub fn new(profiler: bool) -> Self {
-        let reload = match HotReload::watch(&crate::paths::repo_root()) {
-            Ok(r) => Some(r),
-            Err(e) => {
+        let reload = match crate::paths::repo_root().map(|root| HotReload::watch(&root)) {
+            Some(Ok(r)) => Some(r),
+            Some(Err(e)) => {
                 log::line(&format!("hot reload is off: {e}"));
                 None
             }
+            None => None,
         };
         let mut overlay = overlay::Overlay::new();
         overlay.profiler = profiler;

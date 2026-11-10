@@ -28,12 +28,18 @@ pub fn pack_dirs() -> Vec<PathBuf> {
         }
     }
     #[cfg(feature = "dev")]
-    dirs.push(repo_root().join("build/packs"));
+    if let Some(root) = repo_root() {
+        // A development build run from its repository uses the packs it has just baked.
+        dirs.insert(0, root.join("build/packs"));
+    }
     dirs
 }
 
-/// The repository this development build was compiled from.
+/// The repository this development build was compiled from, if it is on this machine.
+/// A development build handed to the owner runs without it: no hot reload and no bake,
+/// only the packs and shaders it was packaged with.
 #[cfg(feature = "dev")]
-pub fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+pub fn repo_root() -> Option<PathBuf> {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    (root.join("assets").is_dir() && root.join("shaders").is_dir()).then_some(root)
 }

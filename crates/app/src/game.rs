@@ -124,6 +124,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Ok(w) => w,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
+    if args.perf_run && args.windowed_size.is_none() && !args.fullscreen {
+        // The targets are set at 1920 by 1080 pixels, whatever the display's density.
+        window.set_size_in_pixels(1920, 1080);
+    }
     let (raw_window, raw_display) = match window.handles() {
         Ok(h) => h,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
@@ -147,7 +151,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     // Every pipeline is made here, before play begins.
     let mut registry = PipelineRegistry::new();
     #[cfg(feature = "dev")]
-    let shaders = ShaderLibrary::with_folder(crate::paths::repo_root().join("shaders"));
+    let shaders = match crate::paths::repo_root() {
+        Some(root) => ShaderLibrary::with_folder(root.join("shaders")),
+        None => ShaderLibrary::embedded(),
+    };
     #[cfg(not(feature = "dev"))]
     let shaders = ShaderLibrary::embedded();
     let mut renderer = match Renderer::new(&gpu, &mut registry, &shaders, screen.config.format, &glyphs) {

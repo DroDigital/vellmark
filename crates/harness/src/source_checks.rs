@@ -75,7 +75,8 @@ pub fn dev_text_outside_dev_modules(repo: &Path) -> Vec<(PathBuf, usize)> {
             let Ok(text) = std::fs::read_to_string(&file) else { continue };
             for (i, line) in text.lines().enumerate() {
                 let code = line.split("//").next().unwrap_or("");
-                if code.contains("dev_text(") {
+                // The definition itself lives in the interface crate, behind the `dev` feature.
+                if code.contains("dev_text(") && !code.contains("fn dev_text(") {
                     found.push((file.clone(), i + 1));
                 }
             }

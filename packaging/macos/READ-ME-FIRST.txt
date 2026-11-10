@@ -1,0 +1,19 @@
+Vellmark: a development build for the owner's Mac.
+
+To play
+  Right-click Vellmark.app and choose Open. macOS asks once, because this build was
+  downloaded and is not signed. Choose Open again.
+
+To run the performance check
+  Right-click perf-run.command and choose Open. It runs for about a minute and puts
+  vellmark-perf-report.txt on your Desktop. Send that file back.
+
+Keys in this build
+  W A S D and the mouse    move and look
+  Escape                   free the mouse; again to leave
+  F1                       the profiler view
+  F2                       the free camera (Space up, Left Ctrl down, Left Shift fast)
+  F3                       switch the glyph layer off and on
+  `                        the console; type help
+
+What to check is listed in docs/PLAYTEST_CHECKLIST.md in the repository.

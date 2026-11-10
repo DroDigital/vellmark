@@ -22,10 +22,9 @@ fn string_table_id() -> AssetId {
 }
 
 pub fn load_content() -> Result<Content, String> {
+    // Development builds bake on launch, so that the packs always match the data.
     #[cfg(feature = "dev")]
-    {
-        // Development builds bake on launch, so that the packs always match the data.
-        let root = paths::repo_root();
+    if let Some(root) = paths::repo_root() {
         let inputs = vellmark_bake::BakeInputs { assets: root.join("assets"), third_party: root.join("third_party"), cache: Some(root.join("build/bake-cache")) };
         vellmark_bake::bake_to_dir(&inputs, &root.join("build/packs")).map_err(|e| e.to_string())?;
     }

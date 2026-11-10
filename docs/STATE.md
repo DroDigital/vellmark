@@ -5,9 +5,10 @@
 
 ## Integration
 
-**Current task:** S00-T01 to S00-T16, on branch `claude/charming-bardeen-5aqf5c`
-**Plan:** One integration session is doing every lane of Phase S00 on the session's assigned branch, a commit per task, one pull request.
-**Exact next step:** S00-T02, the workspace and the four docs.
+**Current task:** S00-T13 and S00-T16, on branch `claude/charming-bardeen-5aqf5c`
+**Plan:** One integration session is doing every lane on the session's assigned branch, a commit per task, one pull request.
+**Done:** S00-T01 to T12, T14, T15. Evidence is in `docs/evidence/S00/`.
+**Exact next step:** Read the first CI run. S00-T13 is done when all three platforms build and test in CI and the macOS app is an artifact. Then finish S00-T16.
 
 ## Lane: Render
 
@@ -31,7 +32,8 @@ None.
 
 ## Waiting on the owner
 
-Nothing yet.
+- **S00 exit gate:** download the macOS build from the CI run, open it, and run `perf-run.command` once. Steps are in `docs/PLAYTEST_CHECKLIST.md`.
+- **Asset approval:** the material list in `third_party/DOWNLOADS.md`, before S01-T02 fetches textures.
 
 ## Blockers
 

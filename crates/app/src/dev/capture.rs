@@ -15,7 +15,10 @@ pub fn run(script_path: &Path, args: &Args) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let root = repo_root();
+    let Some(root) = repo_root() else {
+        eprintln!("the capture tool runs from the repository");
+        return ExitCode::from(2);
+    };
     let options = Options {
         out: Some(args.out.clone().unwrap_or_else(|| root.join("build/captures"))),
         refs_root: root.join("refs"),
