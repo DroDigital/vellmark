@@ -1,0 +1,264 @@
+id	priority	scene	character	base	preset	text
+Q1_001	P1	Q1	WICK	B5	WICK	Now that is a poor way to start the day.
+Q1_002	P1	Q1	WICK	B5	WICK	Are you dead? Take your time. I get paid either way, or I would, if the form had a box for you.
+Q1_003	P1	Q1	WICK	B5	WICK	In a hole I dug for a Mister Bell. Mister Bell is running late.
+Q1_004	P1	Q1	WICK	B5	WICK	Wick. Gravedigger. Sole proprietor. Who are you?
+Q1_005	P1	Q1	WICK	B5	WICK	Then you're ahead of most. Come on, up.
+Q1_006	P1	Q1	WICK	B5	WICK	Hm. Let's have a look at you, then.
+Q1_007	P1	Q1	WICK	B5	WICK	Well, you look like somebody. That's a start. Name?
+Q1_008	P1	Q1	WICK	B5	WICK	Say again?
+Q1_009	P1	Q1	WICK	B5	WICK	No. See, that's a problem.
+Q1_010	P1	Q1	WICK	B5	WICK	In forty years I've buried two bishops and a man who was mostly a horse. Never had the pencil refuse.
+Q1_011	P1	Q1	WICK	B5	WICK	Tell you what. The stone on top of the hill writes down every blessed thing that happens up here. Go and see what it says about you. Mind the dog.
+Q1_012	P1	Q1	WICK	B5	WICK	And there's two of you. Lovely. I've only the one hole.
+Q1_013	P1	Q1	SHAMBLING ENTRY	B9	SHAMBLING ENTRY	- owes for a pig - owes for a second pig -
+Q1_014	P1	Q1	WICK	B5	WICK	Well?
+Q1_015	P1	Q1	WICK	B5	WICK	Does it. And here's you, holding my shovel.
+Q1_016	P1	Q1	WICK	B5	WICK	Grass has always been a gossip.
+Q1_017	P1	Q1	WICK	B5	WICK	That's what we don't talk about. Keeps the rates down.
+Q1_018	P1	Q1	WICK	B5	WICK	You want a clerk. Ambry, down the road, there's a fellow does nothing but small matters. If you can't be written down there, you can't be written down at all.
+Q1_019	P1	Q1	WICK	B5	WICK	Stop off at Little Penance on your way. Mabel Oake's owed a headstone refund. Give her this, and have something to eat.
+Q1_020	P1	Q1	WICK	B5	WICK	And mind how you go. Whatever you are.
+Q2_001	P1	Q2	MABEL	B2	MABEL	A refund. From Wick. I'll have this framed.
+Q2_002	P1	Q2	MABEL	B2	MABEL	You'll eat something. It isn't a question. Tamsin! Lay another place!
+Q2_003	P1	Q2	TAMSIN	B4	TAMSIN	You don't have any writing on you.
+Q2_004	P1	Q2	TAMSIN	B4	TAMSIN	Everybody does. On your sleeves and that. It says who you are, if you get close.
+Q2_005	P1	Q2	TAMSIN	B4	TAMSIN	You're not allowed to read people without asking. But you can if you ask.
+Q2_006	P1	Q2	TAMSIN	B4	TAMSIN	You can eat and look at stones. I do.
+Q2_007	P1	Q2	TAMSIN	B4	TAMSIN	This one is Grey. This one is Also Grey. This one I found on a Tuesday, so that's its name.
+Q2_008	P1	Q2	TAMSIN	B4	TAMSIN	This one's for you. It hasn't got a label because I don't know what to put.
+Q2_009	P1	Q2	TAMSIN	B4	TAMSIN	You can tell me when you find out.
+Q2_010	P1	Q2	EDMUND	B8	EDMUND	Clerk of Small Matters. State your matter, and indicate its smallness.
+Q2_011	P1	Q2	EDMUND	B8	EDMUND	A registration! Wonderful. Name?
+Q2_012	P1	Q2	EDMUND	B8	EDMUND	Hm.
+Q2_013	P1	Q2	EDMUND	B8	EDMUND	Hm.
+Q2_014	P1	Q2	EDMUND	B8	EDMUND	There appears to be an irregularity. I'm going to need you to fill out Form Nine, Declaration of Irregularity.
+Q2_015	P1	Q2	EDMUND	B8	EDMUND	Then I'll need a Form Twelve for the failure of the Form Nine.
+Q2_016	P1	Q2	ODILE	B1	ODILE	Edmund, you'll hurt yourself.
+Q2_017	P1	Q2	EDMUND	B8	EDMUND	Reader Marsh, this person does not appear to be permissible.
+Q2_018	P1	Q2	ODILE	B1	ODILE	Few of the best ones are. Come here, you. Give me your hand.
+Q2_019	P1	Q2	ODILE	B1	ODILE	Well. Isn't that a nice clean page.
+Q2_020	P1	Q2	ODILE	B1	ODILE	I know what's wrong with most people. You'd need to be more specific.
+Q2_021	P1	Q2	ODILE	B1	ODILE	There's nothing to read. That's what is so interesting.
+Q2_022	P1	Q2	ODILE	B1	ODILE	Odile Marsh. I check things. Sit down.
+Q2_023	P1	Q2	ODILE	B1	ODILE	Have you done anything peculiar lately? Moved a word, perhaps?
+Q2_024	P1	Q2	ODILE	B1	ODILE	With your hands, off a Standing Page, on your first day. The College has people who've spent thirty years on a single candle. You mustn't tell them. It would be very funny.
+Q2_025	P1	Q2	ODILE	B1	ODILE	You're a poor liar. Good. It's a skill that can be taught, and I'd hate you to have it already.
+Q2_026	P1	Q2	ODILE	B1	ODILE	I'm going to Scrivenhold. You should come, when you've done whatever it is you think you must do first.
+Q3_001	P1	Q3	QUENTIN	B8	QUENTIN	Evening. Long dull stretch, this. Always has been.
+Q3_002	P1	Q3	QUENTIN	B8	QUENTIN	Here? Nah. Never been anything here but road.
+Q3_003	P1	Q3	QUENTIN	B8	QUENTIN	Bit of weather.
+Q3_004	P1	Q3	MABEL	B2	MABEL	Oh, hello. You look done in. Do I know you?
+Q3_005	P1	Q3	MABEL	B2	MABEL	Who, love?
+Q3_006	P1	Q3	MABEL	B2	MABEL	We've no children, love. It's just us and Gerrit's mother.
+Q3_007	P1	Q3	GERRIT	B9	GERRIT	Never had the luck.
+Q3_008	P1	Q3	MABEL	B2	MABEL	That's a nice stone.
+Q3_009	P1	Q3	MABEL	B2	MABEL	I always do four. Can't think why.
+Q3_010	P1	Q3	ODILE	B1	ODILE	Well? What did you see?
+Q3_011	P1	Q3	ODILE	B1	ODILE	Yes.
+Q3_012	P1	Q3	ODILE	B1	ODILE	I know what it looks like when someone comes back from a place, carrying nothing, and doesn't know why they're crying.
+Q3_013	P1	Q3	ODILE	B1	ODILE	When it takes something, it takes the thing and everyone's memory of the thing. I can tell you it happens, because I've worked it out from the holes. I couldn't tell you the name of one thing it has taken. Nobody can.
+Q3_014	P1	Q3	ODILE	B1	ODILE	Except that you just did.
+Q3_015	P1	Q3	ODILE	B1	ODILE	Tell me about her. Everything. Slowly. Someone should write it down, and it can't be you.
+Q3_016	P1	Q3	ODILE	B1	ODILE	Doesn't matter. It's the habit that counts.
+Q4_001	P1	Q4	JORY	B5	JORY	Name and purpose.
+Q4_002	P1	Q4	JORY	B5	JORY	I'll put "see attached."
+Q4_003	P1	Q4	ODILE	B1	ODILE	Nothing's attached.
+Q4_004	P1	Q4	JORY	B5	JORY	That's correct.
+Q4_005	P1	Q4	THALE	B6	THALE	Reader Marsh. And an irregularity. Sit, please. I'm told the ink would not take.
+Q4_006	P1	Q4	THALE	B6	THALE	As would I. We have that in common. Let us keep it that way.
+Q4_007	P1	Q4	THALE	B6	THALE	On what grounds? There is no one to charge.
+Q4_008	P1	Q4	THALE	B6	THALE	Every morning, I am brought a sum: what was entered yesterday, less what is missing today. The sum has been wrong for twenty-two years. It gets more wrong.
+Q4_009	P1	Q4	THALE	B6	THALE	You can remember what the rest of us cannot. Bring me what you remember, and I will treat you as a citizen, whatever the ink does.
+Q4_010	P1	Q4	THALE	B6	THALE	I see. Say it again, please.
+Q4_011	P1	Q4	THALE	B6	THALE	Thank you. That is the eleventh this month.
+Q4_012	P1	Q4	SABLE	B8	SABLE	These are the permanent collections. They are complete.
+Q4_013	P1	Q4	ODILE	B1	ODILE	Then why does it say "see also" on a card that isn't there, Emeric?
+Q4_014	P1	Q4	INDEXER	B10	INDEXER	TITLE NOT FOUND. TITLE NOT FOUND. PLEASE RETURN ALL MATERIALS.
+Q4_015	P1	Q4	ODILE	B1	ODILE	Well, one's in the Foxing Wood and one's under the sea. Nobody's ever accused the old scribes of considering the reader.
+Q5_001	P1	Q5	RUE	B3	RUE	You are welcome here. Do sit. You will forgive my asking, but are you, by any chance, a relation of the Hollises?
+Q5_002	P1	Q5	RUE	B3	RUE	How restful for you.
+Q5_003	P1	Q5	RUE	B3	RUE	A family who felled the Queen's Elm. Quite recently. In Line 3,212.
+Q5_004	P1	Q5	SORREL	B4	SORREL	The Wood remembers what people forget. It can't be scraped, not all at once. There's too much of it, and it's too slow to notice.
+Q5_005	P1	Q5	SORREL	B4	SORREL	My people say them each morning. It takes eleven minutes. It took four, when I was young.
+Q6_001	P1	Q6	NAN	B7	NAN	Could be worse, love. Could be you'd paid it already.
+Q6_002	P1	Q6	PETER	B5	PETER	Rowed someone south, a while back. Quiet sort. Didn't know where they were going. Same as you, mind.
+Q6_003	P1	Q6	PETER	B5	PETER	Couldn't say. Fare's the same.
+Q6_004	P1	Q6	PETER	B5	PETER	Told you. Quiet sort.
+Q6_005	P1	Q6	DROWNED PARISHIONER	B2	DROWNED PARISHIONER	- and also with you - and also with you -
+Q7_001	P1	Q7	QUILLON	B7	QUILLON	Hold the line! You, the clerk's mistake, get up that tower!
+Q7_002	P1	Q7	ODILE	B1	ODILE	Well. That's the door. Do you know, I've never been sure it was real.
+Q7_003	P1	Q7	THALE	B6	THALE	You killed it.
+Q7_004	P1	Q7	THALE	B6	THALE	It was one. There are others. Tomorrow's sum will still be wrong.
+Q7_005	P1	Q7	THALE	B6	THALE	The northern line has moved. By eleven miles, overnight. I am told I had a cousin there. I am told this by my own handwriting.
+Q8_001	P1	Q8	OFFSET MAN	B10	OFFSET MAN	Goodbye! Thank you for leaving.
+Q8_002	P1	Q8	OFFSET MAN	B10	OFFSET MAN	It's nothing, and nowhere, and I've never been happier to see you.
+Q8_003	P1	Q8	TAMSIN	B4	TAMSIN_REVERSED	Hello.
+Q8_004	P1	Q8	TAMSIN	B4	TAMSIN_IMPRESSION	Did you find out what it is? What to put on the label?
+Q8_005	P1	Q8	TAMSIN	B4	TAMSIN_IMPRESSION	That's all right. There's no hurry here.
+Q8_006	P1	Q8	TAMSIN	B4	TAMSIN_IMPRESSION	I know. It's quiet. Mum still does four, though. I can feel it from here.
+Q8_007	P1	Q8	TAMSIN	B4	TAMSIN_IMPRESSION	I know. That's why there's still some of me.
+Q8_008	P1	Q8	TAMSIN	B4	TAMSIN_IMPRESSION	You don't have to talk. I'm doing this one.
+Q9_001	P1	Q9	LULU	B4	LULU	They're good nurses, aren't they? That's the trouble, isn't it?
+Q9_002	P1	Q9	YSOLDE	B3	YSOLDE	You've had a long road. Sit. Sister Anne will bring water.
+Q9_003	P1	Q9	YSOLDE	B3	YSOLDE	Yes.
+Q9_004	P1	Q9	YSOLDE	B3	YSOLDE	Let me show you something.
+Q9_005	P1	Q9	YSOLDE	B3	YSOLDE	Lise Wan. Born 4089. I read it the day she was born. Mothers are told not to look.
+Q9_006	P1	Q9	YSOLDE	B3	YSOLDE	So I knew. For nine years, I knew. Every birthday, I knew which number we were on. I gave her very good birthdays.
+Q9_007	P1	Q9	YSOLDE	B3	YSOLDE	She died on the second of Harrow. Of a fever. There was nothing wrong with the book.
+Q9_008	P1	Q9	YSOLDE	B3	YSOLDE	Thank you. That's what people say.
+Q9_009	P1	Q9	YSOLDE	B3	YSOLDE	I want no child's last day written down before her first.
+Q9_010	P1	Q9	YSOLDE	B3	YSOLDE	Then tell me: does her mother weep? No. And you think I am monstrous for envying her.
+Q9_011	P1	Q9	YSOLDE	B3	YSOLDE	I am not asking you to agree. But you've seen it. You know it doesn't hurt.
+Q9_012	P1	Q9	SOUR	B8	SOUR	She will wait a thousand Lines for it, and call that kindness. I have a schedule.
+Q10_001	P1	Q10	ANVIL	B7	ANVIL	So you're the blank one! Sit down, you ruined hinge, and eat!
+Q10_002	P1	Q10	ANVIL	B7	ANVIL	War's not over till the other side stops. They've only changed their uniforms.
+Q10_003	P1	Q10	TACE	B2	TACE	Made a little scraper for the northern house, once. Best thing I ever made. Couldn't get it right, so I stopped when it was wrong enough. Whoever had it held it in a certain way. Here, like that.
+Q10_004	P1	Q10	TACE	B2	TACE	Funny.
+Q11_001	P1	Q11	HASK	B9	HASK	Sent the census south last spring. Blank. Sent nothing since.
+Q11_002	P1	Q11	HASK	B9	HASK	Can't take what isn't counted. Maybe. Worth trying.
+Q11_003	P1	Q11	BRYN	B7	BRYN	Lost somebody. Don't know who. Hate them for it.
+Q11_004	P1	Q11	STIG	B5	STIG	The road north begins at the place where you stop being told where you are.
+Q12_001	P1	Q12	ODILE	B1	ODILE	Not yet. I'm sorry. Ask me anything else, and I'll be very rude to you about it.
+Q12_002	P1	Q12	THALE	B6	THALE	Please don't touch that. It's in order.
+Q12_003	P1	Q12	THALE	B6	THALE	Of course. It's arithmetic.
+Q12_004	P1	Q12	THALE	B6	THALE	It is choosing. I am choosing the order.
+Q12_005	P1	Q12	THALE	B6	THALE	The Ledger is full. It has been for a very long time. When your grandmother forgets her grandmother, that is the Ledger making room. That is what forgetting is. I thought you should hear it from someone who has done the sums.
+Q12_006	P1	Q12	THALE	B6	THALE	There are children being born. They must be written somewhere. The dead ran out. Now it takes the living. If it is left alone, it takes them at random, and then it takes everything.
+Q12_007	P1	Q12	THALE	B6	THALE	If I can feed it the least necessary tenth, I can bind the rest. I have seen the numbers. It holds.
+Q12_008	P1	Q12	THALE	B6	THALE	Someone can. Would you prefer it be done by something that doesn't know their names?
+Q12_009	P1	Q12	THALE	B6	THALE	Everyone is on the list. I am on the list. I have read my entry. I die on a Thursday. I have a great deal to do.
+Q12_010	P1	Q12	ANSELM	B9	ANSELM	I have no objection to you. I have no objections.
+Q13_001	P1	Q13	ODILE	B1	ODILE	Thale put my name on the next page of his list. Not from spite. I know too much, and I take up a surprising amount of paper.
+Q13_002	P1	Q13	ODILE	B1	ODILE	I can't tell you who you were. If anybody writes it, or says it where it can be set down, the Ledger will have your direction. All I can tell you is where it's kept: in the Library of Impressions. You'll need my glove to open it.
+Q13_003	P1	Q13	ODILE	B1	ODILE	With this hip?
+Q13_004	P1	Q13	ODILE	B1	ODILE	That's kind, and it isn't up to you.
+Q13_005	P1	Q13	ODILE	B1	ODILE	You were my worst student. You kept asking why.
+Q13_006	P1	Q13	ODILE	B1	ODILE	Still nothing there. Well done.
+Q13_007	P1	Q13	SABLE	B8	SABLE	Can I help you?
+Q13_008	P1	Q13	SABLE	B8	SABLE	Who?
+Q13_009	P1	Q13	SABLE	B8	SABLE	I'm afraid I don't know the name. Are you quite well? Forgive me, I seem to have - I came down here for something. How odd.
+Q13_010	P1	Q13	ASHBY	B5	ASHBY	You want a reading-out. For whom?
+Q13_011	P1	Q13	ASHBY	B5	ASHBY	Friend of yours?
+Q13_012	P1	Q13	ASHBY	B5	ASHBY	I don't know her. No one will. But the form says someone must read the entry aloud, and the form doesn't say the entry needs to exist. Tell me about her, and I'll say it back.
+Q13_013	P1	Q13	ASHBY	B5	ASHBY	Paid up. Written and witnessed.
+Q13_014	P1	Q13	ASHBY	B5	ASHBY	Now. Who was she?
+Q14_001	P1	Q14	SECOND EDITION	B10	SECOND EDITION	A fair copy has been prepared. You may stand down.
+Q14_002	P1	Q14	SECOND EDITION	B10	SECOND EDITION	I have your name. It's a very nice name. Would you like it?
+Q14_003	P1	Q14	SECOND EDITION	B10	SECOND EDITION	Then stand still.
+Q14_004	P1	Q14	SECOND EDITION	B10	SECOND EDITION	Noted.
+Q15_001	P1	Q15	ELLERY	B4	ELLERY	I have 19 days of flour, and a white line I can see from the granary. I'd like someone to tell me what we are doing.
+Q15_002	P1	Q15	HOB	B9	HOB	How much?
+Q15_003	P1	Q15	HOB	B9	HOB	I've seen the end of the world. Twice. It was invoiced in thirds.
+Q15_004	P1	Q15	ELLERY	B4	ELLERY	Is there a form for this?
+Q15_005	P1	Q15	ELLERY	B4	ELLERY	Then I'll make one. Someone will want it after.
+Q16_001	P1	Q16	ILSE	B1	ILSE	You. Good. You. Sit.
+Q16_002	P1	Q16	ILSE	B1	ILSE	We. Say. Name. Name. Name.
+Q16_003	P1	Q16	ILSE	B1	ILSE	- Gone. Say. Anyway.
+Q16_004	P1	Q16	ILSE	B1	ILSE	Good. You. Good.
+Q17_001	P1	Q17	THALE	B6	THALE	You have read it. So you see. It holds for nine hundred years.
+Q17_002	P1	Q17	YSOLDE	B3	YSOLDE	Nine hundred more years of mothers reading birthdays.
+Q17_003	P1	Q17	INTER	B4	INTER	Or. And I want everyone to stay calm. We could steal it.
+Q18A_001	P1	Q18A	THALE	B6	THALE	You may move any name you like. You may not remove a total. That is the only kindness arithmetic allows.
+Q18A_002	P1	Q18A	THALE	B6	THALE	Thank you. I hated doing that alone.
+Q18B_001	P1	Q18B	YSOLDE	B3	YSOLDE	Is she in pain?
+Q18B_002	P1	Q18B	YSOLDE	B3	YSOLDE	Then let me keep walking, before I stop.
+Q18B_003	P1	Q18B	MABEL	B2	MABEL	You look done in. Do I know you? Sit. I've laid extra.
+Q18C_001	P1	Q18C	INTER	B4	INTER	Nobody reads the small print. Not even God. That's the whole business model.
+Q18C_002	P1	Q18C	SABLE	B8	SABLE	I want it noted that this is the first time I have ever agreed to falsify a citation.
+BOSS_001	P1	BOSS	YSOLDE	B3	YSOLDE	I'm so sorry. Lie down.
+BOSS_002	P1	BOSS	YSOLDE	B3	YSOLDE	It's only a little further.
+BOSS_003	P1	BOSS	THALE	B6	THALE	Eleven thousand, four hundred and six unpaid entries. Shall we begin?
+BOSS_004	P1	BOSS	THALE	B6	THALE	I've always known what day this was.
+BOSS_005	P1	BOSS	CLERK	B10	CLERK	I did this so nobody could. You're about to do it anyway.
+BOSS_006	P1	BOSS	CLERK	B10	CLERK	You think you'll be different. So did Tom.
+END1_001	P1	END1	EDMUND	B8	EDMUND	Hm.
+END2_001	P1	END2	YSOLDE	B3	YSOLDE	There.
+END2_002	P1	END2	MABEL	B2	MABEL	Oh.
+END2_003	P1	END2	MABEL	B2	MABEL	There you are.
+END3_001	P1	END3	YSOLDE	B3	YSOLDE	Well.
+END3_002	P1	END3	THALE	B6	THALE	Hm.
+END4_001	P1	END4	SAINT SLIP	B8	SAINT SLIP	Oh, thank goodness. Sorry. Sit there. It's not as bad as it looks.
+FOL_001	P2	FOL	WICK	B5	WICK	I'll walk with you. Somebody ought to know where to dig.
+FOL_002	P2	FOL	WICK	B5	WICK	Mind the ground. I've met most of it.
+FOL_003	P2	FOL	WICK	B5	WICK	Off you go, then. Hole's still yours if you want it.
+FOL_004	P2	FOL	QUILLON	B7	QUILLON	My commission is my own affair. Where are we going?
+FOL_005	P2	FOL	QUILLON	B7	QUILLON	Eyes up. Somebody on that ridge can count.
+FOL_006	P2	FOL	QUILLON	B7	QUILLON	Dismissed, then. Try not to die informally.
+FOL_007	P2	FOL	HOB	B9	HOB	Standard rate. Half now, half if you survive.
+FOL_008	P2	FOL	HOB	B9	HOB	That thing's not on the invoice.
+FOL_009	P2	FOL	HOB	B9	HOB	Pleasure. I'll send the bill.
+FOL_010	P2	FOL	SORREL	B4	SORREL	I will walk with you, and remember how it went.
+FOL_011	P2	FOL	SORREL	B4	SORREL	This was a village, not long ago.
+FOL_012	P2	FOL	SORREL	B4	SORREL	Go gently. I'll keep your place in the telling.
+FOL_013	P2	FOL	PETER	B5	PETER	Fare's the same on foot.
+FOL_014	P2	FOL	PETER	B5	PETER	Could be worse. Could be water.
+FOL_015	P2	FOL	PETER	B5	PETER	Mind how you go. Quiet sort like you.
+FOL_016	P2	FOL	LULU	B4	LULU	You'll be wanting a light, won't you?
+FOL_017	P2	FOL	LULU	B4	LULU	Dark enough for you, would you say?
+FOL_018	P2	FOL	LULU	B4	LULU	I'll get back to my lamps, shall I?
+FOL_019	P2	FOL	TACE	B2	TACE	Come on, then. I'll bring the good hammer.
+FOL_020	P2	FOL	TACE	B2	TACE	That's bad work. Whoever made that should apologize.
+FOL_021	P2	FOL	TACE	B2	TACE	Go on. I've got something that isn't finished.
+FOL_022	P2	FOL	BRYN	B7	BRYN	Walking north. Coming?
+FOL_023	P2	FOL	BRYN	B7	BRYN	Snow's turning. Keep moving.
+FOL_024	P2	FOL	BRYN	B7	BRYN	Go, then. Keep the good toes.
+GUILD_001	P2	GUILD	QUILLON	B7	QUILLON	Raise your hand. No, the other one. Do you swear to uphold what's written?
+GUILD_002	P2	GUILD	QUILLON	B7	QUILLON	Tell me what the Guard is for. I've stopped being sure, and I wrote the handbook.
+GUILD_003	P2	GUILD	SABLE	B8	SABLE	You changed the candle. In one second. I have been at that candle since before you were entered.
+GUILD_004	P2	GUILD	SABLE	B8	SABLE	I knew. For eleven years, I knew. I told myself it needed more citations.
+GUILD_005	P2	GUILD	INTER	B4	INTER	Rule one. Nobody reads the small print. Rule two. Read the small print.
+GUILD_006	P2	GUILD	INTER	B4	INTER	One last job. Biggest forgery there's ever been. You in?
+GUILD_007	P2	GUILD	ANNE	B2	ANNE	Sit with her a while. You needn't say anything. Nobody ever does it right.
+GUILD_008	P2	GUILD	YSOLDE	B3	YSOLDE	We will walk into it singing. You may come, or you may stand aside. There's no wrong way to be afraid.
+GUILD_009	P2	GUILD	HOB	B9	HOB	We regret the error. That's the motto. Also the invoice.
+GUILD_010	P2	GUILD	HOB	B9	HOB	Got a contract with you on it. Can't say I like the handwriting.
+LOCAL_001	P2	LOCAL	RUE	B3	RUE	You are most welcome. Kindly wipe your feet, and your family's reputation.
+LOCAL_002	P2	LOCAL	NAN	B7	NAN	Wreck Tax, love. Up front. Saves the paperwork after.
+LOCAL_003	P2	LOCAL	HASK	B9	HASK	Firewood's counted. Don't touch it.
+LOCAL_004	P2	LOCAL	ANVIL	B7	ANVIL	Sit down and eat, you magnificent disappointment!
+LOCAL_005	P2	LOCAL	LULL	B8	LULL	Lost, are you? Would you know if you were?
+LOCAL_006	P2	LOCAL	VEXLEY	B6	VEXLEY	Everything's for sale, friend. It's the only thing that's kept its value.
+LOCAL_007	P2	LOCAL	NELL	B2	NELL	Sit. Eat. Tell me everything. I already know most of it.
+LOCAL_008	P2	LOCAL	MIMI	B1	MIMI	You've met my son, have you? I'm sorry for your trouble.
+SIDE_001	P2	SIDE	EDMUND	B8	EDMUND	I've drafted a new form. It's for people who can't fill out forms.
+SIDE_002	P2	SIDE	EDMUND	B8	EDMUND	Sign here. With whatever you have. A stone will do. I've decided that a stone will do.
+SIDE_003	P2	SIDE	MABEL	B2	MABEL	You came back. I did four again. I don't know why I'm telling you.
+SIDE_004	P2	SIDE	WICK	B5	WICK	Eleven Marks. Forty years he's owed me. Thank you. I won't know what to complain about.
+SIDE_005	P2	SIDE	ASHBY	B5	ASHBY	Another name, then. Say it slowly. I'll have forgotten by supper, but I'll have said it.
+SIDE_006	P2	SIDE	BRYN	B7	BRYN	You told me who it was. Tell me again. I lost it.
+SIDE_007	P2	SIDE	PETER	B5	PETER	Alright. Teach me. Not a word to anybody. Mind the deep bit.
+SIDE_008	P2	SIDE	ELLERY	B4	ELLERY	Seven days of bread. I'd like it noted that I never once slept.
+BARK_001	P3	BARK	HASK	B9	HASK_CROWD	Move along.
+BARK_002	P3	BARK	HASK	B9	HASK_CROWD	Mind your own entry.
+BARK_003	P3	BARK	HASK	B9	HASK_CROWD	Papers. Not yours, obviously.
+BARK_004	P3	BARK	HASK	B9	HASK_CROWD	Halt, in the name of the Ledger!
+BARK_005	P3	BARK	HASK	B9	HASK_CROWD	Balance due!
+BARK_006	P3	BARK	HASK	B9	HASK_CROWD	Thought I saw something.
+BARK_007	P3	BARK	QUILLON	B7	QUILLON_CROWD	Move along, please.
+BARK_008	P3	BARK	QUILLON	B7	QUILLON_CROWD	Keep the road clear.
+BARK_009	P3	BARK	QUILLON	B7	QUILLON_CROWD	Stop! That is a debt!
+BARK_010	P3	BARK	QUILLON	B7	QUILLON_CROWD	Who goes there?
+BARK_011	P3	BARK	NELL	B2	NELL_CROWD	What'll it be?
+BARK_012	P3	BARK	NELL	B2	NELL_CROWD	That's my final price.
+BARK_013	P3	BARK	NELL	B2	NELL_CROWD	Come back when you have Marks.
+BARK_014	P3	BARK	NELL	B2	NELL_CROWD	Good day to you.
+BARK_015	P3	BARK	EDMUND	B8	EDMUND_CROWD	Yes? Can I help?
+BARK_016	P3	BARK	EDMUND	B8	EDMUND_CROWD	Receipt?
+BARK_017	P3	BARK	EDMUND	B8	EDMUND_CROWD	That's not quite in order.
+BARK_018	P3	BARK	EDMUND	B8	EDMUND_CROWD	Good day.
+BARK_019	P3	BARK	ODILE	B1	ODILE_CROWD	Mind your step.
+BARK_020	P3	BARK	ODILE	B1	ODILE_CROWD	In my day, we had less of this.
+BARK_021	P3	BARK	ODILE	B1	ODILE_CROWD	You look lost.
+BARK_022	P3	BARK	ODILE	B1	ODILE_CROWD	Off with you.
+BARK_023	P3	BARK	WICK	B5	WICK_CROWD	Morning.
+BARK_024	P3	BARK	WICK	B5	WICK_CROWD	Going to be cold.
+BARK_025	P3	BARK	WICK	B5	WICK_CROWD	Seen worse.
+BARK_026	P3	BARK	WICK	B5	WICK_CROWD	Mind how you go.
+BARK_027	P3	BARK	SORREL	B4	SORREL_CROWD	Hello!
+BARK_028	P3	BARK	SORREL	B4	SORREL_CROWD	Are you lost?
+BARK_029	P3	BARK	SORREL	B4	SORREL_CROWD	You don't have any writing.
+BARK_030	P3	BARK	SORREL	B4	SORREL_CROWD	Excuse me.
+BARK_031	P3	BARK	YSOLDE	B3	YSOLDE_CROWD	Be at peace.
+BARK_032	P3	BARK	YSOLDE	B3	YSOLDE_CROWD	Let it be clean.
+BARK_033	P3	BARK	YSOLDE	B3	YSOLDE_CROWD	Rest a while.
