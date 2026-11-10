@@ -53,15 +53,14 @@ jobs:
           if [ "$RUNNER_OS" != "Linux" ]; then export VELLMARK_ALLOW_NO_GPU=1; fi
           cargo test --workspace
 
-      - name: Shipping build has no development tools
-        run: cargo build -p vellmark-app --no-default-features
-
       - name: A window opens (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 5
         env:
           SDL_VIDEODRIVER: x11
-        run: timeout 120 xvfb-run -a -s "-screen 0 1280x720x24" target/debug/vellmark --frames 120 --size 640x360
+        run: |
+          cargo build -p vellmark-app
+          timeout 120 xvfb-run -a -s "-screen 0 1280x720x24" target/debug/vellmark --frames 120 --size 640x360
 
       # A hosted Windows or macOS machine may have no display or adapter. The result is
       # reported and does not fail the job; the owner's Mac is the proof for macOS.
@@ -73,6 +72,9 @@ jobs:
         run: |
           cargo build -p vellmark-app
           target/debug/vellmark --frames 120 --size 640x360
+
+      - name: Shipping build has no development tools
+        run: cargo build -p vellmark-app --no-default-features
 
       - name: Capture images
         if: runner.os == 'Linux'

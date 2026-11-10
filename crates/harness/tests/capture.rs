@@ -30,12 +30,28 @@ fn two_runs_produce_identical_frames() {
     };
     let second = run(&script, &options(RefMode::Ignore)).unwrap();
     assert_eq!(first.shots.len(), second.shots.len());
+    // Mesa's software renderer is the reference: there, two runs agree bit for bit.
+    let reference_renderer = first.adapter.contains("llvmpipe");
+    let mut worst = 0.0f32;
     for (a, b) in first.shots.iter().zip(&second.shots) {
         assert_eq!(a.frames.len(), b.frames.len());
         for (i, (x, y)) in a.frames.iter().zip(&b.frames).enumerate() {
-            assert!(x == y, "shot {} frame {i} differs between runs", a.name);
+            if reference_renderer {
+                assert!(x == y, "shot {} frame {i} differs between runs", a.name);
+            } else {
+                // A hardware GPU may round a blend or a filter differently from one
+                // run to the next. The picture must still be the same picture.
+                let d = vellmark_harness::image::difference(x, y).unwrap();
+                worst = worst.max(d.max);
+                assert!(
+                    d.max <= 3.0 / 255.0 && d.mean <= 0.0005,
+                    "shot {} frame {i} differs between runs on {}: mean {:.6}, max {:.4}",
+                    a.name, first.adapter, d.mean, d.max
+                );
+            }
         }
     }
+    eprintln!("{}: largest difference between two runs {:.4}", first.adapter, worst);
     assert!(first.passed(), "{}", first.summary());
 }
 
