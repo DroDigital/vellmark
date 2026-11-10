@@ -1,0 +1,11 @@
+[package]
+name = "vellmark-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sdl3 = { workspace = true, features = ["build-from-source-static", "raw-window-handle"] }
+glam.workspace = true

@@ -20,6 +20,7 @@ if command -v apt-get >/dev/null 2>&1; then
     build-essential cmake ninja-build pkg-config git \
     libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev \
+    libxtst-dev libxinerama-dev libxrender-dev libgl1-mesa-dev libegl1-mesa-dev libdrm-dev libgbm-dev \
     libwayland-dev libxkbcommon-dev wayland-protocols \
     libvulkan1 mesa-vulkan-drivers vulkan-tools xvfb || true
 fi
