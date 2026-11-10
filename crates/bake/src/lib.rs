@@ -1,0 +1,101 @@
+//! The offline content tool. It turns authored data into pack files.
+//!
+//! Baking is deterministic: the same inputs give the same bytes, whatever order the
+//! file system lists them in and whatever the clock says.
+
+pub mod manifest;
+pub mod sha256;
+pub mod strings;
+
+use std::fmt;
+use std::path::{Path, PathBuf};
+use vellmark_content::{AssetId, AssetKind, PackWriter};
+
+#[derive(Debug)]
+pub struct BakeError(pub String);
+
+impl fmt::Display for BakeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for BakeError {}
+
+pub fn err<T>(msg: impl Into<String>) -> Result<T, BakeError> {
+    Err(BakeError(msg.into()))
+}
+
+pub struct BakeInputs {
+    /// The `assets` folder: authored text and data.
+    pub assets: PathBuf,
+    /// The `third_party` folder, with its manifest.
+    pub third_party: PathBuf,
+}
+
+/// The packs a bake produces, by file name.
+pub struct BakeOutput {
+    pub packs: Vec<(String, Vec<u8>)>,
+    /// One line for each thing baked, for the log.
+    pub report: Vec<String>,
+}
+
+/// The language the Showcase ships in. Translation is left for the full game, but the
+/// tables are already laid out one folder to a language.
+pub const BASE_LANGUAGE: &str = "en";
+
+/// The asset ID of a language's string table.
+pub fn string_table_id(language: &str) -> AssetId {
+    AssetId::from_key(&format!("strings.{language}"))
+}
+
+/// Files in a folder, sorted by name, so that the order never depends on the file system.
+pub fn sorted_files(dir: &Path, extension: &str) -> Result<Vec<PathBuf>, BakeError> {
+    let mut out = Vec::new();
+    let read = match std::fs::read_dir(dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(e) => return err(format!("cannot read {}: {e}", dir.display())),
+    };
+    for entry in read {
+        let path = entry.map_err(|e| BakeError(e.to_string()))?.path();
+        if path.is_dir() {
+            out.extend(sorted_files(&path, extension)?);
+        } else if path.extension().and_then(|e| e.to_str()) == Some(extension) {
+            out.push(path);
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
+    let mut report = Vec::new();
+
+    let checked = manifest::validate(&inputs.third_party)?;
+    report.push(format!("third-party files checked against the manifest: {checked}"));
+
+    let mut base = PackWriter::new();
+
+    let text_root = inputs.assets.join("text");
+    let table = strings::bake_language(&text_root.join(BASE_LANGUAGE))?;
+    report.push(format!("strings.{BASE_LANGUAGE}: {} entries", table.count));
+    base.add(AssetKind::StringTable, string_table_id(BASE_LANGUAGE), table.bytes)
+        .map_err(|e| BakeError(e.to_string()))?;
+
+    Ok(BakeOutput { packs: vec![("base.vpk".to_owned(), base.finish())], report })
+}
+
+/// Bakes and writes the packs into `out`.
+pub fn bake_to_dir(inputs: &BakeInputs, out: &Path) -> Result<BakeOutput, BakeError> {
+    let output = bake(inputs)?;
+    std::fs::create_dir_all(out).map_err(|e| BakeError(format!("cannot create {}: {e}", out.display())))?;
+    for (name, bytes) in &output.packs {
+        let path = out.join(name);
+        // Leave an unchanged pack untouched so that nothing downstream is rebuilt.
+        if std::fs::read(&path).ok().as_deref() != Some(bytes.as_slice()) {
+            std::fs::write(&path, bytes).map_err(|e| BakeError(format!("cannot write {}: {e}", path.display())))?;
+        }
+    }
+    Ok(output)
+}

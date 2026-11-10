@@ -1,0 +1,6 @@
+// Every third-party file in this folder. The bake fails on a file that is not listed
+// here, has changed, or carries a license the rules in
+// full-game/docs/brief/1.1a-licenses-and-ai-gate.md do not allow.
+(
+    files: [],
+)

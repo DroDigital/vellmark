@@ -1,6 +1,19 @@
 [package]
 name = "vellmark-bake"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "vellmark-bake"
+path = "src/main.rs"
 
 [dependencies]
+vellmark-content.workspace = true
+serde.workspace = true
+ron.workspace = true

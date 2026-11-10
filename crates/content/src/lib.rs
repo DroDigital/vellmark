@@ -1,14 +1,14 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Data formats and the pack reader.
+//!
+//! RON and plain text are authoring formats only. The bake writes the binary formats
+//! defined here, and the game reads nothing else at runtime.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod id;
+pub mod pack;
+pub mod strings;
+pub mod tile;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use id::{fnv1a64, AssetId, AssetKind, StringId};
+pub use pack::{Pack, PackError, PackWriter, PACK_VERSION};
+pub use strings::{StringTable, StringTableBuilder};
+pub use tile::{TileCoord, TILE_METRES};

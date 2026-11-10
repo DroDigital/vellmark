@@ -4,3 +4,4 @@ logs/
 *.log
 docs/voice/voice_ids.json
 full-game/docs/voice/voice_ids.json
+build/

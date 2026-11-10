@@ -1,0 +1,9 @@
+// Text shown by the game itself, outside the world. Keys are permanent: add, never rename.
+{
+    "sys.window_title": "Vellmark",
+    "sys.gpu.none": "Vellmark could not find a graphics card it can use.\n\nIt needs a card and a driver that support Vulkan, Metal, or DirectX 12. Updating the graphics driver usually fixes this.",
+    "sys.gpu.too_old": "This graphics card or its driver is missing something Vellmark needs.\n\nUpdating the graphics driver may fix this. The details are in the log file.",
+    "sys.gpu.failed": "The graphics card refused to start.\n\nClosing other programs that use the graphics card, or updating its driver, may fix this. The details are in the log file.",
+    "sys.packs.missing": "Vellmark's data files are missing or damaged.\n\nVerifying or reinstalling the game will restore them.",
+    "sys.crash": "Vellmark has stopped because of an error it could not recover from.\n\nA crash log has been written beside your saves.",
+}

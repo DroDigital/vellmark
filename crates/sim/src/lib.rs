@@ -1,14 +1,17 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Game rules. No dependency on SDL or the GPU: `sim` runs headless so that bots play the
+//! real game.
+//!
+//! The simulation advances in fixed steps. After each step it publishes an immutable
+//! [`Snapshot`], which is all that drawing, bots, and replays ever read.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod clock;
+mod hash;
+mod input;
+mod snapshot;
+mod world;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use clock::{FixedClock, StepPlan, STEP_HZ, STEP_SECONDS};
+pub use hash::Fnv64;
+pub use input::{buttons, PlayerInput};
+pub use snapshot::{PlayerSnap, Snapshot, ViewSnap};
+pub use world::{PlayerId, World, WorldConfig, EYE_HEIGHT};
