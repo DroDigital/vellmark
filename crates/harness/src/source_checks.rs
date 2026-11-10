@@ -42,7 +42,11 @@ pub fn string_keys_in_code(repo: &Path) -> Vec<KeyUse> {
         for file in files {
             let Ok(text) = std::fs::read_to_string(&file) else { continue };
             for (i, line) in text.lines().enumerate() {
-                let mut rest = line;
+                // Unit tests sit at the end of a file and may use keys that do not exist.
+                if line.trim() == "#[cfg(test)]" {
+                    break;
+                }
+                let mut rest = line.split("//").next().unwrap_or("");
                 while let Some(at) = rest.find("sid!(\"") {
                     rest = &rest[at + 6..];
                     if let Some(end) = rest.find('"') {
