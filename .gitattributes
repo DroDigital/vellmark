@@ -1,0 +1,9 @@
+# Text is stored and checked out with LF on every system, so that hashes and bakes
+# agree between Windows, macOS, and Linux.
+* text=auto eol=lf
+
+# Third-party files are kept byte for byte: the manifest records their SHA-256.
+third_party/** -text
+*.ttf binary
+*.png binary
+*.vpk binary

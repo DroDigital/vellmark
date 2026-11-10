@@ -16,6 +16,7 @@ jobs:
   test:
     name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +26,7 @@ jobs:
           - name: Windows
             os: windows-2022
           - name: macOS
-            os: macos-14
+            os: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -57,13 +58,17 @@ jobs:
 
       - name: A window opens (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a -s "-screen 0 1280x720x24" target/debug/vellmark --frames 120 --size 640x360
+        timeout-minutes: 5
+        env:
+          SDL_VIDEODRIVER: x11
+        run: timeout 120 xvfb-run -a -s "-screen 0 1280x720x24" target/debug/vellmark --frames 120 --size 640x360
 
       # A hosted Windows or macOS machine may have no display or adapter. The result is
       # reported and does not fail the job; the owner's Mac is the proof for macOS.
       - name: A window opens (Windows, macOS)
         if: runner.os != 'Linux'
         continue-on-error: true
+        timeout-minutes: 15
         shell: bash
         run: |
           cargo build -p vellmark-app
@@ -88,7 +93,8 @@ jobs:
 
   macos-app:
     name: macOS app for the owner
-    runs-on: macos-14
+    runs-on: macos-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2

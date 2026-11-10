@@ -113,6 +113,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Ok(p) => p,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
+    log::line("platform ready");
     let (width, height) = args.windowed_size.unwrap_or((1280, 720));
     let mut window: Window = match platform.create_window(&WindowOptions {
         title: &strings.text(sid!("sys.window_title")),
@@ -124,6 +125,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Ok(w) => w,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
+    log::line("window created");
     if args.perf_run && args.windowed_size.is_none() && !args.fullscreen {
         // The targets are set at 1920 by 1080 pixels, whatever the display's density.
         window.set_size_in_pixels(1920, 1080);
@@ -162,6 +164,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
     registry.seal();
+    log::line(&format!("renderer ready, presenting {:?} as {:?}", screen.config.format, screen.config.present_mode));
     let mut timers = PassTimers::new(&gpu, cfg!(feature = "dev") || args.perf_run);
 
     #[cfg(feature = "dev")]
@@ -329,6 +332,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         let _ = gpu.device.poll(wgpu::PollType::Poll);
         timers.collect();
 
+        if frame_index == 0 {
+            log::line("first frame drawn");
+        }
         frame_index += 1;
         if args.frames.is_some_and(|limit| frame_index >= limit) {
             break 'frames;
