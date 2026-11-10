@@ -4,15 +4,26 @@ use vellmark_bake::{bake, BakeInputs};
 use vellmark_content::{AssetKind, Pack, StringId, StringTable};
 use vellmark_harness::{repo_root, source_checks};
 
-fn inputs() -> BakeInputs {
+fn inputs_with(cache: bool) -> BakeInputs {
     let root = repo_root();
-    BakeInputs { assets: root.join("assets"), third_party: root.join("third_party") }
+    BakeInputs {
+        assets: root.join("assets"),
+        third_party: root.join("third_party"),
+        cache: cache.then(|| root.join("build/bake-cache")),
+    }
+}
+
+fn inputs() -> BakeInputs {
+    inputs_with(true)
 }
 
 #[test]
 fn two_bakes_are_byte_identical() {
-    let a = bake(&inputs()).unwrap();
-    let b = bake(&inputs()).unwrap();
+    // Two bakes from nothing, and one through the cache: all three must agree.
+    let a = bake(&inputs_with(false)).unwrap();
+    let b = bake(&inputs_with(false)).unwrap();
+    let cached = bake(&inputs_with(true)).unwrap();
+    assert!(a.packs == cached.packs, "a cached bake differs from a fresh one");
     assert_eq!(a.packs.len(), b.packs.len());
     for ((name_a, bytes_a), (name_b, bytes_b)) in a.packs.iter().zip(&b.packs) {
         assert_eq!(name_a, name_b);

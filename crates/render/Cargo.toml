@@ -14,6 +14,7 @@ dev = []
 vellmark-gpu.workspace = true
 vellmark-sim.workspace = true
 vellmark-content.workspace = true
+vellmark-ui.workspace = true
 glam.workspace = true
 bytemuck.workspace = true
 

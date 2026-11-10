@@ -17,3 +17,10 @@ path = "src/main.rs"
 vellmark-content.workspace = true
 serde.workspace = true
 ron.workspace = true
+ttf-parser = "=0.25.1"
+fdsm = "=0.8.0"
+# Both come with fdsm; named here because the atlas bake uses their types.
+image = { version = "0.25.6", default-features = false }
+nalgebra = "0.34.1"
+png.workspace = true
+rayon.workspace = true

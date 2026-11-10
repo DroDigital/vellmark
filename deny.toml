@@ -1,0 +1,41 @@
+# License and source rules for every crate in the tree. Run by CI: a new dependency
+# with a license outside full-game/docs/brief/1.1a fails the build.
+
+[graph]
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Zlib",
+    "ISC",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# The game's own crates are not published and carry no open license.
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[advisories]
+# The advisory database is fetched from GitHub, which CI can reach.
+yanked = "deny"

@@ -5,6 +5,8 @@
 use crate::image::{difference, Difference, Image};
 use std::path::{Path, PathBuf};
 
+pub use crate::capture::RefMode;
+
 #[derive(Clone, Copy, Debug)]
 pub struct Tolerance {
     pub mean: f32,

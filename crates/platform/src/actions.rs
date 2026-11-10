@@ -46,6 +46,8 @@ pub enum RawInput {
     PadButton { pad: u32, button: PadButton, down: bool },
     /// Sticks are -1 to 1, with down and right positive. Triggers are 0 to 1.
     PadAxis { pad: u32, axis: PadAxis, value: f32 },
+    /// A typed character, while text entry is on.
+    Text(char),
     PadAdded { pad: u32 },
     PadRemoved { pad: u32 },
 }
@@ -229,6 +231,7 @@ impl ActionState {
                     self.pressed |= bit(action);
                 }
             }
+            RawInput::Text(_) => {}
             RawInput::PadAdded { pad } => {
                 if self.pad.is_none() {
                     self.pad = Some(pad);

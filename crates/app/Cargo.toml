@@ -14,7 +14,7 @@ path = "src/main.rs"
 default = ["dev"]
 # Development builds: hot reload, the capture tool, the console, the free camera, and
 # the profiler view. Shipping builds are made with --no-default-features.
-dev = ["dep:vellmark-harness", "dep:vellmark-bake", "dep:notify", "vellmark-render/dev"]
+dev = ["dep:vellmark-harness", "dep:vellmark-bake", "dep:notify", "vellmark-render/dev", "vellmark-ui/dev"]
 
 [dependencies]
 vellmark-platform.workspace = true

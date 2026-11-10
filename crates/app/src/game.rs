@@ -13,6 +13,7 @@ use vellmark_platform::{
     Action, ActionState, Bindings, InputSource, Platform, PlatformEvent, RawInput, Window, WindowOptions,
 };
 use vellmark_render::{Camera, FrameInput, Renderer, ShaderLibrary, View};
+use vellmark_ui::Canvas;
 use vellmark_sim::{buttons, FixedClock, PlayerInput, Snapshot, World, WorldConfig};
 
 struct Screen {
@@ -93,6 +94,8 @@ fn player_input(actions: &ActionState, bindings: &Bindings, dt: f32, first_step:
     PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held }
 }
 
+// `strings` is reloaded here and read once the interface shows text (Phase S03).
+#[allow(unused_assignments)]
 pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let system_strings = boot::system_strings();
     let fail = |message, detail: &str| {
@@ -101,7 +104,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
 
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
-    let Content { base, mut strings } = match boot::load_content() {
+    let Content { base, mut strings, glyphs } = match boot::load_content() {
         Ok(c) => c,
         Err(detail) => return fail(sid!("sys.packs.missing"), &detail),
     };
@@ -147,7 +150,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let shaders = ShaderLibrary::with_folder(crate::paths::repo_root().join("shaders"));
     #[cfg(not(feature = "dev"))]
     let shaders = ShaderLibrary::embedded();
-    let mut renderer = match Renderer::new(&gpu, &mut registry, &shaders, screen.config.format) {
+    let mut renderer = match Renderer::new(&gpu, &mut registry, &shaders, screen.config.format, &glyphs) {
         Ok(r) => r,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
@@ -155,7 +158,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut timers = PassTimers::new(&gpu, cfg!(feature = "dev") || args.perf_run);
 
     #[cfg(feature = "dev")]
-    let mut dev_tools = crate::dev::DevTools::new();
+    let mut dev_tools = crate::dev::DevTools::new(args.profiler);
 
     let mut perf = if args.perf_run {
         let path = base
@@ -182,6 +185,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut frame_index: u64 = 0;
     let mut mouse_captured = false;
     let mut glyph_layer = true;
+    #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
+    let mut world_hour_override: Option<f32> = None;
+    let mut canvas = Canvas::new();
     let started = Instant::now();
 
     'frames: loop {
@@ -192,6 +198,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         actions.begin_frame();
         raw.clear();
         platform.poll(&mut raw);
+        #[cfg(feature = "dev")]
+        dev_tools.console_input(&mut raw);
         for input in &raw {
             actions.feed(&bindings, *input);
         }
@@ -222,6 +230,21 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         if cfg!(feature = "dev") && actions.pressed(Action::DevGlyphLayer) {
             glyph_layer = !glyph_layer;
         }
+        #[cfg(feature = "dev")]
+        {
+            if actions.pressed(Action::DevConsole) {
+                let open = dev_tools.toggle_console();
+                platform.text_entry(&window, open);
+            }
+            for command in dev_tools.take_commands() {
+                use crate::dev::Command;
+                match command {
+                    Command::Hour(h) => world_hour_override = h,
+                    Command::GlyphLayer(on) => glyph_layer = on,
+                    Command::Quit => break 'frames,
+                }
+            }
+        }
 
         #[cfg(feature = "dev")]
         {
@@ -247,10 +270,13 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             current = world.snapshot();
         }
 
-        let mut hour = current.time_of_day;
+        let mut hour = world_hour_override.unwrap_or(current.time_of_day);
         let mut camera = Camera::from_view(&previous.lerp_view(&current, 0, plan.alpha));
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
+        canvas.clear();
+        #[cfg(feature = "dev")]
+        dev_tools.draw(&mut canvas, &glyphs, screen.size(), window.pixel_density(), frame_time, timers.latest(), &registry);
 
         if let Some(run) = perf.as_mut() {
             match run.frame(frame_time, timers.latest(), 1.0) {
@@ -280,6 +306,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 time_of_day: hour,
                 seconds: started.elapsed().as_secs_f32(),
                 glyph_layer,
+                ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());
             timers.begin_frame();

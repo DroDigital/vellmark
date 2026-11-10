@@ -3,6 +3,7 @@
 //! Baking is deterministic: the same inputs give the same bytes, whatever order the
 //! file system lists them in and whatever the clock says.
 
+pub mod glyphs;
 pub mod manifest;
 pub mod paths;
 pub mod sha256;
@@ -32,7 +33,13 @@ pub struct BakeInputs {
     pub assets: PathBuf,
     /// The `third_party` folder, with its manifest.
     pub third_party: PathBuf,
+    /// A folder for results that are slow to bake, keyed by the hash of their inputs.
+    /// A cached result is byte-identical to a fresh one. `None` bakes everything afresh.
+    pub cache: Option<PathBuf>,
 }
+
+/// The asset ID of the glyph atlas.
+pub const GLYPH_ATLAS_KEY: &str = "glyphs.atlas";
 
 /// The packs a bake produces, by file name.
 pub struct BakeOutput {
@@ -83,6 +90,10 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     report.push(format!("strings.{BASE_LANGUAGE}: {} entries", table.count));
     base.add(AssetKind::StringTable, string_table_id(BASE_LANGUAGE), table.bytes)
         .map_err(|e| BakeError(e.to_string()))?;
+
+    let atlas = glyphs::bake_atlas(&inputs.third_party, inputs.cache.as_deref())?;
+    report.push(format!("{GLYPH_ATLAS_KEY}: {} bytes", atlas.len()));
+    base.add(AssetKind::GlyphAtlas, AssetId::from_key(GLYPH_ATLAS_KEY), atlas).map_err(|e| BakeError(e.to_string()))?;
 
     for (key, bytes) in paths::bake_all(&inputs.assets.join("paths"))? {
         report.push(format!("{key}: {} bytes", bytes.len()));

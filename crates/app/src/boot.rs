@@ -1,7 +1,7 @@
 //! Loading the packs and the strings, and saying so in words when something is missing.
 
 use crate::paths;
-use vellmark_content::{fnv1a64, sid, AssetId, AssetKind, Pack, StringId, StringTable};
+use vellmark_content::{fnv1a64, sid, AssetId, AssetKind, GlyphAtlas, Pack, StringId, StringTable};
 use vellmark_gpu::GpuError;
 
 static SYSTEM_STRINGS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/strings.bin"));
@@ -9,6 +9,7 @@ static SYSTEM_STRINGS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/strings
 pub struct Content {
     pub base: Pack,
     pub strings: StringTable,
+    pub glyphs: GlyphAtlas,
 }
 
 /// The strings compiled into the executable, for messages shown before the packs load.
@@ -25,7 +26,7 @@ pub fn load_content() -> Result<Content, String> {
     {
         // Development builds bake on launch, so that the packs always match the data.
         let root = paths::repo_root();
-        let inputs = vellmark_bake::BakeInputs { assets: root.join("assets"), third_party: root.join("third_party") };
+        let inputs = vellmark_bake::BakeInputs { assets: root.join("assets"), third_party: root.join("third_party"), cache: Some(root.join("build/bake-cache")) };
         vellmark_bake::bake_to_dir(&inputs, &root.join("build/packs")).map_err(|e| e.to_string())?;
     }
     let mut tried = Vec::new();
@@ -38,7 +39,11 @@ pub fn load_content() -> Result<Content, String> {
                     .get(AssetKind::StringTable, string_table_id())
                     .ok_or_else(|| format!("{}: no string table", path.display()))?;
                 let strings = StringTable::from_bytes(table).map_err(|e| format!("{}: {e}", path.display()))?;
-                return Ok(Content { base, strings });
+                let glyphs = base
+                    .get(AssetKind::GlyphAtlas, AssetId(fnv1a64(b"glyphs.atlas")))
+                    .ok_or_else(|| format!("{}: no glyph atlas", path.display()))?;
+                let glyphs = GlyphAtlas::from_bytes(glyphs).map_err(|e| format!("{}: {e}", path.display()))?;
+                return Ok(Content { base, strings, glyphs });
             }
             Err(e) => tried.push(format!("{}: {e}", path.display())),
         }

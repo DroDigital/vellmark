@@ -4,12 +4,14 @@
 //! defined here, and the game reads nothing else at runtime.
 
 pub mod camera_path;
+pub mod glyph_atlas;
 pub mod id;
 pub mod pack;
 pub mod strings;
 pub mod tile;
 
 pub use camera_path::{CameraPath, Keyframe};
+pub use glyph_atlas::{glyph_index, Face, FaceInfo, GlyphAtlas, GlyphInfo, FACES, GLYPHS_PER_FACE, TONE_STEPS};
 pub use id::{fnv1a64, AssetId, AssetKind, StringId};
 pub use pack::{Pack, PackError, PackWriter, PACK_VERSION};
 pub use strings::{StringTable, StringTableBuilder};

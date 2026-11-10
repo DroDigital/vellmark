@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Development tools may draw text that is not in the string table.
+dev = []
+
 [dependencies]
-glam.workspace = true
 vellmark-content.workspace = true

@@ -93,6 +93,13 @@ impl Platform {
         self.mouse.set_relative_mouse_mode(&window.inner, on);
     }
 
+    /// Turns typed-character events on or off. On for the developer console and, later,
+    /// for naming things; off the rest of the time so that keys are only keys.
+    pub fn text_entry(&self, window: &Window, on: bool) {
+        let input = self.video.text_input();
+        if on { input.start(&window.inner) } else { input.stop(&window.inner) }
+    }
+
     /// Window and quit events gathered by the last `poll`.
     pub fn drain_events(&mut self) -> Vec<PlatformEvent> {
         std::mem::take(&mut self.events)
@@ -122,6 +129,9 @@ impl InputSource for Platform {
                     if let Some(key) = key_of(code) {
                         out.push(RawInput::Key { key, down: false });
                     }
+                }
+                Event::TextInput { text, .. } => {
+                    out.extend(text.chars().filter(|c| (' '..='~').contains(c)).map(RawInput::Text));
                 }
                 Event::MouseMotion { xrel, yrel, .. } => out.push(RawInput::MouseMove { dx: xrel, dy: yrel }),
                 Event::MouseButtonDown { mouse_btn, .. } => {

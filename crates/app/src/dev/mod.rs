@@ -1,13 +1,16 @@
 //! Development tools. Nothing in this module exists in a shipping build.
 
 pub mod capture;
+pub mod overlay;
 pub mod reload;
+
+pub use overlay::Command;
 
 use crate::log;
 use glam::{Quat, Vec3};
 use reload::HotReload;
 use vellmark_gpu::{Gpu, PipelineRegistry};
-use vellmark_platform::{Action, ActionState, Bindings};
+use vellmark_platform::{Action, ActionState, Bindings, RawInput};
 use vellmark_render::{Camera, Renderer, ShaderLibrary};
 
 /// A camera that flies free of the player.
@@ -24,10 +27,11 @@ pub struct DevTools {
     pub last_reload_ms: Option<f32>,
     /// Text or data changed on disk; the game loop rebakes and reloads it.
     data_changed: Option<std::time::Instant>,
+    overlay: overlay::Overlay,
 }
 
 impl DevTools {
-    pub fn new() -> Self {
+    pub fn new(profiler: bool) -> Self {
         let reload = match HotReload::watch(&crate::paths::repo_root()) {
             Ok(r) => Some(r),
             Err(e) => {
@@ -35,7 +39,9 @@ impl DevTools {
                 None
             }
         };
-        Self { reload, free_camera: None, last_reload_ms: None, data_changed: None }
+        let mut overlay = overlay::Overlay::new();
+        overlay.profiler = profiler;
+        Self { reload, free_camera: None, last_reload_ms: None, data_changed: None, overlay }
     }
 
     /// Applies any change on disk. Call once a frame.
@@ -45,8 +51,11 @@ impl DevTools {
         registry: &mut PipelineRegistry,
         renderer: &mut Renderer,
         shaders: &ShaderLibrary,
-        _actions: &ActionState,
+        actions: &ActionState,
     ) {
+        if actions.pressed(Action::DevProfiler) {
+            self.overlay.profiler = !self.overlay.profiler;
+        }
         let Some(reload) = self.reload.as_mut() else { return };
         let (changes, seen) = reload.poll();
         if changes.data {
@@ -62,6 +71,35 @@ impl DevTools {
                 Err(e) => log::line(&format!("shader reload failed, keeping the old one:\n{e}")),
             }
         }
+    }
+
+    /// Lets the console take the keyboard while it is open.
+    pub fn console_input(&mut self, raw: &mut Vec<RawInput>) {
+        self.overlay.console_input(raw);
+    }
+
+    /// Opens or closes the console. Returns whether it is now open.
+    pub fn toggle_console(&mut self) -> bool {
+        self.overlay.console = !self.overlay.console;
+        self.overlay.console
+    }
+
+    pub fn take_commands(&mut self) -> Vec<Command> {
+        self.overlay.take_commands()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw(
+        &mut self,
+        canvas: &mut vellmark_ui::Canvas,
+        atlas: &vellmark_content::GlyphAtlas,
+        target: (u32, u32),
+        density: f32,
+        frame_time: std::time::Duration,
+        passes: &[vellmark_gpu::PassTiming],
+        registry: &PipelineRegistry,
+    ) {
+        self.overlay.draw(canvas, atlas, target, density, frame_time, passes, registry, self.last_reload_ms);
     }
 
     /// True once after text or data sheets changed on disk, with when it was seen.

@@ -13,6 +13,8 @@ pub struct Args {
     pub capture: Option<PathBuf>,
     pub check_refs: bool,
     pub accept_refs: bool,
+    /// Development builds: start with the profiler view open.
+    pub profiler: bool,
 }
 
 impl Args {
@@ -36,6 +38,7 @@ impl Args {
                 "--capture" => args.capture = Some(value("--capture")?.into()),
                 "--check-refs" => args.check_refs = true,
                 "--accept-refs" => args.accept_refs = true,
+                "--profiler" => args.profiler = true,
                 other => return Err(format!("unknown argument `{other}`")),
             }
         }

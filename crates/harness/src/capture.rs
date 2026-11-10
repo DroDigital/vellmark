@@ -8,6 +8,7 @@ use glam::Vec3;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use vellmark_gpu::{read_texture_rgba8, wgpu, Gpu, GpuOptions, PassTimers, PipelineRegistry};
+use vellmark_content::{AssetId, AssetKind, GlyphAtlas, Pack};
 use vellmark_render::{Camera, FrameInput, Renderer, ShaderLibrary, View};
 
 fn one() -> u32 {
@@ -170,11 +171,32 @@ pub struct Offscreen {
 
 pub const CAPTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
+/// Bakes the repository's data and returns the base pack, as the game would load it.
+pub fn baked_base_pack() -> Result<Pack, String> {
+    let root = crate::repo_root();
+    let inputs = vellmark_bake::BakeInputs {
+        assets: root.join("assets"),
+        third_party: root.join("third_party"),
+        cache: Some(root.join("build/bake-cache")),
+    };
+    let output = vellmark_bake::bake(&inputs).map_err(|e| e.to_string())?;
+    let (_, bytes) = output.packs.into_iter().next().ok_or("the bake produced no pack")?;
+    Pack::from_bytes(bytes).map_err(|e| e.to_string())
+}
+
+pub fn glyph_atlas(pack: &Pack) -> Result<GlyphAtlas, String> {
+    let bytes = pack
+        .get(AssetKind::GlyphAtlas, AssetId::from_key(vellmark_bake::GLYPH_ATLAS_KEY))
+        .ok_or("the pack has no glyph atlas")?;
+    GlyphAtlas::from_bytes(bytes).map_err(|e| e.to_string())
+}
+
 impl Offscreen {
     pub fn new(gpu_options: &GpuOptions, shaders: &ShaderLibrary, width: u32, height: u32) -> Result<Self, String> {
         let gpu = Gpu::headless(gpu_options).map_err(|e| e.to_string())?;
         let mut registry = PipelineRegistry::new();
-        let renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT)?;
+        let atlas = glyph_atlas(&baked_base_pack()?)?;
+        let renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &atlas)?;
         registry.seal();
         let timers = PassTimers::new(&gpu, true);
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
@@ -230,6 +252,7 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 time_of_day: shot.hour,
                 seconds: i as f32 * vellmark_sim::STEP_SECONDS,
                 glyph_layer: true,
+                ui: None,
             };
             frames.push(offscreen.frame(&input));
             if shot.pair && i == 0 {
