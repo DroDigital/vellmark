@@ -1,14 +1,13 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! The GPU layer: one `wgpu` device, per-pass timers, and the registry through which
+//! every pipeline is made. Nothing here knows what is drawn.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod device;
+mod pipelines;
+mod readback;
+mod timers;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use device::{Gpu, GpuError, GpuOptions, WindowHandles};
+pub use pipelines::{PipelinePhase, PipelineRegistry};
+pub use readback::read_texture_rgba8;
+pub use timers::{PassTimers, PassTiming};
+pub use wgpu;

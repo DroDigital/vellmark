@@ -4,6 +4,7 @@
 //! file system lists them in and whatever the clock says.
 
 pub mod manifest;
+pub mod paths;
 pub mod sha256;
 pub mod strings;
 
@@ -82,6 +83,11 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     report.push(format!("strings.{BASE_LANGUAGE}: {} entries", table.count));
     base.add(AssetKind::StringTable, string_table_id(BASE_LANGUAGE), table.bytes)
         .map_err(|e| BakeError(e.to_string()))?;
+
+    for (key, bytes) in paths::bake_all(&inputs.assets.join("paths"))? {
+        report.push(format!("{key}: {} bytes", bytes.len()));
+        base.add(AssetKind::CameraPath, AssetId::from_key(&key), bytes).map_err(|e| BakeError(e.to_string()))?;
+    }
 
     Ok(BakeOutput { packs: vec![("base.vpk".to_owned(), base.finish())], report })
 }

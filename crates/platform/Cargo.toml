@@ -8,4 +8,5 @@ publish.workspace = true
 
 [dependencies]
 sdl3 = { workspace = true, features = ["build-from-source-static", "raw-window-handle"] }
-glam.workspace = true
+# Already in the tree through sdl3 and wgpu; named here for the handle types.
+raw-window-handle = "0.6"

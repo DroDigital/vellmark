@@ -1,0 +1,19 @@
+graphics: llvmpipe (LLVM 20.1.2, 256 bits) (vulkan, Cpu)
+shaders reloaded in 4.5 ms
+text and data reloaded in 1.0 ms
+shader reload failed, keeping the old one:
+field.wgsl: Validation Error
+
+Caused by:
+  In Device::create_shader_module, label = 'field'
+    
+Shader 'field' parsing error: expected identifier, found "{"
+   ┌─ wgsl:76:12
+   │
+76 │ fn broken( {
+   │            ^ expected identifier
+
+
+
+shaders reloaded in 4.0 ms
+text and data reloaded in 4.8 ms

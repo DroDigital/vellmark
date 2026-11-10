@@ -24,6 +24,7 @@ pub enum AssetKind {
     Scene = 8,
     Sound = 9,
     Table = 10,
+    CameraPath = 11,
 }
 
 impl AssetKind {
@@ -39,6 +40,7 @@ impl AssetKind {
             8 => Self::Scene,
             9 => Self::Sound,
             10 => Self::Table,
+            11 => Self::CameraPath,
             _ => return None,
         })
     }

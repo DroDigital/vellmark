@@ -1,14 +1,13 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! The OS layer: a window, events, and devices, through SDL3. SDL is used only for OS
+//! access; nothing here draws.
+//!
+//! Game code never reads a raw button. Devices produce [`RawInput`], the bindings turn
+//! it into [`Action`]s, and everything above reads an [`ActionState`].
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+mod actions;
+mod device;
+mod sdl;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use actions::{Action, ActionState, Bindings, DeviceKind, Key, MouseButton, PadAxis, PadButton, RawInput};
+pub use device::{InputSource, SimulatedDevice};
+pub use sdl::{message_box, Platform, PlatformEvent, Window, WindowOptions};
