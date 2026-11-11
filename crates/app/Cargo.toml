@@ -1,0 +1,32 @@
+[package]
+name = "vellmark-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "vellmark"
+path = "src/main.rs"
+
+[features]
+default = ["dev"]
+# Development builds: hot reload, the capture tool, the console, the free camera, and
+# the profiler view. Shipping builds are made with --no-default-features.
+dev = ["dep:vellmark-harness", "dep:vellmark-bake", "dep:notify", "vellmark-render/dev", "vellmark-ui/dev"]
+
+[dependencies]
+vellmark-platform.workspace = true
+vellmark-gpu.workspace = true
+vellmark-render.workspace = true
+vellmark-sim.workspace = true
+vellmark-content.workspace = true
+vellmark-ui.workspace = true
+glam.workspace = true
+vellmark-harness = { path = "../harness", optional = true }
+vellmark-bake = { path = "../bake", optional = true }
+notify = { version = "=8.2.2", optional = true }
+
+[build-dependencies]
+vellmark-bake = { path = "../bake" }

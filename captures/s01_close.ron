@@ -1,0 +1,18 @@
+// The fine print at 1080p, as a player sees it. Each shot also saves a crop at full
+// size, because legibility is judged pixel for pixel.
+#![enable(implicit_some)]
+(
+    name: "s01_close",
+    scene: "scene.yard",
+    width: 1920,
+    height: 1080,
+    shots: [
+        (name: "wall_6m", from: (eye: (3.0, 1.68, 0.0), yaw: 0.0, pitch: 0.0), hour: 15.0, pair: true, crop: (640, 380, 640, 360)),
+        (name: "wall_2m", from: (eye: (3.0, 1.68, -4.0), yaw: 0.0, pitch: 0.0), hour: 15.0, pair: true, crop: (640, 380, 640, 360)),
+        (name: "wall_1m", from: (eye: (3.0, 1.68, -5.0), yaw: 0.0, pitch: 0.0), hour: 15.0, pair: true, crop: (640, 380, 640, 360)),
+        (name: "wall_50cm", from: (eye: (3.0, 1.68, -5.5), yaw: 0.0, pitch: 0.0), hour: 15.0, pair: true, crop: (640, 380, 640, 360)),
+        (name: "wall_25cm", from: (eye: (3.0, 1.68, -5.75), yaw: 0.0, pitch: 0.0), hour: 15.0, pair: true, crop: (640, 380, 640, 360)),
+        (name: "door_60cm", from: (eye: (0.1, 1.2, -5.5), yaw: 0.0, pitch: 0.0), hour: 15.0, pair: true, crop: (640, 380, 640, 360)),
+        (name: "ground_at_feet", from: (eye: (2.0, 1.68, 2.0), yaw: 20.0, pitch: -62.0), hour: 15.0, pair: true, crop: (640, 380, 640, 360)),
+    ],
+)

@@ -1,0 +1,22 @@
+[package]
+name = "vellmark-render"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Development builds read shaders from disk so that they can be reloaded.
+dev = []
+
+[dependencies]
+vellmark-gpu.workspace = true
+vellmark-sim.workspace = true
+vellmark-content.workspace = true
+vellmark-ui.workspace = true
+glam.workspace = true
+bytemuck.workspace = true
+
+[build-dependencies]
+naga = { version = "=30.0.1", features = ["wgsl-in"] }

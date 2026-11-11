@@ -1,0 +1,7 @@
+capture `s00_field` on llvmpipe (LLVM 20.1.2, 256 bits) (vulkan, Cpu)
+  noon: 1 frame(s), glyph pair mean 0.00000 max 0.000, reference matches (mean 0.00000)
+  dusk: 1 frame(s), reference matches (mean 0.00000)
+  night: 1 frame(s), reference matches (mean 0.00000)
+  high: 1 frame(s), reference matches (mean 0.00000)
+  shimmer_far_field: 24 frame(s), shimmer mean 0.00005 p99 0.0015 flickering 0.0000
+  passed

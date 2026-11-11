@@ -1,0 +1,51 @@
+Vellmark performance report
+version: 0.1.0
+build: development (not for measuring)
+graphics: llvmpipe (LLVM 20.1.2, 256 bits) (vulkan, Cpu)
+NOT EVIDENCE: this run used a software renderer. Only the owner's Mac proves speed.
+resolution: 480x270
+present mode: Immediate
+frames measured: 1604 over 60.8 s, after 30 warm-up frames
+
+[targets]                          measured     target       
+average frame rate               :     26.4 fps  >= 60 fps    OVER
+slowest 1% of frames             :    51.56 ms   <= 20 ms     OVER
+longest frame after loading      :    66.68 ms   <= 33 ms     OVER
+lowest scene resolution          :      100 %    >= 85 %      ok
+peak memory in use               :      323 MB   <= 4096 MB   ok
+launch to first frame            :     1.25 s    <= 8 s to the title
+title to play                    : not built yet (Phase S06)
+pipelines created during play    :        0      0            ok
+
+[frame time]
+median  : 37.22 ms
+90%     : 43.61 ms
+95%     : 46.03 ms
+99%     : 51.56 ms
+99.9%   : 66.62 ms
+
+[gpu passes]   average ms   worst ms
+shadows           6.253     23.595
+shadows 2         3.115     20.132
+shadows 3         2.574     19.331
+light shadow      1.089      4.070
+light shadow 2    0.960      9.885
+light shadow 3    0.996      6.040
+light shadow 4    1.167      4.872
+light shadow 5    0.811      3.328
+light shadow 6    0.995      4.481
+depth             0.847      5.226
+opaque           10.808     36.727
+bloom             0.736      5.802
+bloom down 2      0.497      3.560
+bloom down 3      0.399      3.452
+bloom down 4      0.354      4.888
+bloom down 5      0.353      5.436
+bloom up 4        0.296      2.794
+bloom up 3        0.354      4.663
+bloom up 2        0.459      6.101
+bloom up 1        0.702      4.305
+post              1.480     62.230
+
+[governor]
+not built yet (stage 10 of the order of building); nothing was given up

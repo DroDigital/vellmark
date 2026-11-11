@@ -1,0 +1,20 @@
+// Close reading and the dive. Close reading shows the whole view as text at every
+// distance. The dive flies into one letter of the wall and finds letters inside it.
+#![enable(implicit_some)]
+(
+    name: "s01_reading",
+    scene: "scene.yard",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "yard_plain", from: (eye: (0.0, 1.68, 6.0), yaw: -6.0, pitch: 1.0), hour: 16.5),
+        (name: "yard_half", from: (eye: (0.0, 1.68, 6.0), yaw: -6.0, pitch: 1.0), hour: 16.5, close_reading: 0.5),
+        (name: "yard_reading", from: (eye: (0.0, 1.68, 6.0), yaw: -6.0, pitch: 1.0), hour: 16.5, close_reading: 1.0),
+        (name: "night_reading", from: (eye: (-1.0, 1.68, 0.0), yaw: -4.0, pitch: 2.0), hour: 23.0, close_reading: 1.0),
+        (name: "night_lamps_out", from: (eye: (-1.0, 1.68, 0.0), yaw: -4.0, pitch: 2.0), hour: 23.0, lamps_out: true),
+        (name: "dive_30cm", from: (eye: (3.0, 1.60, -5.7), yaw: 0.0, pitch: 0.0), hour: 15.0, dive: 1.0, near: 0.0005),
+        (name: "dive_3cm", from: (eye: (3.0, 1.60, -5.97), yaw: 0.0, pitch: 0.0), hour: 15.0, dive: 1.0, near: 0.0005),
+        (name: "dive_3mm", from: (eye: (3.0, 1.60, -5.997), yaw: 0.0, pitch: 0.0), hour: 15.0, dive: 1.0, near: 0.0005),
+        (name: "dive_1mm", from: (eye: (3.0, 1.60, -5.999), yaw: 0.0, pitch: 0.0), hour: 15.0, dive: 1.0, near: 0.0002),
+    ],
+)

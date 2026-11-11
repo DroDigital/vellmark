@@ -1,0 +1,22 @@
+[package]
+name = "vellmark-harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+vellmark-gpu.workspace = true
+vellmark-render = { workspace = true, features = ["dev"] }
+vellmark-sim.workspace = true
+vellmark-content.workspace = true
+vellmark-ui = { workspace = true, features = ["dev"] }
+vellmark-bake = { path = "../bake" }
+glam.workspace = true
+serde.workspace = true
+ron.workspace = true
+png.workspace = true

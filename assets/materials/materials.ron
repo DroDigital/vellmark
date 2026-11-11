@@ -1,0 +1,17 @@
+// Every material a surface can be made of. Order is permanent: add at the end.
+//
+// family    the characters the surface is written in where no authored text covers it,
+//           from full-game/docs/brief/2-art-direction.md. Tuned by eye at the Look Gate.
+// contrast  how far ink and paper part from the surface's own colour
+// relief    negative cuts the letters into the surface, positive raises them
+(
+    size: 512,
+    materials: [
+        (key: "masonry", generator: Masonry, tile_metres: 2.0, family: "HEB[]", contrast: 0.34, relief: -0.6),
+        (key: "timber", generator: Timber, tile_metres: 2.0, family: "|!lI1", contrast: 0.36, relief: -0.5),
+        (key: "cloth", generator: Cloth, tile_metres: 0.25, family: "xvwz", contrast: 0.30, relief: 0.5),
+        (key: "iron", generator: Iron, tile_metres: 1.0, family: "=+TY", contrast: 0.40, relief: -0.4),
+        (key: "earth", generator: Earth, tile_metres: 3.0, family: ",.;:o", contrast: 0.30, relief: -0.3),
+        (key: "glass", generator: Glass, tile_metres: 0.5, family: ".*+", contrast: 0.20, relief: 0.2, emissive: 18.0),
+    ],
+)

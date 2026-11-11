@@ -1,0 +1,9 @@
+capture `s01_close` on llvmpipe (LLVM 20.1.2, 256 bits) (vulkan, Cpu)
+  wall_6m: 1 frame(s), beyond reveal: mean 0.00000 max 0.004; lettered 52% of frame, tone -0.02%
+  wall_2m: 1 frame(s), beyond reveal: mean 0.00000 max 0.000; lettered 100% of frame, tone -0.14%
+  wall_1m: 1 frame(s), beyond reveal: mean 0.00000 max 0.000; lettered 100% of frame, tone -0.82%
+  wall_50cm: 1 frame(s), beyond reveal: mean 0.00000 max 0.000; lettered 100% of frame, tone -1.20%
+  wall_25cm: 1 frame(s), beyond reveal: mean 0.00000 max 0.000; lettered 100% of frame, tone -1.23%
+  door_60cm: 1 frame(s), beyond reveal: mean 0.00000 max 0.000; lettered 100% of frame, tone -0.44%
+  ground_at_feet: 1 frame(s), beyond reveal: mean 0.00000 max 0.000; lettered 100% of frame, tone -0.12%
+  passed

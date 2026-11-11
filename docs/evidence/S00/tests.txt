@@ -1,0 +1,92 @@
+Phase S00 exit gate: evidence from a cloud session, 2026-11-10
+Machine: Intel(R) Xeon(R) Processor @ 2.10GHz, software Vulkan: llvmpipe
+
+== cargo test --workspace ==
+     Running unittests src/main.rs (target/debug/deps/vellmark-dc634486937a3de0)
+test dev::overlay::tests::commands ... ok
+test dev::overlay::tests::a_closed_console_leaves_input_alone ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/vellmark_audio-b3a640d0ad3cac36)
+test tests::it_works ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/vellmark_bake-ebcd27a09bb433f5)
+test glyphs::tests::halving_averages ... ok
+test manifest::tests::license_rules ... ok
+test sha256::tests::known_answers ... ok
+test manifest::tests::dates ... ok
+test strings::tests::keys_and_text_are_checked ... ok
+test manifest::tests::folder_must_match_manifest ... ok
+test glyphs::tests::coverage_lookup_is_monotonic_and_reaches_its_targets ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running unittests src/main.rs (target/debug/deps/vellmark_bake-7078d999e2048054)
+     Running unittests src/lib.rs (target/debug/deps/vellmark_content-66076ea63b11500a)
+test camera_path::tests::moves_at_a_steady_rate_and_holds_the_end ... ok
+test pack::tests::bytes_do_not_depend_on_the_order_assets_were_added ... ok
+test pack::tests::changing_one_asset_leaves_earlier_bytes_alone ... ok
+test pack::tests::damage_is_detected ... ok
+test camera_path::tests::round_trip ... ok
+test pack::tests::duplicate_ids_are_refused ... ok
+test pack::tests::round_trip ... ok
+test strings::tests::damaged_tables_are_refused ... ok
+test strings::tests::a_key_defined_twice_is_refused ... ok
+test strings::tests::round_trip_and_lookup ... ok
+test tile::tests::containing_tile_handles_negative_ground ... ok
+test tile::tests::tile_ids_are_distinct ... ok
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/vellmark_gpu-968c959ed059e772)
+     Running unittests src/lib.rs (target/debug/deps/vellmark_harness-72d9391611897a6a)
+test image::tests::contact_sheet_size ... ok
+test image::tests::difference_measures ... ok
+test image::tests::shrink_averages ... ok
+test shimmer::tests::flicker_is_measured ... ok
+test shimmer::tests::steady_change_does_not_shimmer ... ok
+test image::tests::png_round_trip ... ok
+test shimmer::tests::too_few_frames ... ok
+test refs::tests::check_and_accept ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/capture.rs (target/debug/deps/capture-47f10d892f61c974)
+test captures_match_their_reference_images ... ok
+test two_runs_produce_identical_frames ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+     Running tests/interface.rs (target/debug/deps/interface-bdb73894e9c6e50f)
+test both_typefaces_draw_at_every_size ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+     Running tests/source.rs (target/debug/deps/source-954d9ec4be2c4552)
+test development_text_stays_in_development_modules ... ok
+test every_string_key_in_code_exists_in_the_table ... ok
+test two_bakes_are_byte_identical ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.83s
+     Running unittests src/lib.rs (target/debug/deps/vellmark_platform-a0224b6ce6fb906a)
+test actions::tests::another_players_controller_is_ignored ... ok
+test actions::tests::mouse_look_is_per_frame_and_up_is_positive ... ok
+test actions::tests::each_hand_has_its_own_button_on_both_devices ... ok
+test actions::tests::pressed_lasts_one_frame ... ok
+test actions::tests::unplugging_releases_everything_and_asks_only_that_player ... ok
+test actions::tests::keys_and_stick_both_move ... ok
+test device::tests::a_scripted_controller_drives_actions ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/vellmark_render-bf948d9d4d053991)
+test camera::tests::sun_rises_east_and_sets_west ... ok
+test camera::tests::the_point_ahead_projects_to_the_centre ... ok
+test shaders::tests::a_missing_shader_is_an_error ... ok
+test camera::tests::viewport_pixels ... ok
+test shaders::tests::import_cycles_are_reported ... ok
+test shaders::tests::imports_expand_once ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/vellmark_sim-41b67621ecae533e)
+test clock::tests::a_stall_is_clamped ... ok
+test clock::tests::same_frame_times_same_plan ... ok
+test clock::tests::whole_steps_and_remainder ... ok
+test world::tests::a_thousand_steps_twice_are_identical ... ok
+test world::tests::a_view_for_each_player ... ok
+test world::tests::forward_is_minus_z_and_yaw_turns_right ... ok
+test world::tests::snapshot_is_unchanged_by_later_steps ... ok
+test world::tests::different_inputs_differ ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/vellmark_storefront-5396c1cc47e85256)
+test tests::it_works ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/lib.rs (target/debug/deps/vellmark_ui-cf71b50ea5a75b62)
+     Running unittests src/lib.rs (target/debug/deps/vellmark_world-7fdb932c71580020)
+test tests::it_works ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

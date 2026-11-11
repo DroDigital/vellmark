@@ -1,0 +1,55 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "LicenseRef-Proprietary"
+publish = false
+
+[workspace.dependencies]
+# The permitted crates of full-game/docs/brief/1a and 1.1c. Exact pins; see docs/DECISIONS.md.
+sdl3 = { version = "=0.22.1", default-features = false }
+wgpu = { version = "=30.0.1", default-features = false }
+glam = { version = "=0.34.3", features = ["bytemuck"] }
+bytemuck = { version = "=1.25.2", features = ["derive", "extern_crate_alloc"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+ron = "=0.12.3"
+rayon = "=1.12.0"
+pollster = "=1.0.1"
+png = "=0.18.1"
+
+vellmark-platform = { path = "crates/platform" }
+vellmark-storefront = { path = "crates/storefront" }
+vellmark-gpu = { path = "crates/gpu" }
+vellmark-render = { path = "crates/render" }
+vellmark-world = { path = "crates/world" }
+vellmark-sim = { path = "crates/sim" }
+vellmark-ui = { path = "crates/ui" }
+vellmark-audio = { path = "crates/audio" }
+vellmark-content = { path = "crates/content" }
+
+# Development: game crates build fast and incrementally, dependencies are optimized.
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 3
+debug = false
+
+[profile.release]
+opt-level = 3
+debug = "line-tables-only"
+
+# Shipping: full LTO, one codegen unit, symbols kept in a separate file.
+[profile.shipping]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = "full"
+split-debuginfo = "packed"
+strip = "none"
