@@ -1,0 +1,19 @@
+// Phase S02, the ground: the valley as terrain only. Heights are above the ground.
+// The vista from Tithe Hill north over the barley to the river and the far bank; the
+// road; the river's channel (water comes in S02-T09); grass and gravel at arm's length;
+// steep ground at the area's edge; the far ring and the white band from the hill.
+#![enable(implicit_some)]
+(
+    name: "s02_valley",
+    scene: "scene.valley",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "vista", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "road", from: (eye: (-60.0, 1.7, 44.0), yaw: 50.0, pitch: -4.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "river", from: (eye: (20.0, 1.7, -96.0), yaw: -80.0, pitch: -10.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "ground_close", from: (eye: (-20.0, 0.75, 20.0), yaw: 40.0, pitch: -55.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "edge", from: (eye: (180.0, 1.7, 100.0), yaw: 90.0, pitch: 4.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "far", from: (eye: (-112.0, 12.0, 128.0), yaw: 0.0, pitch: 1.0), hour: 17.5, above_ground: true, pair: true),
+    ],
+)

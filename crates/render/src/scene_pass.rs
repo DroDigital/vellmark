@@ -56,6 +56,9 @@ struct Pipelines {
     sky: wgpu::RenderPipeline,
     letters: wgpu::RenderPipeline,
     letter_shadow: wgpu::RenderPipeline,
+    terrain_shadow: wgpu::RenderPipeline,
+    terrain_depth: wgpu::RenderPipeline,
+    terrain: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     bloom_first: wgpu::RenderPipeline,
     bloom_down: wgpu::RenderPipeline,
@@ -69,6 +72,7 @@ pub struct ScenePass {
     cascade_layout: wgpu::BindGroupLayout,
     post_layout: wgpu::BindGroupLayout,
     bloom_layout: wgpu::BindGroupLayout,
+    terrain_layout: wgpu::BindGroupLayout,
     lights: Lights,
     view_buffer: wgpu::Buffer,
     view_stride: u64,
@@ -323,8 +327,9 @@ impl ScenePass {
             ..Default::default()
         });
 
+        let terrain_layout = crate::terrain::layout(&gpu.device);
         let pipelines = Self::pipelines(
-            gpu, registry, shaders, surface, target_format, &frame_layout, &object_layout, &cascade_layout, &post_layout, &bloom_layout,
+            gpu, registry, shaders, surface, target_format, &frame_layout, &object_layout, &cascade_layout, &post_layout, &bloom_layout, &terrain_layout,
         )?;
         Ok(Self {
             pipelines,
@@ -333,6 +338,7 @@ impl ScenePass {
             cascade_layout,
             post_layout,
             bloom_layout,
+            terrain_layout,
             lights,
             view_buffer,
             view_stride,
@@ -371,6 +377,7 @@ impl ScenePass {
         cascade_layout: &wgpu::BindGroupLayout,
         post_layout: &wgpu::BindGroupLayout,
         bloom_layout: &wgpu::BindGroupLayout,
+        terrain_layout: &wgpu::BindGroupLayout,
     ) -> Result<Pipelines, String> {
         let device = &gpu.device;
         let opaque_module = shaders.module(gpu, "opaque")?;
@@ -529,6 +536,63 @@ impl ScenePass {
                 cache: None,
             },
         );
+        // The terrain: its own vertex stage, which reads the heights, and its own layouts,
+        // with the terrain's bind group after the object's.
+        let terrain_world_layout = layout("terrain", &[Some(frame_layout), Some(&surface.layout), Some(object_layout), Some(terrain_layout)]);
+        let terrain_shadow_layout = layout("terrain shadow", &[Some(cascade_layout), Some(object_layout), Some(terrain_layout)]);
+        let terrain_shadow = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("terrain shadow"),
+                layout: Some(&terrain_shadow_layout),
+                vertex: wgpu::VertexState { module: &shadow_module, entry_point: Some("vs_terrain"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState { module: &shadow_module, entry_point: Some("fs_terrain"), compilation_options: Default::default(), targets: &[] }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: Default::default(),
+                    bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+                }),
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            },
+        );
+        let terrain_depth = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("terrain depth"),
+                layout: Some(&terrain_world_layout),
+                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_terrain"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState { module: &opaque_module, entry_point: Some("fs_terrain_depth"), compilation_options: Default::default(), targets: &[] }),
+                primitive: solid,
+                depth_stencil: Some(depth_state(true, wgpu::CompareFunction::Greater)),
+                multisample,
+                multiview_mask: None,
+                cache: None,
+            },
+        );
+        let terrain = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("terrain"),
+                layout: Some(&terrain_world_layout),
+                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_terrain"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_terrain"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(HDR_FORMAT.into())],
+                }),
+                primitive: solid,
+                depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Equal)),
+                multisample,
+                multiview_mask: None,
+                cache: None,
+            },
+        );
         let letters = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
@@ -618,7 +682,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -641,6 +705,7 @@ impl ScenePass {
             &self.cascade_layout,
             &self.post_layout,
             &self.bloom_layout,
+            &self.terrain_layout,
         )?;
         Ok(())
     }
@@ -733,6 +798,20 @@ impl ScenePass {
         }
     }
 
+    pub fn terrain_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.terrain_layout
+    }
+
+    /// The terrain, with the pipeline already set and the frame or cascade bound.
+    fn draw_terrain(&self, pass: &mut wgpu::RenderPass<'_>, terrain: Option<&crate::terrain::TerrainGpu>, object_group: u32) {
+        if let Some(t) = terrain {
+            pass.set_bind_group(object_group, &self.object_bind_group, &[0]);
+            pass.set_bind_group(object_group + 1, &t.bind_group, &[]);
+            pass.set_index_buffer(t.indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..t.index_count, 0, 0..t.tile_count);
+        }
+    }
+
     /// Loose letters into a shadow map whose cascade or face is already bound.
     fn draw_letter_shadows(&self, pass: &mut wgpu::RenderPass<'_>, count: usize) {
         if count > 0 {
@@ -752,6 +831,7 @@ impl ScenePass {
         frame: &FrameInput<'_>,
         scene: &SceneGpu,
         surface: &SurfaceResources,
+        terrain: Option<&crate::terrain::TerrainGpu>,
         timers: &mut PassTimers,
     ) {
         let _ = &self.shadow_sampler;
@@ -854,6 +934,10 @@ impl ScenePass {
             pass.set_bind_group(0, &self.cascade_bind_group, &[(layer as u64 * self.cascade_stride) as u32]);
             self.draw_scene(&mut pass, scene, frame.broken, 1);
             self.draw_letter_shadows(&mut pass, letter_count);
+            if terrain.is_some() {
+                pass.set_pipeline(&self.pipelines.terrain_shadow);
+                self.draw_terrain(&mut pass, terrain, 1);
+            }
         }
 
         // The one shadowed lantern or fire: six faces of a cube around it.
@@ -901,6 +985,11 @@ impl ScenePass {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
                 self.draw_scene(&mut pass, scene, frame.broken, 2);
+                if terrain.is_some() {
+                    pass.set_pipeline(&self.pipelines.terrain_depth);
+                    self.draw_terrain(&mut pass, terrain, 2);
+                    pass.set_pipeline(&self.pipelines.depth);
+                }
             }
         }
         {
@@ -927,6 +1016,10 @@ impl ScenePass {
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
                 pass.set_pipeline(&self.pipelines.opaque);
                 self.draw_scene(&mut pass, scene, frame.broken, 2);
+                if terrain.is_some() {
+                    pass.set_pipeline(&self.pipelines.terrain);
+                    self.draw_terrain(&mut pass, terrain, 2);
+                }
                 if letter_count > 0 {
                     pass.set_pipeline(&self.pipelines.letters);
                     pass.set_bind_group(2, &self.object_bind_group, &[0]);

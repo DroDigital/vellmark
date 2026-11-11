@@ -96,6 +96,9 @@ pub struct Shot {
     /// it gets.
     #[serde(default)]
     pub heat: Option<(String, f32)>,
+    /// The eye's heights are above the ground rather than above sea level.
+    #[serde(default)]
+    pub above_ground: bool,
     /// Keep the first frame of this shot as a reference image.
     #[serde(default)]
     pub reference: bool,
@@ -237,6 +240,8 @@ pub struct Offscreen {
     size: (u32, u32),
     /// The scene being drawn, as the rules need it.
     pub scene: Option<vellmark_content::Scene>,
+    /// The ground it stands on, if any.
+    pub terrain: Option<vellmark_world::Terrain>,
 }
 
 pub const CAPTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -276,9 +281,16 @@ impl Offscreen {
         let assets = LoadedAssets::from_pack(&pack)?;
         let mut renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &assets.borrow())?;
         let mut loaded = None;
+        let mut terrain = None;
         if let Some(key) = scene {
             let (data, on_gpu) = load_scene(&gpu, &pack, key)?;
             renderer.set_scene(&gpu, on_gpu);
+            if data.terrain.0 != 0 {
+                let t = vellmark_world::Terrain::from_pack(&pack)?;
+                let tiles: Vec<&vellmark_content::TerrainTile> = t.tiles().collect();
+                renderer.set_terrain(&gpu, &tiles, &assets.materials)?;
+                terrain = Some(t);
+            }
             loaded = Some(data);
         }
         registry.seal();
@@ -293,7 +305,7 @@ impl Offscreen {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        Ok(Self { gpu, registry, renderer, timers, texture, size: (width, height), scene: loaded })
+        Ok(Self { gpu, registry, renderer, timers, texture, size: (width, height), scene: loaded, terrain })
     }
 
     pub fn frame(&mut self, frame: &FrameInput<'_>) -> Image {
@@ -360,6 +372,12 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 Some(to) => shot.from.lerp(to, t),
                 None => shot.from,
             };
+            let mut pose = pose;
+            if shot.above_ground {
+                if let Some(h) = offscreen.terrain.as_ref().and_then(|t| t.height_at(pose.eye.0, pose.eye.2)) {
+                    pose.eye.1 += h;
+                }
+            }
             let mut camera = pose.camera();
             if let Some(near) = shot.near {
                 camera.near = near;

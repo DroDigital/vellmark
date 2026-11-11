@@ -2,6 +2,32 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-11: drawing the terrain (S02-T02)
+
+**One shared grid, heights in a texture.** Every tile is drawn from one index buffer of
+64 × 64 cells; the vertex shader reads the tile's heights from a layer of an array
+texture. The heights carry a border sample from each neighbour, so normals agree across
+seams. One draw call a pass draws all 192 tiles as instances. Culling comes in S02-T06.
+
+**Rings cut by a test, not by geometry.** A coarse ring discards fragments inside the
+next finer ring, in the depth pre-pass, the lit pass, and the shadow maps. The rings'
+borders lie on the coarse grid's lines, so no cell is ever half in.
+
+**Ground blends two materials at a time,** the strongest two of the four samples' classes
+and rock, by their weights and their own height maps. Steep ground (normal below about
+55 degrees from vertical) and the highest ground are rock; roads, river beds, and the
+Erasure stay what they are however they lie.
+
+**Letters are projected per 1 m cell,** along the axis the cell's own normal most faces,
+chosen hard and never blended, as rule 3.1 asks. The letters are those of whichever of
+the two materials shows at the pixel.
+
+**The rules stand players on the ground** through a `Ground` trait the world crate
+answers from the finest tile. Steps, slopes, and falling come with the character (S03).
+
+**The hill lane is as steep as the hill,** about one in three. A gentler limit built it up
+into a dyke several metres high.
+
 ## 2026-11-11: the living lattice (look 4)
 
 **A separate function, not a mode of the old one.** `living_lattice` follows the same

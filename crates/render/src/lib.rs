@@ -8,6 +8,7 @@ mod frame;
 mod lights;
 mod scene_pass;
 mod shaders;
+mod terrain;
 mod ui_pass;
 mod world_gpu;
 
@@ -138,6 +139,7 @@ pub struct Renderer {
     ui: UiPass,
     atlas: AtlasGpu,
     scene: SceneGpu,
+    terrain: Option<terrain::TerrainGpu>,
     target_format: wgpu::TextureFormat,
 }
 
@@ -159,6 +161,7 @@ impl Renderer {
             surface,
             atlas,
             scene: SceneGpu::default(),
+            terrain: None,
             target_format,
         })
     }
@@ -171,6 +174,13 @@ impl Renderer {
     pub fn set_scene(&mut self, gpu: &Gpu, scene: SceneGpu) {
         self.surface.set_pages(gpu, &scene.pages);
         self.scene = scene;
+    }
+
+    /// Replaces the terrain being drawn, or removes it. Buffers and textures only, so it
+    /// is safe in play.
+    pub fn set_terrain(&mut self, gpu: &Gpu, tiles: &[&vellmark_content::TerrainTile], materials: &MaterialSet) -> Result<(), String> {
+        self.terrain = if tiles.is_empty() { None } else { Some(terrain::TerrainGpu::new(gpu, self.world.terrain_layout(), tiles, materials)?) };
+        Ok(())
     }
 
     pub fn scene_mut(&mut self) -> &mut SceneGpu {
@@ -207,7 +217,7 @@ impl Renderer {
         frame: &FrameInput<'_>,
         timers: &mut PassTimers,
     ) {
-        self.world.render(gpu, encoder, target, target_size, frame, &self.scene, &self.surface, timers);
+        self.world.render(gpu, encoder, target, target_size, frame, &self.scene, &self.surface, self.terrain.as_ref(), timers);
 
         if let Some(canvas) = frame.ui.filter(|c| !c.quads.is_empty()) {
             self.ui.prepare(gpu, target_size, canvas);

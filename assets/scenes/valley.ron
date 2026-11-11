@@ -1,0 +1,8 @@
+// The valley of Phase S02: the Showcase's ground and nothing on it yet. A visitor
+// starts on Tithe Hill, by the top, looking north down over the barley to the river
+// and the far bank. The village, the graves, and everything else come in S06.
+#![enable(implicit_some)]
+(
+    terrain: "valley",
+    spawn: (eye: (-104.0, 40.0, 112.0), yaw: 20.0, pitch: -6.0),
+)

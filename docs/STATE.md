@@ -13,7 +13,8 @@
 
 ## Lane: Render
 
-**Task:** S02-T02, terrain shading. Plan: (1) ground materials, generated until textures are approved: done; (2) a terrain pass in `crates/render/src/terrain.rs` and `fs_terrain` in `shaders/opaque.wgsl`: tiles as shared-grid meshes, a height and ground texture per tile, ground blended by class, slope (rock), and height, letters projected per 1 m cell by the cell's dominant axis, coarse rings cut where a finer ring draws, shadows; (3) `scene.valley` with the terrain and a spawn on Tithe Hill, `--scene`, and captures.
+**Done:** S02-T02, the terrain drawn: blended ground, rock by slope and height, letters per cell, shadows, rings cut where finer ones draw. Run the game with `--scene valley` to stand on Tithe Hill. Evidence: `docs/evidence/S02/valley.jpg`, `captures/s02_valley.ron`. The river has no water until S02-T09, and the sky and air are S02-T03 and T04.
+**Next:** S02-T03, the sky.
 
 ## Lane: Sim
 

@@ -15,6 +15,8 @@ pub struct Args {
     pub accept_refs: bool,
     /// Development builds: start with the profiler view open.
     pub profiler: bool,
+    /// The scene to start in, by name: `yard` or `valley`.
+    pub scene: Option<String>,
 }
 
 impl Args {
@@ -39,6 +41,7 @@ impl Args {
                 "--check-refs" => args.check_refs = true,
                 "--accept-refs" => args.accept_refs = true,
                 "--profiler" => args.profiler = true,
+                "--scene" => args.scene = Some(value("--scene")?),
                 other => return Err(format!("unknown argument `{other}`")),
             }
         }

@@ -43,3 +43,40 @@ fn vs_letter(@builtin(vertex_index) vertex: u32, @location(0) position: vec3<f32
     let world = position + turn(rotation, vec3<f32>(corners[vertex] * LETTER_HALF * INK_SHARE, 0.0));
     return cascade.view_proj * vec4<f32>(world, 1.0);
 }
+
+// ---- the terrain, from the light ----
+
+struct TerrainTable {
+    materials: array<vec4<u32>, 3>,
+    tiles: array<vec4<f32>, 384>,
+}
+
+@group(2) @binding(0) var<uniform> terrain: TerrainTable;
+@group(2) @binding(1) var terrain_height: texture_2d_array<f32>;
+
+struct TerrainShadow {
+    @builtin(position) position: vec4<f32>,
+    @location(0) world_xz: vec2<f32>,
+    @location(1) @interpolate(flat) hole: f32,
+}
+
+@vertex
+fn vs_terrain(@builtin(vertex_index) vertex: u32, @builtin(instance_index) tile: u32) -> TerrainShadow {
+    let t = terrain.tiles[tile * 2u];
+    let i = i32(vertex % 65u);
+    let j = i32(vertex / 65u);
+    let h = textureLoad(terrain_height, vec2<i32>(i + 1, j + 1), i32(t.w), 0).r;
+    let world = vec3<f32>(t.x + f32(i) * t.z, h, t.y + f32(j) * t.z);
+    var out: TerrainShadow;
+    out.position = cascade.view_proj * vec4<f32>(world, 1.0);
+    out.world_xz = world.xz;
+    out.hole = terrain.tiles[tile * 2u + 1u].x;
+    return out;
+}
+
+@fragment
+fn fs_terrain(in: TerrainShadow) {
+    if in.hole > 0.0 && max(abs(in.world_xz.x), abs(in.world_xz.y)) < in.hole - 0.01 {
+        discard;
+    }
+}

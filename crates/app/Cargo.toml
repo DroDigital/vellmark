@@ -19,6 +19,7 @@ dev = ["dep:vellmark-harness", "dep:vellmark-bake", "dep:notify", "vellmark-rend
 [dependencies]
 vellmark-platform.workspace = true
 vellmark-gpu.workspace = true
+vellmark-world.workspace = true
 vellmark-render.workspace = true
 vellmark-sim.workspace = true
 vellmark-content.workspace = true
