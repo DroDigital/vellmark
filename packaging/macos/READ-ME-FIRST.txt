@@ -4,6 +4,9 @@ To play
   Right-click Vellmark.app and choose Open. macOS asks once, because this build was
   downloaded and is not signed. Choose Open again.
 
+To start in the valley instead of the yard
+  Right-click valley.command and choose Open.
+
 To run the performance check
   Right-click perf-run.command and choose Open. It runs for about a minute and puts
   vellmark-perf-report.txt on your Desktop. Send that file back.
@@ -14,6 +17,10 @@ Keys in this build
   F1                       the profiler view
   F2                       the free camera (Space up, Left Ctrl down, Left Shift fast)
   F3                       switch the glyph layer off and on
-  `                        the console; type help
+  F4                       the tuning panel
+  F5                       light the lantern or put it out
+  F6                       step through the close-up looks (living is the default)
+  F7                       break the nearest breakable thing into its letters
+  `                        the console; type help. Try: heat door 0.9, break door 0.1
 
 What to check is listed in docs/PLAYTEST_CHECKLIST.md in the repository.
