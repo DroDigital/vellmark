@@ -1,6 +1,7 @@
 // Destruction: the yard's door is broken into its letters, which fall, strike the
 // wall and the step, and come to rest across the floor. Stills as the letters fly,
-// once they have settled, and close enough to read them; then four seconds of it.
+// once they have settled, and close enough to read them; the door crumbling into a
+// heap under a soft blow; then four seconds of it.
 #![enable(implicit_some)]
 (
     name: "breaking",
@@ -12,6 +13,8 @@
         (name: "flying", from: (eye: (0.6, 1.68, -2.6), yaw: -8.0, pitch: -8.0), hour: 15.5, break_thing: "door", blow: (0.0, 1.1, -6.6), settle: 24),
         (name: "settled", from: (eye: (0.6, 1.68, -2.6), yaw: -8.0, pitch: -14.0), hour: 15.5, break_thing: "door", blow: (0.0, 1.1, -6.6), settle: 720),
         (name: "on_the_floor", from: (eye: (0.2, 0.32, -4.6), yaw: -6.0, pitch: -38.0), hour: 15.5, break_thing: "door", blow: (0.0, 1.1, -6.6), settle: 720),
+        (name: "crumbled", from: (eye: (0.5, 1.15, -4.9), yaw: -14.0, pitch: -42.0), hour: 15.5, break_thing: "door", blow: (0.0, 1.5, -6.9), strength: 0.12, settle: 900),
+        (name: "heap_close", from: (eye: (0.3, 0.42, -5.62), yaw: -18.0, pitch: -38.0), hour: 15.5, break_thing: "door", blow: (0.0, 1.5, -6.9), strength: 0.12, settle: 900),
         (name: "falling", from: (eye: (0.6, 1.68, -2.6), yaw: -8.0, pitch: -8.0), to: (eye: (0.5, 1.5, -3.6), yaw: -6.0, pitch: -16.0), hour: 15.5, break_thing: "door", blow: (0.0, 1.1, -6.6), frames: 120, steps_per_frame: 2),
     ],
 )

@@ -4,11 +4,23 @@ Newest first. One entry for each choice that is not already made by the brief.
 
 ## 2026-11-11: loose letters
 
-**Each letter is its own body, against the world only.** Letter-on-letter contact would
-cost a broad phase over tens of thousands of bodies every step, and a spill of letters on
-a floor reads right without it. They land on the ground and on the scene's solid boxes;
-a letter that comes to rest on another's place simply lies a hair above or below it, each
-at a height set by its seed, so that overlapping letters never fight for depth.
+**Letters in flight against the world and the heaps; heaps as a height map.** Contact
+between every pair of tens of thousands of bodies would cost a broad phase every step,
+and in a spill nothing shows two letters in flight striking. What does show is letters
+lying on letters, so the letters at rest are kept as a map of heap tops, one cell a
+letter wide (1.28 cm), each cell holding a heap for each surface it stands on (under a
+bench and on it). A letter landing on a heap lies on its top. Before it lies down it
+slides to the lowest neighbouring cell while that cell is lower than the angle of repose
+allows (0.7 of a cell, about 35 degrees, which is how steep flat flakes stand), which is
+the sandpile rule, and gives true cones and ridges. It keeps its place within its cell
+as it slides, so a heap is never laid out on a grid. Each letter adds 3 mm: thicker than
+a letter looks, so that a broken door still makes a heap of a door's size, and thin
+enough that layers seen edge-on do not gape. When letters at rest are swept, the heaps
+are measured again from the letters left.
+
+**Shadows of loose letters are their squares, drawn smaller.** The cascades are too
+coarse to carry a 1.28 cm character's shape, and a whole square shades like a tile; a
+square of 0.62 of the side matches the ink a character covers.
 
 **A letter pushed out of a box leaves by the nearest face that opens into free space.**
 The first version took the nearest face, and a letter in the corner where the doorstep

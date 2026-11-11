@@ -21,7 +21,7 @@ pub enum Command {
     /// Choose the depth look, 0 to 3.
     Look(u32),
     /// Break a thing in the scene into its letters, by its name.
-    Break(String),
+    Break(String, f32),
     Quit,
 }
 
@@ -131,7 +131,7 @@ impl Overlay {
                     "reveal <n>     scale the reveal distance (1 is the brief's)",
                     "contrast <n>   scale the letter contrast",
                     "look <0-3>     flat, atoms, lattice, source (F6)",
-                    "break <name>   break a thing into its letters (F7: the nearest)",
+                    "break <name> [strength]  break a thing into its letters; 0.1 crumbles it (F7)",
                     "quit           leave",
                     "F1 profiler  F2 free camera  F3 glyphs  F4 tuning  F5 lamps",
                 ] {
@@ -159,7 +159,11 @@ impl Overlay {
                 Ok(n) if n <= 3 => self.commands.push(Command::Look(n)),
                 _ => self.say("look takes 0 (flat), 1 (atoms), 2 (lattice), or 3 (source)"),
             },
-            (Some("break"), Some(name)) => self.commands.push(Command::Break(name.to_string())),
+            (Some("break"), Some(name)) => match words.next().map(str::parse::<f32>) {
+                None => self.commands.push(Command::Break(name.to_string(), 1.0)),
+                Some(Ok(s)) if (0.0..=4.0).contains(&s) => self.commands.push(Command::Break(name.to_string(), s)),
+                _ => self.say("break takes a name, then a strength from 0 to 4 if you like"),
+            },
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),
         }

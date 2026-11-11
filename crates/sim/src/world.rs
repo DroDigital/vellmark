@@ -103,6 +103,12 @@ impl World {
     /// Breaks a thing into its letters, thrown outwards from `blow`. Returns how many
     /// letters it made, or `None` if there is no such thing or it is already broken.
     pub fn break_thing(&mut self, id: u64, blow: Vec3) -> Option<usize> {
+        self.break_thing_with(id, blow, 1.0)
+    }
+
+    /// Breaks a thing with a blow of the given strength: 1 throws its letters across
+    /// the yard, and near 0 it falls in on itself.
+    pub fn break_thing_with(&mut self, id: u64, blow: Vec3, strength: f32) -> Option<usize> {
         if self.broken.contains(&id) {
             return None;
         }
@@ -117,7 +123,7 @@ impl World {
                 z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
                 z ^ (z >> 31)
             };
-            made += shatter(&mut self.debris, *min, *max, thing.to_world, *material, blow, &mut random);
+            made += shatter(&mut self.debris, *min, *max, thing.to_world, *material, blow, strength, &mut random);
             self.rng = rng;
         }
         let mut broken = (*self.broken).clone();

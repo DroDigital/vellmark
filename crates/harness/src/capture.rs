@@ -78,6 +78,10 @@ pub struct Shot {
     /// Where the blow that breaks it lands. The camera, if not given.
     #[serde(default)]
     pub blow: Option<(f32, f32, f32)>,
+    /// How hard the blow is: 1 throws the letters across the yard, near 0 the thing
+    /// falls in on itself.
+    #[serde(default)]
+    pub strength: Option<f32>,
     /// Fixed steps of the rules run after the break and before the first frame.
     #[serde(default)]
     pub settle: u32,
@@ -322,7 +326,7 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
             w.set_scene(solids, breakables);
             let id = vellmark_content::AssetId::from_key(&format!("{}.{name}", script.scene));
             let blow = shot.blow.map_or(shot.from.camera().eye, |b| b.into());
-            w.break_thing(id.0, blow).ok_or_else(|| format!("shot `{}`: the scene has nothing called `{name}` to break", shot.name))?;
+            w.break_thing_with(id.0, blow, shot.strength.unwrap_or(1.0)).ok_or_else(|| format!("shot `{}`: the scene has nothing called `{name}` to break", shot.name))?;
             for _ in 0..shot.settle {
                 w.step(&[]);
             }

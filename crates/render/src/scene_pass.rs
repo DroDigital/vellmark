@@ -53,6 +53,7 @@ struct Pipelines {
     opaque: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     letters: wgpu::RenderPipeline,
+    letter_shadow: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     bloom_first: wgpu::RenderPipeline,
     bloom_down: wgpu::RenderPipeline,
@@ -496,6 +497,36 @@ impl ScenePass {
                 cache: None,
             },
         );
+        let letter_shadow_layout = layout("letter shadow", &[Some(cascade_layout)]);
+        let letter_shadow = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("letter shadow"),
+                layout: Some(&letter_shadow_layout),
+                vertex: wgpu::VertexState {
+                    module: &shadow_module,
+                    entry_point: Some("vs_letter"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<LetterInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &LETTER_ATTRIBUTES,
+                    })],
+                },
+                fragment: None,
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: Default::default(),
+                    bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+                }),
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            },
+        );
         let letters = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
@@ -585,7 +616,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -700,6 +731,15 @@ impl ScenePass {
         }
     }
 
+    /// Loose letters into a shadow map whose cascade or face is already bound.
+    fn draw_letter_shadows(&self, pass: &mut wgpu::RenderPass<'_>, count: usize) {
+        if count > 0 {
+            pass.set_pipeline(&self.pipelines.letter_shadow);
+            pass.set_vertex_buffer(0, self.letter_buffer.slice(..));
+            pass.draw(0..6, 0..count as u32);
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
@@ -811,6 +851,7 @@ impl ScenePass {
             pass.set_pipeline(&self.pipelines.shadow);
             pass.set_bind_group(0, &self.cascade_bind_group, &[(layer as u64 * self.cascade_stride) as u32]);
             self.draw_scene(&mut pass, scene, frame.broken, 1);
+            self.draw_letter_shadows(&mut pass, letter_count);
         }
 
         // The one shadowed lantern or fire: six faces of a cube around it.
@@ -831,6 +872,7 @@ impl ScenePass {
                 pass.set_pipeline(&self.pipelines.shadow);
                 pass.set_bind_group(0, &self.cascade_bind_group, &[((CASCADES * SHADOWED_VIEWS + face) as u64 * self.cascade_stride) as u32]);
                 self.draw_scene(&mut pass, scene, frame.broken, 1);
+                self.draw_letter_shadows(&mut pass, letter_count);
             }
         }
 

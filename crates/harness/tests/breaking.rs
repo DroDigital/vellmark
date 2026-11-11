@@ -53,3 +53,25 @@ fn the_yard_door_breaks_into_tens_of_thousands_of_letters_that_settle_on_the_flo
     }
     assert!(spread > made / 4, "the letters scatter across the floor, not into a heap: {spread} of {made}");
 }
+
+#[test]
+fn a_soft_blow_crumbles_the_door_into_a_heap_on_its_threshold() {
+    let scene = yard();
+    let (solids, breakables) = vellmark_render::scene_rules(&scene);
+    let mut world = World::new(WorldConfig::default());
+    world.set_scene(solids, breakables);
+    let door = AssetId::from_key("scene.yard.door").0;
+    world.break_thing_with(door, glam::Vec3::new(0.0, 1.5, -6.9), 0.12).expect("the door can be broken");
+    for _ in 0..60 * 15 {
+        world.step(&[]);
+    }
+    assert_eq!(world.letters_moving(), 0);
+    let snapshot = world.snapshot();
+    let highest = snapshot.letters.iter().map(|l| l.position.y).fold(0.0, f32::max);
+    let near = snapshot.letters.iter().filter(|l| (l.position.z + 6.2).abs() < 0.6 && l.position.x.abs() < 1.0).count();
+    if std::env::var_os("VELLMARK_PRINT").is_some() {
+        eprintln!("heap: highest {highest}, {near} of {} near the threshold", snapshot.letters.len());
+    }
+    assert!(near > snapshot.letters.len() * 3 / 4, "most of the door lies where it stood");
+    assert!(highest > 0.1, "it lies in a heap, not a carpet: {highest}");
+}

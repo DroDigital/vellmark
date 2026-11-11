@@ -29,7 +29,7 @@ The first build takes several minutes.
 | W A S D, mouse | Move and look |
 | R (hold) | Close reading |
 | F6 | Step through the depth looks: flat, atoms, lattice, source |
-| F7 | Break the nearest breakable thing (the door) into its letters |
+| F7 | Break the nearest breakable thing (the door) into its letters; `break door 0.1` in the console crumbles it into a heap |
 | F5 | Light the lantern or put it out |
 | F4 | The tuning panel |
 | F1 | The profiler |

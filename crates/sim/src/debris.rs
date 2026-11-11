@@ -2,10 +2,17 @@
 //! of thousands of characters, each a small body that falls, strikes the world,
 //! bounces, slides, and comes to rest on the floor.
 //!
-//! Each letter is simulated on its own, against the ground and the scene's boxes.
-//! Letters do not strike one another: there are too many, and a spill of them reads
-//! right without it. The simulation is deterministic, like the rest of the rules, so
-//! that a broken thing can later be made whole along the paths its letters fell.
+//! Each letter in flight is simulated on its own, against the ground, the scene's
+//! boxes, and the letters already at rest. Letters at rest lie on one another and build
+//! heaps: a heap is kept as the height of its top in each cell of a fine map, a letter
+//! landing on it lies on that top, and a letter that would make the heap steeper than
+//! letters can stand slides down to the foot of the slope first. Two letters in flight
+//! never strike each other; in a spill, nothing would show it.
+//!
+//! The simulation is deterministic, like the rest of the rules, so that a broken thing
+//! can later be made whole along the paths its letters fell.
+
+use std::collections::HashMap;
 
 use glam::{Quat, Vec3};
 
@@ -21,6 +28,22 @@ const BOUNCE: f32 = 0.32;
 const SLIDE: f32 = 0.62;
 /// Below this speed, on something it can lie on, a letter comes to rest.
 const REST_SPEED: f32 = 0.22;
+/// The side of a cell of the heap map: one letter.
+const PILE_CELL: f32 = LETTER_HALF * 2.0;
+/// How much a letter adds to the heap it lies on.
+pub const LETTER_THICK: f32 = 0.003;
+/// The most one cell of a heap may stand above its neighbour: about 35 degrees, which
+/// is how steep a heap of flat flakes stands.
+const REPOSE: f32 = PILE_CELL * 0.7;
+/// The furthest a letter slides down a heap, in cells, before it lies where it is.
+const MOST_SLIDE: usize = 64;
+
+/// One heap in one cell of the map: what it stands on, and its top.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Pile {
+    base: f32,
+    top: f32,
+}
 
 /// An axis-aligned box in the world that letters land on and bounce from.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -44,6 +67,8 @@ pub struct Letter {
     pub resting: bool,
     /// Where it stood in the thing before the thing broke.
     pub home: Vec3,
+    /// The height of what the heap it lies in stands on, once it is at rest.
+    pub floor: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -51,6 +76,103 @@ pub struct Debris {
     pub letters: Vec<Letter>,
     solids: Vec<Solid>,
     awake: usize,
+    /// The heaps, by cell. A cell can hold more than one: under a bench and on it.
+    piles: HashMap<(i32, i32), Vec<Pile>>,
+    /// Letters at rest were swept, and the heaps must be measured again.
+    piles_stale: bool,
+}
+
+fn cell_of(p: Vec3) -> (i32, i32) {
+    ((p.x / PILE_CELL).floor() as i32, (p.z / PILE_CELL).floor() as i32)
+}
+
+impl Debris {
+    /// The heap in a cell standing on the surface at `base`, if there is one.
+    fn pile(&self, cell: (i32, i32), base: f32) -> Option<Pile> {
+        self.piles.get(&cell)?.iter().copied().find(|p| (p.base - base).abs() < 0.01)
+    }
+
+    /// The heap in a cell that a letter at height `y` would land on: the highest one
+    /// whose foot is below it.
+    fn pile_under(&self, cell: (i32, i32), y: f32) -> Option<Pile> {
+        self.piles.get(&cell)?.iter().copied().filter(|p| p.base <= y + 0.005).max_by(|a, b| a.base.total_cmp(&b.base))
+    }
+
+    fn set_pile(&mut self, cell: (i32, i32), pile: Pile) {
+        let piles = self.piles.entry(cell).or_default();
+        match piles.iter_mut().find(|p| (p.base - pile.base).abs() < 0.01) {
+            Some(p) => p.top = p.top.max(pile.top),
+            None => piles.push(pile),
+        }
+    }
+
+    /// The highest surface at the middle of a cell that is no higher than `y`, or `None`
+    /// if something solid stands there at that height.
+    fn surface(&self, cell: (i32, i32), y: f32) -> Option<f32> {
+        let x = (cell.0 as f32 + 0.5) * PILE_CELL;
+        let z = (cell.1 as f32 + 0.5) * PILE_CELL;
+        let mut best = 0.0f32;
+        for s in &self.solids {
+            if x < s.min.x - LETTER_HALF || x > s.max.x + LETTER_HALF || z < s.min.z - LETTER_HALF || z > s.max.z + LETTER_HALF {
+                continue;
+            }
+            if s.max.y <= y + 1.0e-3 {
+                best = best.max(s.max.y);
+            } else if s.min.y < y + LETTER_HALF {
+                return None;
+            }
+        }
+        Some(best)
+    }
+
+    /// Lays a letter that has stopped on the surface or heap at `top` to rest: it
+    /// slides down the heap while the heap beside it is lower by more than letters can
+    /// stand, then lies flat on top.
+    fn lay(&mut self, i: usize, base: f32, top: f32) {
+        let mut position = self.letters[i].position;
+        let mut cell = cell_of(position);
+        let (mut base, mut top) = (base, top);
+        for _ in 0..MOST_SLIDE {
+            let mut lowest: Option<((i32, i32), f32, f32)> = None;
+            for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+                let next = (cell.0 + dx, cell.1 + dz);
+                let Some(surface) = self.surface(next, top) else { continue };
+                let next_top = self.pile(next, surface).map_or(surface, |p| p.top);
+                // Corner cells are further away, so they must be lower still.
+                let reach = if dx != 0 && dz != 0 { REPOSE * std::f32::consts::SQRT_2 } else { REPOSE };
+                if next_top < top - reach && lowest.is_none_or(|l| next_top < l.2) {
+                    lowest = Some((next, surface, next_top));
+                }
+            }
+            let Some((next, next_base, next_top)) = lowest else { break };
+            position.x += (next.0 - cell.0) as f32 * PILE_CELL;
+            position.z += (next.1 - cell.1) as f32 * PILE_CELL;
+            (cell, base, top) = (next, next_base, next_top);
+        }
+        let letter = &mut self.letters[i];
+        // Flat, face up, turned whichever way it happened to land, and tipped a little,
+        // as nothing lies quite flat on a heap of other things.
+        let turn = (letter.seed % 6283) as f32 / 1000.0;
+        let tip = ((letter.seed >> 13) % 100) as f32 / 100.0 - 0.5;
+        let tip = if top > base + 1.0e-4 { tip * 0.5 } else { tip * 0.06 };
+        letter.rotation = Quat::from_rotation_y(turn) * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + tip);
+        letter.position = Vec3::new(position.x, top + LETTER_THICK * 0.5, position.z);
+        letter.velocity = Vec3::ZERO;
+        letter.spin = 0.0;
+        letter.resting = true;
+        letter.floor = base;
+        self.set_pile(cell, Pile { base, top: top + LETTER_THICK });
+    }
+
+    /// Measures every heap again from the letters at rest in it.
+    fn remeasure(&mut self) {
+        self.piles.clear();
+        let resting: Vec<(Vec3, f32)> = self.letters.iter().filter(|l| l.resting).map(|l| (l.position, l.floor)).collect();
+        for (p, floor) in resting {
+            self.set_pile(cell_of(p), Pile { base: floor, top: p.y + LETTER_THICK * 0.5 });
+        }
+        self.piles_stale = false;
+    }
 }
 
 impl Debris {
@@ -68,6 +190,7 @@ impl Debris {
             match self.letters.iter().position(|l| l.resting) {
                 Some(oldest) => {
                     self.letters.swap_remove(oldest);
+                    self.piles_stale = true;
                 }
                 None => return,
             }
@@ -81,21 +204,29 @@ impl Debris {
         if self.awake == 0 {
             return;
         }
-        let solids = &self.solids;
+        if self.piles_stale {
+            self.remeasure();
+        }
         let mut awake = 0;
-        for letter in self.letters.iter_mut().filter(|l| !l.resting) {
+        for i in 0..self.letters.len() {
+            if self.letters[i].resting {
+                continue;
+            }
+            let solids = &self.solids;
+            let letter = &mut self.letters[i];
             letter.velocity.y += GRAVITY * dt;
             // A little drag, so that a burst does not carry letters across the valley.
             letter.velocity *= 1.0 - 0.35 * dt;
             letter.position += letter.velocity * dt;
             letter.rotation = (Quat::from_axis_angle(letter.spin_axis, letter.spin * dt) * letter.rotation).normalize();
 
-            let mut on_top = false;
+            // The surface it is lying on, if it is lying on one this step.
+            let mut on: Option<f32> = None;
             // The ground.
             if letter.position.y < LETTER_HALF {
                 letter.position.y = LETTER_HALF;
                 strike(letter, Vec3::Y);
-                on_top = true;
+                on = Some(0.0);
             }
             for solid in solids {
                 let (min, max) = (solid.min - LETTER_HALF, solid.max + LETTER_HALF);
@@ -131,22 +262,29 @@ impl Debris {
                 letter.position += normal * depth;
                 strike(letter, normal);
                 if normal == Vec3::Y {
-                    on_top = true;
+                    on = Some(solid.max.y);
                 }
             }
 
-            if on_top && letter.velocity.length_squared() < REST_SPEED * REST_SPEED {
-                // It lies down flat, face up, turned whichever way it happened to land.
-                let turn = (letter.seed % 6283) as f32 / 1000.0;
-                letter.rotation = Quat::from_rotation_y(turn) * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
-                // Flat on what it landed on, a hair above it, each at its own height so
-                // that letters lying across one another keep a steady order.
-                letter.position.y += -LETTER_HALF + 0.0006 + (letter.seed % 8) as f32 * 0.0002;
-                letter.velocity = Vec3::ZERO;
-                letter.spin = 0.0;
-                letter.resting = true;
-            } else {
-                awake += 1;
+            // The letters already at rest: a letter that comes down onto a heap, or into
+            // its side, ends on its top.
+            let p = self.letters[i].position;
+            if let Some(pile) = self.pile_under(cell_of(p), p.y - LETTER_HALF) {
+                if p.y < pile.top + LETTER_HALF {
+                    let letter = &mut self.letters[i];
+                    letter.position.y = pile.top + LETTER_HALF;
+                    strike(letter, Vec3::Y);
+                    on = Some(pile.base);
+                }
+            }
+
+            let letter = &self.letters[i];
+            match on {
+                Some(base) if letter.velocity.length_squared() < REST_SPEED * REST_SPEED => {
+                    let top = letter.position.y - LETTER_HALF;
+                    self.lay(i, base, top);
+                }
+                _ => awake += 1,
             }
         }
         self.awake = awake;
@@ -165,6 +303,8 @@ fn strike(letter: &mut Letter, normal: Vec3) {
 }
 
 /// Fills a box with letters, a cell apart, and throws them outwards from `burst`.
+/// `strength` is how hard: 1 is a blow that throws them across the yard, and near 0
+/// the thing simply falls in on itself.
 /// `to_world` places the box's own space in the world. `random` gives the rules'
 /// deterministic random numbers. Returns how many letters were made.
 pub fn shatter(
@@ -174,6 +314,7 @@ pub fn shatter(
     to_world: glam::Affine3A,
     material: u32,
     burst: Vec3,
+    strength: f32,
     random: &mut dyn FnMut() -> u64,
 ) -> usize {
     let spacing = LETTER_HALF * 2.0 * 1.25;
@@ -203,7 +344,7 @@ pub fn shatter(
                 let axis = Vec3::new(unit(14) - 0.5, unit(24) - 0.5, unit(34) - 0.5).normalize_or(Vec3::Y);
                 debris.push(Letter {
                     position,
-                    velocity: push + scatter,
+                    velocity: (push + scatter) * strength,
                     rotation: Quat::IDENTITY,
                     spin: 4.0 + unit(44) * 14.0,
                     spin_axis: axis,
@@ -211,6 +352,7 @@ pub fn shatter(
                     seed: (r >> 32) as u32,
                     resting: false,
                     home: position,
+                    floor: 0.0,
                 });
                 made += 1;
             }
@@ -245,6 +387,7 @@ mod tests {
             glam::Affine3A::from_translation(Vec3::new(-0.65, 0.0, 0.0)),
             1,
             Vec3::new(0.0, 1.0, -0.4),
+            1.0,
             &mut random,
         );
         assert!(made > 20_000, "a door is tens of thousands of letters: {made}");
@@ -270,7 +413,51 @@ mod tests {
         let far = debris.letters.iter().filter(|l| l.position.z.abs() > 0.5).count();
         assert!(far > debris.letters.len() / 10);
         // And some came to rest on top of the wall.
-        assert!(debris.letters.iter().any(|l| (l.position.y - 0.9).abs() < 3e-3));
+        assert!(debris.letters.iter().any(|l| l.floor == 0.9 && l.position.y > 0.9 && l.position.y < 1.0));
+    }
+
+    #[test]
+    fn letters_poured_in_one_place_make_a_heap_no_steeper_than_letters_stand() {
+        let mut debris = Debris::default();
+        let mut random = random_from(5);
+        for i in 0..6000u32 {
+            let r = random();
+            let unit = |shift: u32| ((r >> shift) & 0x3ff) as f32 / 1023.0 - 0.5;
+            debris.push(Letter {
+                position: Vec3::new(unit(0) * 0.02, 0.4 + i as f32 * 0.0004, unit(10) * 0.02),
+                velocity: Vec3::ZERO,
+                rotation: Quat::IDENTITY,
+                spin: 3.0,
+                spin_axis: Vec3::X,
+                material: 0,
+                seed: (r >> 32) as u32,
+                resting: false,
+                home: Vec3::ZERO,
+                floor: 0.0,
+            });
+        }
+        for _ in 0..60 * 10 {
+            debris.step(1.0 / 60.0);
+        }
+        assert_eq!(debris.awake(), 0);
+        let highest = debris.letters.iter().map(|l| l.position.y).fold(0.0, f32::max);
+        assert!(highest > 0.03, "the letters stand in a heap, not a single layer: {highest}");
+        // It is a cone, not a column: it has spread wider than it is high.
+        let widest = debris.letters.iter().map(|l| l.position.x.abs().max(l.position.z.abs())).fold(0.0, f32::max);
+        assert!(widest > highest, "wider than high: {widest} against {highest}");
+        // Nowhere is one cell of the heap higher than its neighbour by more than letters stand.
+        for (&(x, z), piles) in &debris.piles {
+            let top = piles[0].top;
+            for (dx, dz) in [(1, 0), (0, 1), (-1, 0), (0, -1)] {
+                let next = debris.piles.get(&(x + dx, z + dz)).map_or(0.0, |p| p[0].top);
+                assert!(top - next <= REPOSE + LETTER_THICK * 2.0 + 1.0e-4, "a cliff in the heap: {top} beside {next}");
+            }
+        }
+        // And every letter lies on the heap's surface, where the map says it is.
+        for l in &debris.letters {
+            let top = debris.piles[&cell_of(l.position)][0].top;
+            assert!(l.position.y <= top + 1.0e-4);
+        }
     }
 
     #[test]
@@ -298,6 +485,7 @@ mod tests {
             seed: 0,
             resting: true,
             home: Vec3::Y,
+            floor: 0.0,
         };
         for _ in 0..MAX_LETTERS + 10 {
             debris.push(letter);

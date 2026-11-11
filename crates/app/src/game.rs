@@ -276,10 +276,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     Command::Reveal(v) => tuning.reveal = v,
                     Command::Contrast(v) => tuning.contrast = v,
                     Command::Look(n) => tuning.look = n,
-                    Command::Break(name) => {
+                    Command::Break(name, strength) => {
                         let id = AssetId::from_key(&format!("{START_SCENE}.{name}"));
                         let blow = current.views.first().map_or(Vec3::ZERO, |v| v.eye);
-                        match world.break_thing(id.0, blow) {
+                        match world.break_thing_with(id.0, blow, strength) {
                             Some(letters) => log::line(&format!("broke `{name}` into {letters} letters")),
                             None => log::line(&format!("nothing called `{name}` is left to break")),
                         }

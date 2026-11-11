@@ -45,6 +45,6 @@ None.
 
 - The yard is built from boxes with generated materials. From afar it reads as a clean, lit place, not yet as a real one. Real textures (S01-T02b) and richer shapes are what is missing, and both are content, not renderer.
 - Full stops and commas in authored text are faint at reading distance: a small glyph cannot reach the weight its cell asks for.
-- Loose letters do not strike one another, cast no shadows yet, and make no sound.
+- Loose letters in flight do not strike one another, a heap is never knocked down again, and they make no sound.
 - The dive's middle distances are low in contrast. It works; it is not yet gorgeous.
 - Two captures of the same shot on the macOS CI runner's GPU differ by a few last bits. The software renderer, which is the reference, is exact.
