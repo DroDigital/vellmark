@@ -2,6 +2,10 @@
 
 Newest first. Record every change to scope, design, order, or tools here.
 
+## 2026-11-11: the lattice is animated, names its material, and shows a thing's state
+
+Owner's direction during the Showcase. Inside the close-up lattice every character changes over time by crossfades, and words and structures form with the eye's angle; a surface's own fine print stays stable. Each material's lattice now and then spells its name (`stone`, `wood`, `iron`), and rarely what it is made of (`SiO2`, `C6H10O5`). A thing's state shows as a word in its letters up close: `BURNING`, `MELTING`, `BOILING`, and the like, extending Section 2a's typographic body language to things. Details are in the Showcase's `docs/PLAN_CHANGES.md`.
+
 ## 2026-11-11: a broken thing comes apart into its letters
 
 Owner's direction during the Showcase. When a thing is destroyed, all of it, not only its small debris, scatters as tens of thousands of loose characters, each simulated with gravity, bounce, and friction against the world until it lies flat. At most 60,000 loose letters at once. Each letter keeps the place it came from, so that `WHOLE` can pull them back along their paths. Details are in the Showcase's `docs/PLAN_CHANGES.md`.

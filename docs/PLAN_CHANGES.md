@@ -2,6 +2,16 @@
 
 Newest first. Record every change to scope, design, order, or tools here. The full-game plan keeps its own history in `full-game/docs/PLAN_CHANGES.md`.
 
+## 2026-11-11: the lattice comes alive, names what it is made of, and shows what is happening to it
+
+Owner's direction, given while S02-T01 was under way. To be done straight after S02-T01, before S02-T02.
+
+- **The letters and the model must merge better:** colour, light, and effects of the lattice to be taken from the surface it is inside, so that the matrix reads as the same thing as the model and not as a layer laid over it.
+- **The whole lattice is animated.** Every character in it changes over time, and words and small structures form and dissolve within it, changing with the angle the eye looks in. This applies inside the lattice only. A surface's own fine print and its authored sentences keep their stable identity (rule 3.4 of `full-game/docs/brief/3a-renderer-core.md`), and every change in the lattice is a crossfade, never a cut, so that the shimmer check can still pass.
+- **An easter egg in every material.** Now and then, briefly and rarely, the lattice of a material spells its own name: `stone` in a stone wall, `wood` in a door, `iron` in a strap. Rarer still, deeper in, it names what the material is made of: the elements and compounds, such as `SiO2` in stone and `C6H10O5` in timber. All of it in the 95 printable characters.
+- **A thing's state shows as a word in its letters.** A door on fire reads `BURNING` up close; metal hot enough reads `MELTING`; water reads `BOILING`; and so on for the temperature, light, and integrity states the words can cause. This joins Section 2a's typographic body language: for things, a change of state is a change of the underlying text, which rule 3.4 allows. The rules carry each object's state, so the renderer only shows it. The words themselves, and their effects, still come in S05.
+- Recorded in `full-game/docs/PLAN_CHANGES.md` as well.
+
 ## 2026-11-11: broken things scatter as their letters, brought forward from S03
 
 Owner's direction: when something is destroyed, the tens of thousands of characters it is made of scatter across the floor with real physics.
