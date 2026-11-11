@@ -51,3 +51,60 @@ The distance at which letters begin to show is the **reveal distance**. Expose i
 | Skin | `o e c a s` |
 | Leaves | `^ A v` |
 | Stars, seen in close reading | `. * +` |
+
+**Material lexicons (what each material's letters may spell up close):**
+
+Within the lattice and the fine print, a material often spells its own name and, more often still, what it is made of, scattered evenly and written exactly as its grain is. While a thing is hot or cold, its letters say so, glitching in and out: wood smokes, smoulders, then burns; iron glows, then melts; water steams, boils, and goes to gas, or freezes to ice. The words are data, in `assets/materials/lexicon.ron`, which is the truth for this table; a test fails if the two disagree. Every word is printable ASCII. The Erasure has no words: it is being erased.
+
+<!-- lexicon:start -->
+| Material | Name | Made of | Hot, least to most | Cold, least to most |
+|---|---|---|---|---|
+| masonry | `stone` | `SiO2`, `CaCO3`, `Al2O3` | `HOT`, `CRACKING`, `GLOWING` | `COLD`, `FROSTED` |
+| rock | `rock` | `SiO2`, `KAlSi3O8`, `Fe2O3` | `HOT`, `CRACKING`, `MOLTEN` | `COLD`, `FROSTED` |
+| basalt | `basalt` | `SiO2`, `MgO`, `FeO` | `HOT`, `GLOWING`, `MOLTEN` | `COLD`, `FROSTED` |
+| obsidian | `obsidian` | `SiO2`, `Al2O3`, `Fe3O4` | `HOT`, `GLOWING`, `MOLTEN` | `COLD`, `FROSTED` |
+| lava | `lava` | `SiO2`, `FeO`, `MgO` | `FLOWING`, `SPITTING`, `BURNING` | `COOLING`, `SETTING` |
+| sulfur | `sulfur` | `S8`, `SO2`, `H2S` | `HOT`, `MELTING`, `BURNING` | `COLD` |
+| coal | `coal` | `C`, `S`, `CH4` | `GLOWING`, `SMOULDERING`, `BURNING` | `COLD` |
+| ash | `ash` | `C`, `K2CO3`, `CaO` | `GLOWING`, `SMOULDERING`, `BURNING` | `COLD` |
+| salt | `salt` | `NaCl`, `KCl`, `MgSO4` | `HOT`, `CRACKLING`, `MELTING` | `COLD` |
+| brick | `brick` | `Al2Si2O5(OH)4`, `SiO2`, `Fe2O3` | `HOT`, `BAKING`, `GLOWING` | `COLD`, `FROSTED` |
+| earth | `earth` | `SiO2`, `H2O`, `C` | `HOT`, `BAKING` | `COLD`, `FROZEN` |
+| mud | `mud` | `H2O`, `SiO2`, `Al2Si2O5(OH)4` | `DRYING`, `CRACKING`, `BAKING` | `COLD`, `FROZEN` |
+| sand | `sand` | `SiO2`, `CaCO3`, `Fe2O3` | `HOT`, `FUSING`, `MELTING` | `COLD` |
+| peat | `peat` | `C`, `C6H10O5`, `H2O` | `SMOKING`, `SMOULDERING`, `BURNING` | `COLD`, `FROZEN` |
+| snow | `snow` | `H2O` | `THAWING`, `MELTING` | `FREEZING`, `FROZEN` |
+| ice | `ice` | `H2O` | `THAWING`, `MELTING` | `HARDENING`, `FROZEN` |
+| water | `water` | `H2O`, `O2`, `CaCO3` | `STEAMING`, `BOILING`, `GAS` | `FREEZING`, `ICE` |
+| brine | `brine` | `H2O`, `NaCl`, `MgCl2` | `WARM`, `STEAMING`, `BOILING` | `COLD`, `FREEZING` |
+| grass | `grass` | `C55H72MgN4O5`, `C6H10O5`, `H2O` | `WILTING`, `SMOULDERING`, `BURNING` | `FROSTED`, `FROZEN` |
+| moss | `moss` | `C55H72MgN4O5`, `C6H10O5`, `H2O` | `DRYING`, `SMOULDERING`, `BURNING` | `FROSTED`, `FROZEN` |
+| reed | `reed` | `C6H10O5`, `SiO2`, `H2O` | `DRYING`, `SMOULDERING`, `BURNING` | `FROSTED`, `FROZEN` |
+| straw | `straw` | `C6H10O5`, `C5H10O5`, `SiO2` | `SMOKING`, `CATCHING`, `BURNING` | `COLD`, `FROSTED` |
+| leaves | `leaf` | `C55H72MgN4O5`, `C6H10O5`, `H2O` | `WILTING`, `CURLING`, `BURNING` | `FROSTED`, `FROZEN` |
+| fungus | `fungus` | `C8H13NO5`, `H2O` | `WILTING`, `SHRIVELLING`, `BURNING` | `COLD`, `FROZEN` |
+| bark | `bark` | `C6H10O5`, `C10H12O3`, `CaC2O4` | `SMOKING`, `SMOULDERING`, `BURNING` | `COLD`, `FROZEN` |
+| timber | `wood` | `C6H10O5`, `C10H12O3`, `H2O` | `SMOKING`, `SMOULDERING`, `BURNING` | `COLD`, `FROZEN` |
+| iron | `iron` | `Fe`, `Fe2O3`, `C` | `HOT`, `GLOWING`, `MELTING` | `COLD`, `BRITTLE` |
+| steel | `steel` | `Fe`, `C`, `Mn` | `HOT`, `GLOWING`, `MELTING` | `COLD`, `BRITTLE` |
+| bronze | `bronze` | `Cu`, `Sn`, `Cu2CO3(OH)2` | `HOT`, `GLOWING`, `MELTING` | `COLD` |
+| copper | `copper` | `Cu`, `Cu2O`, `CuCO3` | `HOT`, `GLOWING`, `MELTING` | `COLD` |
+| silver | `silver` | `Ag`, `Ag2S` | `HOT`, `GLOWING`, `MELTING` | `COLD` |
+| gold | `gold` | `Au` | `HOT`, `SOFTENING`, `MELTING` | `COLD` |
+| lead | `lead` | `Pb`, `PbO`, `PbCO3` | `HOT`, `SOFTENING`, `MELTING` | `COLD` |
+| glass | `glass` | `SiO2`, `Na2O`, `CaO` | `HOT`, `SOFTENING`, `MELTING` | `COLD` |
+| cloth | `linen` | `C6H10O5` | `SCORCHING`, `BURNING` | `COLD`, `STIFF` |
+| wool | `wool` | `C`, `N`, `S` | `SCORCHING`, `SINGEING`, `BURNING` | `COLD`, `STIFF` |
+| rope | `rope` | `C6H10O5`, `C10H12O3` | `SCORCHING`, `FRAYING`, `BURNING` | `COLD`, `STIFF` |
+| leather | `leather` | `C`, `N`, `C76H52O46` | `SCORCHING`, `CRACKING`, `BURNING` | `COLD`, `STIFF` |
+| skin | `skin` | `H2O`, `C`, `N` | `WARM`, `SWEATING`, `BURNING` | `SHIVERING`, `FROSTBITTEN` |
+| bone | `bone` | `Ca10(PO4)6(OH)2`, `CaCO3`, `H2O` | `SCORCHING`, `CHARRING`, `CALCINING` | `COLD`, `BRITTLE` |
+| horn | `horn` | `C`, `N`, `S` | `SCORCHING`, `CURLING`, `BURNING` | `COLD`, `BRITTLE` |
+| shell | `shell` | `CaCO3` | `HOT`, `CRACKING` | `COLD`, `BRITTLE` |
+| paper | `paper` | `C6H10O5`, `CaCO3`, `H2O` | `BROWNING`, `CURLING`, `BURNING` | `COLD`, `BRITTLE` |
+| ink | `ink` | `C7H6O5`, `FeSO4`, `C` | `DRYING`, `BLISTERING`, `BURNING` | `THICKENING`, `FROZEN` |
+| wax | `wax` | `C46H92O2`, `C25H52` | `SOFTENING`, `MELTING`, `BURNING` | `COLD`, `BRITTLE` |
+| tar | `tar` | `C`, `C10H8`, `S` | `SOFTENING`, `BUBBLING`, `BURNING` | `COLD`, `SET` |
+| stars | `star` | `H`, `He`, `C` | `BURNING` | `COLD` |
+| erasure | none | none | none | none |
+<!-- lexicon:end -->

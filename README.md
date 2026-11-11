@@ -28,7 +28,8 @@ The first build takes several minutes.
 |---|---|
 | W A S D, mouse | Move and look |
 | R (hold) | Close reading |
-| F6 | Step through the depth looks: flat, atoms, lattice, source |
+| F6 | Step through the depth looks: living (the default), flat, atoms, lattice, source |
+| \` then `heat door 0.9` | Heat a thing; up close its letters say so (`-0.8` freezes it) |
 | F7 | Break the nearest breakable thing (the door) into its letters; `break door 0.1` in the console crumbles it into a heap |
 | F5 | Light the lantern or put it out |
 | F4 | The tuning panel |

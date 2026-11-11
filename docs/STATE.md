@@ -8,7 +8,7 @@
 **Branch:** `claude/charming-bardeen-5aqf5c`, restarted from `main` after pull request 2 was merged.
 **Current task:** the depth looks, at the owner's direction (see `docs/PLAN_CHANGES.md`, 2026-11-11). Three variants are built and switchable; captures are in `docs/looks/`.
 **Also done:** broken things scatter as their letters (F7, or `break door`), at the owner's direction; see `docs/PLAN_CHANGES.md`.
-**Queued by the owner, straight after S02-T01:** the living lattice (see `docs/PLAN_CHANGES.md`, 2026-11-11: colour and light taken from the surface, animated characters and forming words, material names as a rare easter egg, state words such as `BURNING`).
+**Done, at the owner's direction:** the living lattice, now the default look (see `docs/PLAN_CHANGES.md`, 2026-11-11), and every material's words in `assets/materials/lexicon.ron`. Captures: `captures/living.ron`, `living_motion.ron`, `names.ron`.
 **Exact next step:** the owner picks a look (atoms, lattice, or source) or asks for changes. Make the pick the default in `GlyphTuning`, re-accept the yard's reference images, and adjust the capture limits for the depth range. Then begin `phases/S02-the-ground.md` at S02-T01.
 
 ## Lane: Render

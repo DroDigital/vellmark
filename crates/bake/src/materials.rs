@@ -9,7 +9,7 @@
 use crate::{err, BakeError};
 use serde::Deserialize;
 use std::path::Path;
-use vellmark_content::{AssetId, Material, MaterialSet};
+use vellmark_content::{AssetId, Material, MaterialSet, Lexicon};
 
 #[derive(Deserialize, Clone, Copy, Debug)]
 enum Generator {
@@ -31,6 +31,29 @@ struct Authored {
     relief: f32,
     #[serde(default)]
     emissive: f32,
+}
+
+/// One material's words, from `lexicon.ron`.
+#[derive(Deserialize, Clone)]
+pub struct AuthoredLexicon {
+    pub key: String,
+    pub name: String,
+    pub elements: Vec<String>,
+    pub hot: Vec<String>,
+    pub cold: Vec<String>,
+}
+
+/// Reads every material's lexicon, the one place the words are kept.
+pub fn read_lexicons(file: &Path) -> Result<Vec<AuthoredLexicon>, BakeError> {
+    let text = std::fs::read_to_string(file).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
+    let all: Vec<AuthoredLexicon> = ron::from_str(&text).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
+    let mut seen = std::collections::BTreeSet::new();
+    for l in &all {
+        if !seen.insert(l.key.clone()) {
+            return err(format!("{}: `{}` is listed twice", file.display(), l.key));
+        }
+    }
+    Ok(all)
 }
 
 #[derive(Deserialize)]
@@ -382,6 +405,7 @@ pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
         return err(format!("{}: size must be a power of two", file.display()));
     }
     let mips = authored.size.trailing_zeros() + 1;
+    let lexicons = read_lexicons(&file.with_file_name("lexicon.ron"))?;
     let mut materials = Vec::new();
     let mut levels: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     for m in &authored.materials {
@@ -389,7 +413,29 @@ pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
         if family.is_empty() || family.len() > MaterialSet::MAX_FAMILY || !family.iter().all(|b| (0x20..=0x7e).contains(b)) {
             return err(format!("{}: `{}` needs 1 to 8 printable ASCII characters in its family", file.display(), m.key));
         }
+        let word = |w: &String| -> Result<Vec<u8>, BakeError> {
+            if w.is_empty() || w.len() > Lexicon::WORD || !w.bytes().all(|b| (0x21..=0x7e).contains(&b)) {
+                return err(format!("{}: `{}`: the word `{w}` must be 1 to 16 printable ASCII characters, no spaces", file.display(), m.key));
+            }
+            Ok(w.as_bytes().to_vec())
+        };
+        let list = |words: &Vec<String>, most: usize, what: &str| -> Result<Vec<Vec<u8>>, BakeError> {
+            if words.len() > most {
+                return err(format!("{}: `{}` has more than {most} {what} words", file.display(), m.key));
+            }
+            words.iter().map(word).collect()
+        };
+        let Some(words) = lexicons.iter().find(|l| l.key == m.key) else {
+            return err(format!("{}: `{}` has no entry in lexicon.ron", file.display(), m.key));
+        };
+        let lexicon = Lexicon {
+            name: if words.name.is_empty() { Vec::new() } else { word(&words.name)? },
+            elements: list(&words.elements, Lexicon::ELEMENTS, "element")?,
+            hot: list(&words.hot, Lexicon::HOT, "hot")?,
+            cold: list(&words.cold, Lexicon::COLD, "cold")?,
+        };
         materials.push(Material {
+            lexicon,
             key: material_id(&m.key),
             tile_metres: m.tile_metres,
             contrast: m.contrast,
@@ -432,6 +478,34 @@ mod tests {
         let (a, _) = cellular(0.02, 0.5, 6, 3);
         let (b, _) = cellular(1.02, 0.5, 6, 3);
         assert!((a - b).abs() < 1e-4);
+    }
+
+    #[test]
+    fn the_brief_table_is_the_lexicon_file_written_out() {
+        // The table in the art direction brief and `lexicon.ron` must say the same.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let lexicons = read_lexicons(&root.join("assets/materials/lexicon.ron")).unwrap();
+        let brief = std::fs::read_to_string(root.join("full-game/docs/brief/2-art-direction.md")).unwrap();
+        let table = brief.split("<!-- lexicon:start -->").nth(1).and_then(|t| t.split("<!-- lexicon:end -->").next()).expect("the brief has the table");
+        let words = |cell: &str| -> Vec<String> {
+            if cell == "none" {
+                return Vec::new();
+            }
+            cell.split(", ").map(|w| w.trim_matches('`').to_owned()).collect()
+        };
+        let rows: Vec<Vec<String>> = table
+            .lines()
+            .filter(|l| l.starts_with("| ") && !l.starts_with("| Material"))
+            .map(|l| l.trim().trim_matches('|').split(" | ").map(|c| c.trim().to_owned()).collect())
+            .collect();
+        assert_eq!(rows.len(), lexicons.len(), "the brief and lexicon.ron list different materials");
+        for (row, l) in rows.iter().zip(&lexicons) {
+            assert_eq!(row[0], l.key);
+            assert_eq!(words(&row[1]), if l.name.is_empty() { Vec::new() } else { vec![l.name.clone()] }, "{}", l.key);
+            assert_eq!(words(&row[2]), l.elements, "{}", l.key);
+            assert_eq!(words(&row[3]), l.hot, "{}", l.key);
+            assert_eq!(words(&row[4]), l.cold, "{}", l.key);
+        }
     }
 
     #[test]

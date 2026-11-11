@@ -1,0 +1,16 @@
+// Ten seconds of the living lattice in motion, at 24 frames a second: a walk up to the
+// north wall and in close, a look along it, then the door as it heats until it burns.
+#![enable(implicit_some)]
+(
+    name: "living_motion",
+    scene: "scene.yard",
+    width: 960,
+    height: 540,
+    limits: (tone_shift: 1.0, pair_mean: 1.0, pair_max: 1.0),
+    shots: [
+        (name: "a_walk", from: (eye: (1.6, 1.68, -2.6), yaw: 0.0, pitch: 0.0), to: (eye: (1.85, 1.66, -5.62), yaw: 4.0, pitch: 1.0), hour: 15.5, look: 4, frames: 96, frame_seconds: 0.0416667),
+        (name: "b_along", from: (eye: (1.85, 1.66, -5.62), yaw: 4.0, pitch: 1.0), to: (eye: (2.5, 1.6, -5.5), yaw: 46.0, pitch: -3.0), hour: 15.5, look: 4, frames: 48, frame_seconds: 0.0416667),
+        (name: "c_door_warm", from: (eye: (0.6, 1.3, -5.3), yaw: -10.0, pitch: -3.0), to: (eye: (0.35, 1.2, -5.75), yaw: -6.0, pitch: -5.0), hour: 15.5, look: 4, frames: 48, frame_seconds: 0.0416667, heat: ("door", 0.45)),
+        (name: "d_door_burning", from: (eye: (0.35, 1.2, -5.75), yaw: -6.0, pitch: -5.0), to: (eye: (0.25, 1.1, -5.95), yaw: -3.0, pitch: -6.0), hour: 15.5, look: 4, frames: 72, frame_seconds: 0.0416667, heat: ("door", 0.95)),
+    ],
+)

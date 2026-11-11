@@ -49,7 +49,7 @@ fn both_typefaces_draw_at_every_size() {
     canvas.rect([600.0, 320.0, 30.0, 30.0], black);
 
     let views = [View::full(Camera::looking(glam::Vec3::new(0.0, 1.7, 0.0), 0.0, 0.0))];
-    let frame = FrameInput { views: &views, time_of_day: 12.0, seconds: 0.0, glyph_layer: true, close_reading: 0.0, dive: 0.0, lamps: 1.0, tuning: Default::default(), reveal_mask: false, letters: &[], letters_step: 0, broken: &[], ui: Some(&canvas) };
+    let frame = FrameInput { views: &views, time_of_day: 12.0, seconds: 0.0, glyph_layer: true, close_reading: 0.0, dive: 0.0, lamps: 1.0, tuning: Default::default(), reveal_mask: false, letters: &[], letters_step: 0, broken: &[], heat: &[], ui: Some(&canvas) };
     let image = offscreen.frame(&frame);
     image.save(&repo_root().join("build/captures/interface/typefaces.png")).unwrap();
 

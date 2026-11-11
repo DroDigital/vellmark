@@ -165,6 +165,7 @@ This is where the Showcase spends its effort. The full specification is `docs/TE
 
 - From any distance beyond about six metres, a screenshot must pass as a conventionally rendered, naturally lit game.
 - Within a few steps, every surface is fine print. At arm's length it can be read, and it says true things.
+- **The selling point: the closer you come, the further you see into things.** Within arm's reach a surface opens letter by letter onto a living lattice of characters inside it, coloured and lit by the material it is part of, turning over as the eye moves. Now and then the letters spell what the thing is and what it is made of, and while it is hot or cold they say what is happening to it (`BURNING`, `MELTING`, `BOILING`), glitching in and out. Every material's words are in `assets/materials/lexicon.ron`.
 - Dusk, night, firelight, and fog are the images the game is sold on.
 - **60 frames a second at 1080p on an Apple M1 with 8 GB,** with no hitch a player can feel. This is twice the full game's minimum, and it is possible here because the area is small and loaded whole.
 

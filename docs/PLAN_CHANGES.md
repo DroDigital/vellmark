@@ -2,6 +2,18 @@
 
 Newest first. Record every change to scope, design, order, or tools here. The full-game plan keeps its own history in `full-game/docs/PLAN_CHANGES.md`.
 
+## 2026-11-11: the living lattice is built and made the default; every material has its words
+
+Owner's direction, given while the living lattice was being built. Seeing into things up close is the game's key selling point.
+
+- **Look 4, living,** is built and is the default in the build until the owner chooses at the Look Gate (F6 still steps through all five). Up close the surface's front print lets go letter by letter until about three in four are gone; behind it the lattice's characters take the colour of the material where they stand, light dies away inward and the deep takes on the material's ink, the gaps hold a haze of the thing's own colour so the model is never lost, the corners are glowing atoms, and the bonds are single characters every third cell. Every character turns over by crossfades on its own clock, pushed on by the eye's movement. No character is ever seen mirrored.
+- **State words glitch.** While a thing is hot or cold, its words (`BURNING`, `MELTING`, and so on) live about a second, jump to a new place each time, stutter, slip a cell, and tear into noise, in the lattice and in the surface's own print. A hot enough thing glows at any distance, as hot iron does.
+- **Names and elements are a hook: often, and in the grain's own style.** The surface's larger print types out what a thing is and, two times in three, what it is made of, laid out like bricks in a bond so they are always evenly spread, more of them the further back the eye is. They are written exactly as the grain is, neither brighter nor bolder: they are found by reading. Water will say `water`, `H2O`, and, as it changes, `STEAMING`, `BOILING`, `GAS`, `FREEZING`, `ICE`.
+- **Every material of the full game has its words,** 48 of them, in `assets/materials/lexicon.ron`, written out as a table in `full-game/docs/brief/2-art-direction.md`; a test fails if the two disagree. The Erasure has none.
+- **The capture tool** gains `heat` and `frame_seconds`; the console gains `heat <name> <-1 to 1>`.
+- **Not yet known:** the cost of look 4 on the owner's Mac. It follows more rays than the other looks and samples the material at every character. If it is over the opaque pass's share, the governor and a cheaper preset must answer for it before the Look Gate.
+- Recorded in `full-game/docs/PLAN_CHANGES.md` as well.
+
 ## 2026-11-11: the lattice comes alive, names what it is made of, and shows what is happening to it
 
 Owner's direction, given while S02-T01 was under way. To be done straight after S02-T01, before S02-T02.

@@ -1,0 +1,61 @@
+// Every material's lexicon: the words its letters may form up close.
+//
+// name      what its letters spell now and then: an easter egg, met at the first or second look
+// elements  what it is made of, spelled more often than its name; at most three
+// hot       what its letters say as it heats, from least to most; at most three
+// cold      and as it cools; at most two
+//
+// One entry for every material of the full game, keyed as in `materials.ron`. A material is
+// baked with the lexicon of its key. The table in full-game/docs/brief/2-art-direction.md is
+// this file written out; a test fails if the two disagree. Every word is printable ASCII.
+// The Erasure has no words: it is being erased.
+[
+    (key: "masonry", name: "stone", elements: ["SiO2", "CaCO3", "Al2O3"], hot: ["HOT", "CRACKING", "GLOWING"], cold: ["COLD", "FROSTED"]),
+    (key: "rock", name: "rock", elements: ["SiO2", "KAlSi3O8", "Fe2O3"], hot: ["HOT", "CRACKING", "MOLTEN"], cold: ["COLD", "FROSTED"]),
+    (key: "basalt", name: "basalt", elements: ["SiO2", "MgO", "FeO"], hot: ["HOT", "GLOWING", "MOLTEN"], cold: ["COLD", "FROSTED"]),
+    (key: "obsidian", name: "obsidian", elements: ["SiO2", "Al2O3", "Fe3O4"], hot: ["HOT", "GLOWING", "MOLTEN"], cold: ["COLD", "FROSTED"]),
+    (key: "lava", name: "lava", elements: ["SiO2", "FeO", "MgO"], hot: ["FLOWING", "SPITTING", "BURNING"], cold: ["COOLING", "SETTING"]),
+    (key: "sulfur", name: "sulfur", elements: ["S8", "SO2", "H2S"], hot: ["HOT", "MELTING", "BURNING"], cold: ["COLD"]),
+    (key: "coal", name: "coal", elements: ["C", "S", "CH4"], hot: ["GLOWING", "SMOULDERING", "BURNING"], cold: ["COLD"]),
+    (key: "ash", name: "ash", elements: ["C", "K2CO3", "CaO"], hot: ["GLOWING", "SMOULDERING", "BURNING"], cold: ["COLD"]),
+    (key: "salt", name: "salt", elements: ["NaCl", "KCl", "MgSO4"], hot: ["HOT", "CRACKLING", "MELTING"], cold: ["COLD"]),
+    (key: "brick", name: "brick", elements: ["Al2Si2O5(OH)4", "SiO2", "Fe2O3"], hot: ["HOT", "BAKING", "GLOWING"], cold: ["COLD", "FROSTED"]),
+    (key: "earth", name: "earth", elements: ["SiO2", "H2O", "C"], hot: ["HOT", "BAKING"], cold: ["COLD", "FROZEN"]),
+    (key: "mud", name: "mud", elements: ["H2O", "SiO2", "Al2Si2O5(OH)4"], hot: ["DRYING", "CRACKING", "BAKING"], cold: ["COLD", "FROZEN"]),
+    (key: "sand", name: "sand", elements: ["SiO2", "CaCO3", "Fe2O3"], hot: ["HOT", "FUSING", "MELTING"], cold: ["COLD"]),
+    (key: "peat", name: "peat", elements: ["C", "C6H10O5", "H2O"], hot: ["SMOKING", "SMOULDERING", "BURNING"], cold: ["COLD", "FROZEN"]),
+    (key: "snow", name: "snow", elements: ["H2O"], hot: ["THAWING", "MELTING"], cold: ["FREEZING", "FROZEN"]),
+    (key: "ice", name: "ice", elements: ["H2O"], hot: ["THAWING", "MELTING"], cold: ["HARDENING", "FROZEN"]),
+    (key: "water", name: "water", elements: ["H2O", "O2", "CaCO3"], hot: ["STEAMING", "BOILING", "GAS"], cold: ["FREEZING", "ICE"]),
+    (key: "brine", name: "brine", elements: ["H2O", "NaCl", "MgCl2"], hot: ["WARM", "STEAMING", "BOILING"], cold: ["COLD", "FREEZING"]),
+    (key: "grass", name: "grass", elements: ["C55H72MgN4O5", "C6H10O5", "H2O"], hot: ["WILTING", "SMOULDERING", "BURNING"], cold: ["FROSTED", "FROZEN"]),
+    (key: "moss", name: "moss", elements: ["C55H72MgN4O5", "C6H10O5", "H2O"], hot: ["DRYING", "SMOULDERING", "BURNING"], cold: ["FROSTED", "FROZEN"]),
+    (key: "reed", name: "reed", elements: ["C6H10O5", "SiO2", "H2O"], hot: ["DRYING", "SMOULDERING", "BURNING"], cold: ["FROSTED", "FROZEN"]),
+    (key: "straw", name: "straw", elements: ["C6H10O5", "C5H10O5", "SiO2"], hot: ["SMOKING", "CATCHING", "BURNING"], cold: ["COLD", "FROSTED"]),
+    (key: "leaves", name: "leaf", elements: ["C55H72MgN4O5", "C6H10O5", "H2O"], hot: ["WILTING", "CURLING", "BURNING"], cold: ["FROSTED", "FROZEN"]),
+    (key: "fungus", name: "fungus", elements: ["C8H13NO5", "H2O"], hot: ["WILTING", "SHRIVELLING", "BURNING"], cold: ["COLD", "FROZEN"]),
+    (key: "bark", name: "bark", elements: ["C6H10O5", "C10H12O3", "CaC2O4"], hot: ["SMOKING", "SMOULDERING", "BURNING"], cold: ["COLD", "FROZEN"]),
+    (key: "timber", name: "wood", elements: ["C6H10O5", "C10H12O3", "H2O"], hot: ["SMOKING", "SMOULDERING", "BURNING"], cold: ["COLD", "FROZEN"]),
+    (key: "iron", name: "iron", elements: ["Fe", "Fe2O3", "C"], hot: ["HOT", "GLOWING", "MELTING"], cold: ["COLD", "BRITTLE"]),
+    (key: "steel", name: "steel", elements: ["Fe", "C", "Mn"], hot: ["HOT", "GLOWING", "MELTING"], cold: ["COLD", "BRITTLE"]),
+    (key: "bronze", name: "bronze", elements: ["Cu", "Sn", "Cu2CO3(OH)2"], hot: ["HOT", "GLOWING", "MELTING"], cold: ["COLD"]),
+    (key: "copper", name: "copper", elements: ["Cu", "Cu2O", "CuCO3"], hot: ["HOT", "GLOWING", "MELTING"], cold: ["COLD"]),
+    (key: "silver", name: "silver", elements: ["Ag", "Ag2S"], hot: ["HOT", "GLOWING", "MELTING"], cold: ["COLD"]),
+    (key: "gold", name: "gold", elements: ["Au"], hot: ["HOT", "SOFTENING", "MELTING"], cold: ["COLD"]),
+    (key: "lead", name: "lead", elements: ["Pb", "PbO", "PbCO3"], hot: ["HOT", "SOFTENING", "MELTING"], cold: ["COLD"]),
+    (key: "glass", name: "glass", elements: ["SiO2", "Na2O", "CaO"], hot: ["HOT", "SOFTENING", "MELTING"], cold: ["COLD"]),
+    (key: "cloth", name: "linen", elements: ["C6H10O5"], hot: ["SCORCHING", "BURNING"], cold: ["COLD", "STIFF"]),
+    (key: "wool", name: "wool", elements: ["C", "N", "S"], hot: ["SCORCHING", "SINGEING", "BURNING"], cold: ["COLD", "STIFF"]),
+    (key: "rope", name: "rope", elements: ["C6H10O5", "C10H12O3"], hot: ["SCORCHING", "FRAYING", "BURNING"], cold: ["COLD", "STIFF"]),
+    (key: "leather", name: "leather", elements: ["C", "N", "C76H52O46"], hot: ["SCORCHING", "CRACKING", "BURNING"], cold: ["COLD", "STIFF"]),
+    (key: "skin", name: "skin", elements: ["H2O", "C", "N"], hot: ["WARM", "SWEATING", "BURNING"], cold: ["SHIVERING", "FROSTBITTEN"]),
+    (key: "bone", name: "bone", elements: ["Ca10(PO4)6(OH)2", "CaCO3", "H2O"], hot: ["SCORCHING", "CHARRING", "CALCINING"], cold: ["COLD", "BRITTLE"]),
+    (key: "horn", name: "horn", elements: ["C", "N", "S"], hot: ["SCORCHING", "CURLING", "BURNING"], cold: ["COLD", "BRITTLE"]),
+    (key: "shell", name: "shell", elements: ["CaCO3"], hot: ["HOT", "CRACKING"], cold: ["COLD", "BRITTLE"]),
+    (key: "paper", name: "paper", elements: ["C6H10O5", "CaCO3", "H2O"], hot: ["BROWNING", "CURLING", "BURNING"], cold: ["COLD", "BRITTLE"]),
+    (key: "ink", name: "ink", elements: ["C7H6O5", "FeSO4", "C"], hot: ["DRYING", "BLISTERING", "BURNING"], cold: ["THICKENING", "FROZEN"]),
+    (key: "wax", name: "wax", elements: ["C46H92O2", "C25H52"], hot: ["SOFTENING", "MELTING", "BURNING"], cold: ["COLD", "BRITTLE"]),
+    (key: "tar", name: "tar", elements: ["C", "C10H8", "S"], hot: ["SOFTENING", "BUBBLING", "BURNING"], cold: ["COLD", "SET"]),
+    (key: "stars", name: "star", elements: ["H", "He", "C"], hot: ["BURNING"], cold: ["COLD"]),
+    (key: "erasure", name: "", elements: [], hot: [], cold: []),
+]

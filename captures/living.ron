@@ -1,0 +1,21 @@
+// The living lattice: the look the Showcase sells on, from the views that judge it.
+// A wall from 60 cm and 25 cm, a wall at an angle, the door's timber and iron, the
+// ledger's sentences, the door burning, and the wall by lantern light at night.
+#![enable(implicit_some)]
+(
+    name: "living",
+    scene: "scene.yard",
+    width: 960,
+    height: 540,
+    limits: (tone_shift: 1.0, pair_mean: 0.05, pair_max: 0.2),
+    shots: [
+        (name: "wall_60cm", from: (eye: (1.9, 1.68, -5.4), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 4),
+        (name: "wall_25cm", from: (eye: (1.9, 1.68, -5.75), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 4),
+        (name: "wall_oblique", from: (eye: (2.6, 1.68, -5.55), yaw: 48.0, pitch: -4.0), hour: 15.0, look: 4),
+        (name: "door", from: (eye: (0.35, 1.25, -5.6), yaw: -8.0, pitch: -4.0), hour: 15.0, look: 4),
+        (name: "ledger", from: (eye: (0.75, 2.05, -5.25), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 4),
+        (name: "door_burning", from: (eye: (0.35, 1.25, -5.6), yaw: -8.0, pitch: -4.0), hour: 15.0, look: 4, heat: ("door", 0.95)),
+        (name: "door_burning_close", from: (eye: (0.25, 1.08, -5.92), yaw: -4.0, pitch: -6.0), hour: 15.0, look: 4, heat: ("door", 0.95)),
+        (name: "night", from: (eye: (-0.4, 1.7, -5.3), yaw: -25.0, pitch: 3.0), hour: 23.0, look: 4),
+    ],
+)

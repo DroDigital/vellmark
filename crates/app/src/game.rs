@@ -276,6 +276,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     Command::Reveal(v) => tuning.reveal = v,
                     Command::Contrast(v) => tuning.contrast = v,
                     Command::Look(n) => tuning.look = n,
+                    Command::Heat(name, h) => {
+                        world.set_heat(AssetId::from_key(&format!("{START_SCENE}.{name}")).0, h);
+                    }
                     Command::Break(name, strength) => {
                         let id = AssetId::from_key(&format!("{START_SCENE}.{name}"));
                         let blow = current.views.first().map_or(Vec3::ZERO, |v| v.eye);
@@ -312,7 +315,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         close_reading += (wanted - close_reading).clamp(-ease, ease);
         #[cfg(feature = "dev")]
         if actions.pressed(Action::DevLook) {
-            tuning.look = (tuning.look + 1) % 4;
+            tuning.look = (tuning.look + 1) % 5;
         }
         #[cfg(feature = "dev")]
         if actions.pressed(Action::DevBreak) {
@@ -388,6 +391,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 letters: &current.letters,
                 letters_step: current.letters_step,
                 broken: &current.broken,
+                heat: &current.heat,
                 ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());

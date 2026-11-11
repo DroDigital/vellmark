@@ -53,6 +53,9 @@ pub struct Snapshot {
     pub letters_step: u64,
     /// The permanent IDs of the things that have been broken, which are no longer drawn.
     pub broken: std::sync::Arc<Vec<u64>>,
+    /// How hot or cold things are, by permanent ID, -1 to 1. Things not listed are as
+    /// the weather leaves them.
+    pub heat: std::sync::Arc<Vec<(u64, f32)>>,
 }
 
 impl Snapshot {

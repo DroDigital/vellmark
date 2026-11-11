@@ -64,6 +64,7 @@ pub struct World {
     broken: Arc<Vec<u64>>,
     letters: Arc<Vec<LetterSnap>>,
     letters_step: u64,
+    heat: Arc<Vec<(u64, f32)>>,
 }
 
 impl World {
@@ -82,6 +83,7 @@ impl World {
             broken: Arc::default(),
             letters: Arc::default(),
             letters_step: 0,
+            heat: Arc::default(),
         }
     }
 
@@ -131,6 +133,17 @@ impl World {
         self.broken = Arc::new(broken);
         self.refresh_letters();
         Some(made)
+    }
+
+    /// Sets how hot or cold a thing is, -1 (frozen) to 1 (as hot as it gets). 0 lets it
+    /// be. The words of S05 will set this; until then the development tools do.
+    pub fn set_heat(&mut self, id: u64, heat: f32) {
+        let heat = heat.clamp(-1.0, 1.0);
+        let mut all: Vec<(u64, f32)> = self.heat.iter().copied().filter(|(i, _)| *i != id).collect();
+        if heat != 0.0 {
+            all.push((id, heat));
+        }
+        self.heat = Arc::new(all);
     }
 
     pub fn loose_letters(&self) -> usize {
@@ -226,6 +239,7 @@ impl World {
             letters: self.letters.clone(),
             letters_step: self.letters_step,
             broken: self.broken.clone(),
+            heat: self.heat.clone(),
         })
     }
 

@@ -6,6 +6,8 @@
 
 struct ObjectUniform {
     model: mat4x4<f32>,
+    // x: how hot or cold the thing is, -1 (frozen) to 1 (as hot as it gets).
+    state: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> view: ViewUniform;
@@ -219,7 +221,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     // nothing, and the surface is exactly what it would be with the layer off.
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     if view.switches.x > 0.5 {
-        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light);
+        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light, object.state.x);
     }
 
     if view.viewport.w > 0.5 {
@@ -237,12 +239,24 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
         let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
         colour = light_surface(surface, in, n, m.surface.w);
+        // Heat. A thing hot enough glows, as hot iron does, at any distance: that is the
+        // world, not its letters. Up close, the strokes of the letters saying so glow
+        // first, as embers in the grain.
+        let hot = max(object.state.x, 0.0);
+        if hot > 0.0 {
+            let flicker = 0.75 + 0.25 * sin(view.eye_time.w * 7.3 + dot(in.world, vec3<f32>(9.1, 7.7, 8.3)));
+            let ember = vec3<f32>(1.0, 0.34, 0.06) * flicker / view.viewport.z;
+            colour += ember * colour_texel.rgb * smoothstep(0.75, 1.0, hot) * 0.8;
+            colour += ember * glyphs.ink * glyphs.revealed * hot * hot * 0.5;
+        }
         // The depth looks: up close, the surface opens onto the writing behind it.
         let look = u32(view.effects.z + 0.5);
         if look > 0u && glyphs.revealed > 0.0 && m.surface.w == 0.0 {
             let to_eye = normalize(view.eye_time.xyz - in.world);
             let in_frame = vec3<f32>(dot(to_eye, t), dot(to_eye, b), dot(to_eye, n));
-            colour = glyph_depth(colour, in.anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), in.material, in.page, in.thickness, glyphs.ink, look);
+            let albedo = max(colour_texel.rgb * glyphs.tone, vec3<f32>(0.03));
+            let win = Window(in.anchor, t, b, colour / albedo, object.state.x);
+            colour = glyph_depth(colour, in.anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), in.material, in.page, in.thickness, glyphs.ink, look, win);
         }
     }
     if reading > 0.0 {

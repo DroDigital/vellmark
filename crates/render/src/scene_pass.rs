@@ -21,6 +21,8 @@ const BLOOM_LEVELS: usize = 5;
 const CUBE_FACES: usize = 6;
 /// The size of one cascade or cube-face uniform: a matrix and a row of flags.
 const CASCADE_UNIFORM: u64 = 80;
+/// The size of one object's uniform: its transform, and its state (x: heat, -1 to 1).
+const OBJECT_UNIFORM: u64 = 80;
 
 /// One loose letter as the GPU is given it. Matches `LetterInput` in `opaque.wgsl`.
 #[repr(C)]
@@ -117,7 +119,7 @@ impl ScenePass {
         let align = device.limits().min_uniform_buffer_offset_alignment as u64;
         let view_size = std::mem::size_of::<ViewUniform>() as u64;
         let view_stride = aligned(view_size, align);
-        let object_stride = aligned(64, align);
+        let object_stride = aligned(OBJECT_UNIFORM, align);
         let cascade_stride = aligned(CASCADE_UNIFORM, align);
 
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -187,7 +189,7 @@ impl ScenePass {
         });
         let object_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("object"),
-            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX, true, 64)],
+            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT, true, OBJECT_UNIFORM)],
         });
         let cascade_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cascade"),
@@ -249,7 +251,7 @@ impl ScenePass {
                 }],
             })
         };
-        let object_bind_group = one("object", &object_layout, &object_buffer, 64);
+        let object_bind_group = one("object", &object_layout, &object_buffer, OBJECT_UNIFORM);
         let cascade_bind_group = one("cascade", &cascade_layout, &cascade_buffer, CASCADE_UNIFORM);
 
         // Shadow maps: three cascades for each shadowed view, in one array. Each view's
@@ -774,11 +776,11 @@ impl ScenePass {
 
         // Uniforms: every object's transform, every view, every cascade.
         for (i, drawable) in scene.drawables.iter().enumerate() {
-            gpu.queue.write_buffer(
-                &self.object_buffer,
-                i as u64 * self.object_stride,
-                bytemuck::cast_slice(&drawable.transform.to_cols_array()),
-            );
+            let heat = frame.heat.iter().find(|(id, _)| *id == drawable.key.0).map_or(0.0, |(_, h)| *h);
+            let mut uniform = [0.0f32; 20];
+            uniform[..16].copy_from_slice(&drawable.transform.to_cols_array());
+            uniform[16] = heat;
+            gpu.queue.write_buffer(&self.object_buffer, i as u64 * self.object_stride, bytemuck::cast_slice(&uniform));
         }
         for (i, view) in views.iter().enumerate() {
             let (_, _, w, h) = view.viewport.pixels(target_size);

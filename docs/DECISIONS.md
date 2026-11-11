@@ -2,6 +2,38 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-11: the living lattice (look 4)
+
+**A separate function, not a mode of the old one.** `living_lattice` follows the same
+world-fixed planes as `lattice`, so the earlier looks stay as they were for comparison.
+
+**Colour from the material at the character's own place.** The hit point is carried
+back into the page's anchor frame through the surface's tangent and bitangent, and the
+material's colour is read there at mip 3 (one texel about a character), shifted a
+little with depth so each layer is a different slice. The light is the surface's own
+(lit colour over albedo), dying away as `exp(-7 × depth)`, plus a faint glow of the
+material's hue divided by exposure, so the inside can be seen at night.
+
+**The surface opens by letters, not by a shape.** Each front cell has its own threshold
+and fades over a band, so nothing pops and no outline is ever drawn.
+
+**Fewer planes, stepped.** Four planes per family, each 0.72 of the last's brightness,
+read as layers; seven read as static.
+
+**No character is mirrored.** Which families of planes are seen from behind is known
+from the ray's sign; their characters and words are turned back.
+
+**Names and elements in the fine print use an ordered pattern.** The surface is ruled
+into patches twenty cells by three rows, offset half a patch row by row; each patch
+shows in its turn by a 4 × 4 Bayer order, so the words shown at any moment are evenly
+spread. The owner asked twice for them in the grain's own style (not brighter, not
+bolder, not set apart) and more often: 0.6 of patches from a step back, 0.3 at arm's
+length.
+
+**One file of words for every material.** `lexicon.ron` is keyed like `materials.ron`;
+the bake joins them and fails if a material has no words. The brief's table is that
+file written out, and a test compares them.
+
 ## 2026-11-11: the terrain (S02-T01)
 
 **Three nested grids, each one level of the tile layout.** The playable 512 m at a

@@ -105,6 +105,55 @@ pub struct Material {
     pub emissive: f32,
     /// The characters this material is written in, when no authored text covers it.
     pub family: Vec<u8>,
+    /// What the material's lattice may spell, now and then: its own name, what it is
+    /// made of, and the words for it hot and cold, from least to most.
+    pub lexicon: Lexicon,
+}
+
+/// The words a material's letters may form. Every word is 1 to 16 printable ASCII
+/// characters.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Lexicon {
+    pub name: Vec<u8>,
+    pub elements: Vec<Vec<u8>>,
+    pub hot: Vec<Vec<u8>>,
+    pub cold: Vec<Vec<u8>>,
+}
+
+impl Lexicon {
+    pub const WORD: usize = 16;
+    pub const ELEMENTS: usize = 3;
+    pub const HOT: usize = 3;
+    pub const COLD: usize = 2;
+    /// Slots in order: the name, the elements, the hot words, the cold words.
+    pub const SLOTS: usize = 1 + Self::ELEMENTS + Self::HOT + Self::COLD;
+
+    /// Every slot, empty where there is no word.
+    pub fn slots(&self) -> [[u8; Self::WORD]; Self::SLOTS] {
+        let mut out = [[0u8; Self::WORD]; Self::SLOTS];
+        let words = std::iter::once(Some(&self.name))
+            .chain((0..Self::ELEMENTS).map(|i| self.elements.get(i)))
+            .chain((0..Self::HOT).map(|i| self.hot.get(i)))
+            .chain((0..Self::COLD).map(|i| self.cold.get(i)));
+        for (slot, word) in out.iter_mut().zip(words) {
+            if let Some(word) = word {
+                let n = word.len().min(Self::WORD);
+                slot[..n].copy_from_slice(&word[..n]);
+            }
+        }
+        out
+    }
+
+    fn from_slots(slots: &[[u8; Self::WORD]]) -> Self {
+        let word = |s: &[u8; Self::WORD]| s.iter().take_while(|&&b| b != 0).copied().collect::<Vec<u8>>();
+        let list = |range: std::ops::Range<usize>| range.map(|i| word(&slots[i])).filter(|w| !w.is_empty()).collect();
+        Self {
+            name: word(&slots[0]),
+            elements: list(1..1 + Self::ELEMENTS),
+            hot: list(1 + Self::ELEMENTS..1 + Self::ELEMENTS + Self::HOT),
+            cold: list(1 + Self::ELEMENTS + Self::HOT..Self::SLOTS),
+        }
+    }
 }
 
 /// Every material's maps as two array textures: colour, and normal with roughness.
@@ -119,7 +168,7 @@ pub struct MaterialSet {
 }
 
 impl MaterialSet {
-    const MAGIC: &'static [u8; 8] = b"VLMKMAT1";
+    const MAGIC: &'static [u8; 8] = b"VLMKMAT2";
     pub const MAX_FAMILY: usize = 8;
 
     pub fn index_of(&self, key: AssetId) -> Option<u32> {
@@ -152,6 +201,9 @@ impl MaterialSet {
             let mut family = [0u8; Self::MAX_FAMILY];
             family[..m.family.len()].copy_from_slice(&m.family);
             out.extend_from_slice(&family);
+            for slot in m.lexicon.slots() {
+                out.extend_from_slice(&slot);
+            }
         }
         out.extend_from_slice(&self.texels);
         out
@@ -175,7 +227,19 @@ impl MaterialSet {
             if len == 0 || len > Self::MAX_FAMILY {
                 return Err("material has no glyph family");
             }
-            materials.push(Material { key, tile_metres, contrast, relief, emissive, family: family[..len].to_vec() });
+            let mut slots = [[0u8; Lexicon::WORD]; Lexicon::SLOTS];
+            for slot in &mut slots {
+                slot.copy_from_slice(r.take(Lexicon::WORD)?);
+            }
+            materials.push(Material {
+                key,
+                tile_metres,
+                contrast,
+                relief,
+                emissive,
+                family: family[..len].to_vec(),
+                lexicon: Lexicon::from_slots(&slots),
+            });
         }
         let set = Self { size, mips, materials, texels: bytes[r.1..].to_vec() };
         if set.level_range(mips - 1, 1).end != set.texels.len() {
@@ -428,6 +492,12 @@ mod tests {
             relief: -0.5,
             emissive: 0.0,
             family: b"HEB[]".to_vec(),
+            lexicon: Lexicon {
+                name: b"stone".to_vec(),
+                elements: vec![b"SiO2".to_vec(), b"CaCO3".to_vec()],
+                hot: vec![b"HOT".to_vec(), b"CRACKING".to_vec()],
+                cold: vec![b"COLD".to_vec()],
+            },
         };
         // Two materials, 2x2 with two levels: (4 + 1) texels * 4 bytes * 2 maps * 2 materials.
         let set = MaterialSet { size: 2, mips: 2, materials: vec![material("a"), material("b")], texels: (0..80).collect() };
