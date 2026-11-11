@@ -29,6 +29,15 @@ impl ViewSnap {
     }
 }
 
+/// One loose letter as drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LetterSnap {
+    pub position: Vec3,
+    pub rotation: Quat,
+    pub material: u32,
+    pub seed: u32,
+}
+
 /// The state of the world after a step, fixed for ever. Shared by reference between the
 /// renderer, the bots, and replays.
 #[derive(Clone, Debug, PartialEq)]
@@ -38,6 +47,12 @@ pub struct Snapshot {
     pub time_of_day: f32,
     pub players: Vec<PlayerSnap>,
     pub views: Vec<ViewSnap>,
+    /// Every loose letter. Shared with the last snapshot while none of them is moving.
+    pub letters: std::sync::Arc<Vec<LetterSnap>>,
+    /// The step at which the loose letters last changed.
+    pub letters_step: u64,
+    /// The permanent IDs of the things that have been broken, which are no longer drawn.
+    pub broken: std::sync::Arc<Vec<u64>>,
 }
 
 impl Snapshot {

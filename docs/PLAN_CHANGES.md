@@ -2,6 +2,17 @@
 
 Newest first. Record every change to scope, design, order, or tools here. The full-game plan keeps its own history in `full-game/docs/PLAN_CHANGES.md`.
 
+## 2026-11-11: broken things scatter as their letters, brought forward from S03
+
+Owner's direction: when something is destroyed, the tens of thousands of characters it is made of scatter across the floor with real physics.
+
+- **Brought forward from S03-T08.** Brief 5i already says that debris "crumbles into loose characters within seconds". The owner asked for the whole thing to come apart into its letters, so the loose-letter part is built now. Fracture along the lines of text, physics props, and `WHOLE` stay in S03-T08.
+- **What is built:** the rules (`crates/sim/src/debris.rs`) fill a broken thing's boxes with letters about 1.6 cm apart (seven cells in ten hold one), throw them from the blow, and step each one at 60 Hz with gravity, drag, spin, bounce, and friction against the ground and the scene's solid boxes, until it lies flat, face up. Each letter remembers where it stood, for `WHOLE` later. The yard's door comes apart into 38,304 letters, all at rest within fifteen seconds. The renderer hides the broken thing and draws every letter as a lit character of its material, cut out by coverage. Too small to read, a letter is a chip of its material: no character shows beyond the reveal distance, loose or not.
+- **New numbers:** at most 60,000 loose letters at once; the oldest at rest are swept first. The brief's limit of 200 loose fracture pieces is unchanged.
+- **What it does not do yet:** letters do not strike or pile on one another, only on the world; a thing's turned boxes are treated as the box that bounds them; and there is no sound. The cost on the owner's Mac is not measured.
+- **To try it:** in the development build, F7 breaks the nearest breakable thing; the console's `break door` breaks the door by name. `captures/breaking.ron` records it.
+- Recorded in `full-game/docs/PLAN_CHANGES.md` as well.
+
 ## 2026-11-11: the close-up look gains depth, and the Look Gate is deferred
 
 Owner's direction, given in a session after Phases S00 and S01 were merged.

@@ -282,6 +282,24 @@ pub struct Light {
     pub casts_shadow: bool,
 }
 
+/// A box of one material, for collision and for breaking into letters. Axis-aligned
+/// in its owner's space: `min` then `max`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SolidBox {
+    pub min: [f32; 3],
+    pub max: [f32; 3],
+    pub material: u32,
+}
+
+/// A thing that can be broken into its letters: an object, by its key, and the boxes
+/// it is made of, in the object's own space.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Breakable {
+    pub key: AssetId,
+    pub transform: [f32; 12],
+    pub boxes: Vec<SolidBox>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scene {
     /// Everything that never moves, as one mesh.
@@ -290,12 +308,15 @@ pub struct Scene {
     pub lights: Vec<Light>,
     /// The scene's authored text, or `AssetId(0)` if it has none.
     pub pages: AssetId,
+    /// Everything that never moves, as boxes in the world, for things to land on.
+    pub colliders: Vec<SolidBox>,
+    pub breakables: Vec<Breakable>,
     /// Where a visitor starts: eye position, yaw, pitch.
     pub spawn: [f32; 5],
 }
 
 impl Scene {
-    const MAGIC: &'static [u8; 8] = b"VLMKSCN1";
+    const MAGIC: &'static [u8; 8] = b"VLMKSCN2";
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -316,6 +337,24 @@ impl Scene {
             put_f32s(&mut out, &l.colour);
             put_f32s(&mut out, &[l.radius]);
             out.extend_from_slice(&(l.casts_shadow as u32).to_le_bytes());
+        }
+        let put_box = |out: &mut Vec<u8>, b: &SolidBox| {
+            put_f32s(out, &b.min);
+            put_f32s(out, &b.max);
+            out.extend_from_slice(&b.material.to_le_bytes());
+        };
+        out.extend_from_slice(&(self.colliders.len() as u32).to_le_bytes());
+        for b in &self.colliders {
+            put_box(&mut out, b);
+        }
+        out.extend_from_slice(&(self.breakables.len() as u32).to_le_bytes());
+        for breakable in &self.breakables {
+            out.extend_from_slice(&breakable.key.0.to_le_bytes());
+            put_f32s(&mut out, &breakable.transform);
+            out.extend_from_slice(&(breakable.boxes.len() as u32).to_le_bytes());
+            for b in &breakable.boxes {
+                put_box(&mut out, b);
+            }
         }
         out
     }
@@ -343,10 +382,27 @@ impl Scene {
                 casts_shadow: r.u32()? != 0,
             });
         }
+        fn solid(r: &mut Reader<'_>) -> Result<SolidBox, &'static str> {
+            Ok(SolidBox { min: r.f32s()?, max: r.f32s()?, material: r.u32()? })
+        }
+        let mut colliders = Vec::new();
+        for _ in 0..r.u32()? {
+            colliders.push(solid(&mut r)?);
+        }
+        let mut breakables = Vec::new();
+        for _ in 0..r.u32()? {
+            let key = AssetId(r.u64()?);
+            let transform = r.f32s()?;
+            let mut boxes = Vec::new();
+            for _ in 0..r.u32()? {
+                boxes.push(solid(&mut r)?);
+            }
+            breakables.push(Breakable { key, transform, boxes });
+        }
         if r.1 != bytes.len() {
             return Err("scene has trailing bytes");
         }
-        Ok(Self { static_mesh, objects, lights, pages, spawn })
+        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn })
     }
 }
 
@@ -402,6 +458,8 @@ mod tests {
             objects: vec![Object { key: AssetId(1), mesh: AssetId(2), transform: [1.0; 12] }],
             lights: vec![Light { key: AssetId(3), position: [1.0, 2.0, 3.0], colour: [4.0, 3.0, 2.0], radius: 9.0, casts_shadow: true }],
             pages: AssetId(77),
+            colliders: vec![SolidBox { min: [0.0; 3], max: [1.0; 3], material: 2 }],
+            breakables: vec![Breakable { key: AssetId(5), transform: [0.5; 12], boxes: vec![SolidBox { min: [0.0; 3], max: [2.0; 3], material: 1 }] }],
             spawn: [0.0, 1.7, 5.0, 0.0, 0.0],
         };
         assert_eq!(Scene::from_bytes(&scene.to_bytes()).unwrap(), scene);

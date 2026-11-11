@@ -72,6 +72,18 @@ pub struct Shot {
     /// For judging letters pixel for pixel in a frame too large to look at whole.
     #[serde(default)]
     pub crop: Option<(u32, u32, u32, u32)>,
+    /// Break this thing of the scene into its letters before the shot, by its name.
+    #[serde(default)]
+    pub break_thing: Option<String>,
+    /// Where the blow that breaks it lands. The camera, if not given.
+    #[serde(default)]
+    pub blow: Option<(f32, f32, f32)>,
+    /// Fixed steps of the rules run after the break and before the first frame.
+    #[serde(default)]
+    pub settle: u32,
+    /// Fixed steps of the rules run between one frame and the next.
+    #[serde(default)]
+    pub steps_per_frame: u32,
     /// Keep the first frame of this shot as a reference image.
     #[serde(default)]
     pub reference: bool,
@@ -211,6 +223,8 @@ pub struct Offscreen {
     pub timers: PassTimers,
     texture: wgpu::Texture,
     size: (u32, u32),
+    /// The scene being drawn, as the rules need it.
+    pub scene: Option<vellmark_content::Scene>,
 }
 
 pub const CAPTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -249,8 +263,11 @@ impl Offscreen {
         let pack = baked_base_pack()?;
         let assets = LoadedAssets::from_pack(&pack)?;
         let mut renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &assets.borrow())?;
+        let mut loaded = None;
         if let Some(key) = scene {
-            renderer.set_scene(&gpu, load_scene(&gpu, &pack, key)?.1);
+            let (data, on_gpu) = load_scene(&gpu, &pack, key)?;
+            renderer.set_scene(&gpu, on_gpu);
+            loaded = Some(data);
         }
         registry.seal();
         let timers = PassTimers::new(&gpu, true);
@@ -264,7 +281,7 @@ impl Offscreen {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        Ok(Self { gpu, registry, renderer, timers, texture, size: (width, height) })
+        Ok(Self { gpu, registry, renderer, timers, texture, size: (width, height), scene: loaded })
     }
 
     pub fn frame(&mut self, frame: &FrameInput<'_>) -> Image {
@@ -296,7 +313,32 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
         let mut frames = Vec::new();
         let mut glyph_off = None;
         let mut reveal_mask: Option<Image> = None;
+        // A shot that breaks something runs the rules for it, from a fresh world.
+        let mut world = None;
+        if let Some(name) = &shot.break_thing {
+            let scene = offscreen.scene.as_ref().ok_or("a shot breaks something, but the script names no scene")?;
+            let mut w = vellmark_sim::World::new(vellmark_sim::WorldConfig::default());
+            let (solids, breakables) = vellmark_render::scene_rules(scene);
+            w.set_scene(solids, breakables);
+            let id = vellmark_content::AssetId::from_key(&format!("{}.{name}", script.scene));
+            let blow = shot.blow.map_or(shot.from.camera().eye, |b| b.into());
+            w.break_thing(id.0, blow).ok_or_else(|| format!("shot `{}`: the scene has nothing called `{name}` to break", shot.name))?;
+            for _ in 0..shot.settle {
+                w.step(&[]);
+            }
+            world = Some(w);
+        }
         for i in 0..frames_wanted {
+            if let (Some(w), true) = (world.as_mut(), i > 0) {
+                for _ in 0..shot.steps_per_frame {
+                    w.step(&[]);
+                }
+            }
+            let snapshot = world.as_ref().map(|w| w.snapshot());
+            let (letters, letters_step, broken): (&[vellmark_sim::LetterSnap], u64, &[u64]) = match &snapshot {
+                Some(s) => (&s.letters, s.letters_step, &s.broken),
+                None => (&[], 0, &[]),
+            };
             let t = if frames_wanted > 1 { i as f32 / (frames_wanted - 1) as f32 } else { 0.0 };
             let pose = match &shot.to {
                 Some(to) => shot.from.lerp(to, t),
@@ -317,6 +359,9 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 lamps: if shot.lamps_out { 0.0 } else { 1.0 },
                 tuning: GlyphTuning { look: shot.look, ..GlyphTuning::default() },
                 reveal_mask: false,
+                letters,
+                letters_step,
+                broken,
                 ui: None,
             };
             frames.push(offscreen.frame(&input));

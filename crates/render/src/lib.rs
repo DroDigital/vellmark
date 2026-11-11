@@ -45,6 +45,12 @@ pub struct FrameInput<'a> {
     pub tuning: GlyphTuning,
     /// A tool's view: white where the fine print is drawn, black elsewhere.
     pub reveal_mask: bool,
+    /// Every loose letter of every broken thing.
+    pub letters: &'a [vellmark_sim::LetterSnap],
+    /// Changes whenever `letters` does, so that they are sent to the GPU only then.
+    pub letters_step: u64,
+    /// The permanent IDs of broken things, which are not drawn.
+    pub broken: &'a [u64],
     /// The interface, drawn over the finished frame.
     pub ui: Option<&'a Canvas>,
 }
@@ -93,6 +99,34 @@ pub fn load_scene(gpu: &Gpu, pack: &vellmark_content::Pack, key: &str) -> Result
     };
     let on_gpu = SceneGpu::new(gpu, &scene, pages, &|id| pack.get(AssetKind::Mesh, id).and_then(|b| Mesh::from_bytes(b).ok()))?;
     Ok((scene, on_gpu))
+}
+
+/// What the rules need of a scene: the boxes loose letters land on and bounce from,
+/// and the things in it that can be broken.
+pub fn scene_rules(scene: &vellmark_content::Scene) -> (Vec<vellmark_sim::debris::Solid>, Vec<vellmark_sim::BreakableThing>) {
+    use glam::{Affine3A, Mat3A, Vec3, Vec3A};
+    let solids = scene
+        .colliders
+        .iter()
+        .map(|b| vellmark_sim::debris::Solid { min: b.min.into(), max: b.max.into() })
+        .collect();
+    let breakables = scene
+        .breakables
+        .iter()
+        .map(|b| {
+            let t = &b.transform;
+            let to_world = Affine3A::from_mat3_translation(
+                Mat3A::from_cols(Vec3A::new(t[0], t[4], t[8]), Vec3A::new(t[1], t[5], t[9]), Vec3A::new(t[2], t[6], t[10])).into(),
+                Vec3::new(t[3], t[7], t[11]),
+            );
+            vellmark_sim::BreakableThing {
+                id: b.key.0,
+                to_world,
+                boxes: b.boxes.iter().map(|s| (Vec3::from(s.min), Vec3::from(s.max), s.material)).collect(),
+            }
+        })
+        .collect();
+    (solids, breakables)
 }
 
 pub struct Renderer {

@@ -7,7 +7,7 @@ use vellmark_platform::RawInput;
 use vellmark_ui::{dev_text, Canvas, TextStyle};
 
 /// What the console can ask of the game.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     /// Fix the hour of the day, or let the clock run again.
     Hour(Option<f32>),
@@ -20,6 +20,8 @@ pub enum Command {
     Contrast(f32),
     /// Choose the depth look, 0 to 3.
     Look(u32),
+    /// Break a thing in the scene into its letters, by its name.
+    Break(String),
     Quit,
 }
 
@@ -129,6 +131,7 @@ impl Overlay {
                     "reveal <n>     scale the reveal distance (1 is the brief's)",
                     "contrast <n>   scale the letter contrast",
                     "look <0-3>     flat, atoms, lattice, source (F6)",
+                    "break <name>   break a thing into its letters (F7: the nearest)",
                     "quit           leave",
                     "F1 profiler  F2 free camera  F3 glyphs  F4 tuning  F5 lamps",
                 ] {
@@ -156,6 +159,7 @@ impl Overlay {
                 Ok(n) if n <= 3 => self.commands.push(Command::Look(n)),
                 _ => self.say("look takes 0 (flat), 1 (atoms), 2 (lattice), or 3 (source)"),
             },
+            (Some("break"), Some(name)) => self.commands.push(Command::Break(name.to_string())),
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),
         }

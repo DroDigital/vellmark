@@ -193,6 +193,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
 
     let mut world = World::new(WorldConfig::default());
+    let (solids, breakables) = vellmark_render::scene_rules(&scene);
+    #[cfg_attr(not(feature = "dev"), allow(unused_variables))]
+    let breakable_places: Vec<(u64, Vec3)> = breakables.iter().map(|b| (b.id, Vec3::from(b.to_world.translation))).collect();
+    world.set_scene(solids, breakables);
     // The simulation holds the feet; the scene's spawn is given as an eye.
     let spawn = scene.spawn;
     world.add_player(Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]), spawn[3]);
@@ -272,6 +276,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     Command::Reveal(v) => tuning.reveal = v,
                     Command::Contrast(v) => tuning.contrast = v,
                     Command::Look(n) => tuning.look = n,
+                    Command::Break(name) => {
+                        let id = AssetId::from_key(&format!("{START_SCENE}.{name}"));
+                        let blow = current.views.first().map_or(Vec3::ZERO, |v| v.eye);
+                        match world.break_thing(id.0, blow) {
+                            Some(letters) => log::line(&format!("broke `{name}` into {letters} letters")),
+                            None => log::line(&format!("nothing called `{name}` is left to break")),
+                        }
+                    }
                     Command::Quit => break 'frames,
                 }
             }
@@ -301,6 +313,20 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         #[cfg(feature = "dev")]
         if actions.pressed(Action::DevLook) {
             tuning.look = (tuning.look + 1) % 4;
+        }
+        #[cfg(feature = "dev")]
+        if actions.pressed(Action::DevBreak) {
+            // The nearest thing that is still whole, struck from where the player stands.
+            let eye = current.views.first().map_or(Vec3::ZERO, |v| v.eye);
+            let nearest = breakable_places
+                .iter()
+                .filter(|(id, _)| !current.broken.contains(id))
+                .min_by(|a, b| a.1.distance_squared(eye).total_cmp(&b.1.distance_squared(eye)));
+            if let Some(&(id, _)) = nearest {
+                if let Some(letters) = world.break_thing(id, eye) {
+                    log::line(&format!("broke a thing into {letters} letters"));
+                }
+            }
         }
         if cfg!(feature = "dev") && actions.pressed(Action::DevLamps) {
             lamps_lit = !lamps_lit;
@@ -359,6 +385,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 lamps,
                 tuning,
                 reveal_mask: false,
+                letters: &current.letters,
+                letters_step: current.letters_step,
+                broken: &current.broken,
                 ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());

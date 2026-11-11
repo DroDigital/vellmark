@@ -22,6 +22,19 @@ const CUBE_FACES: usize = 6;
 /// The size of one cascade or cube-face uniform: a matrix and a row of flags.
 const CASCADE_UNIFORM: u64 = 80;
 
+/// One loose letter as the GPU is given it. Matches `LetterInput` in `opaque.wgsl`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct LetterInstance {
+    position: [f32; 3],
+    rotation: [f32; 4],
+    material: u32,
+    seed: u32,
+}
+
+const LETTER_ATTRIBUTES: [wgpu::VertexAttribute; 4] =
+    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4, 2 => Uint32, 3 => Uint32];
+
 struct Targets {
     size: (u32, u32),
     colour_msaa: wgpu::TextureView,
@@ -39,6 +52,7 @@ struct Pipelines {
     depth: wgpu::RenderPipeline,
     opaque: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
+    letters: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     bloom_first: wgpu::RenderPipeline,
     bloom_down: wgpu::RenderPipeline,
@@ -68,6 +82,9 @@ pub struct ScenePass {
     frame_bind_groups: Vec<wgpu::BindGroup>,
     targets: Option<Targets>,
     target_format: wgpu::TextureFormat,
+    /// One instance for each loose letter, and the step they were last sent at.
+    letter_buffer: wgpu::Buffer,
+    letters_sent: Option<(u64, usize)>,
 }
 
 fn aligned(size: u64, align: u64) -> u64 {
@@ -329,6 +346,13 @@ impl ScenePass {
             frame_bind_groups,
             targets: None,
             target_format,
+            letter_buffer: gpu.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("loose letters"),
+                size: (vellmark_sim::debris::MAX_LETTERS * std::mem::size_of::<LetterInstance>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            letters_sent: None,
         })
     }
 
@@ -472,6 +496,37 @@ impl ScenePass {
                 cache: None,
             },
         );
+        let letters = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("loose letters"),
+                layout: Some(&world_layout),
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs_letter"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: std::mem::size_of::<LetterInstance>() as u64,
+                        step_mode: wgpu::VertexStepMode::Instance,
+                        attributes: &LETTER_ATTRIBUTES,
+                    })],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_letter"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(HDR_FORMAT.into())],
+                }),
+                // A letter is seen from both sides as it tumbles.
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                // Not in the pre-pass: tested against it and written as they are drawn.
+                depth_stencil: Some(depth_state(true, wgpu::CompareFunction::Greater)),
+                // The shape of the character is cut out by coverage, so its edge is smooth.
+                multisample: wgpu::MultisampleState { count: SAMPLES, mask: !0, alpha_to_coverage_enabled: true },
+                multiview_mask: None,
+                cache: None,
+            },
+        );
         let post = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
@@ -530,7 +585,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -632,8 +687,12 @@ impl ScenePass {
         gpu.queue.write_buffer(&self.cascade_buffer, slot as u64 * self.cascade_stride, &bytes);
     }
 
-    fn draw_scene(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, object_group: u32) {
+    fn draw_scene(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, broken: &[u64], object_group: u32) {
         for (i, drawable) in scene.drawables.iter().enumerate() {
+            // A broken thing is its letters now.
+            if broken.contains(&drawable.key.0) {
+                continue;
+            }
             pass.set_bind_group(object_group, &self.object_bind_group, &[(i as u64 * self.object_stride) as u32]);
             pass.set_vertex_buffer(0, drawable.mesh.vertices.slice(..));
             pass.set_index_buffer(drawable.mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -656,6 +715,22 @@ impl ScenePass {
         let _ = &self.shadow_sampler;
         let atmosphere = Atmosphere::at(frame.time_of_day);
         let views = &frame.views[..frame.views.len().min(MAX_VIEWS)];
+        let letter_count = frame.letters.len().min(vellmark_sim::debris::MAX_LETTERS);
+        if self.letters_sent != Some((frame.letters_step, letter_count)) {
+            let instances: Vec<LetterInstance> = frame.letters[..letter_count]
+                .iter()
+                .map(|l| LetterInstance {
+                    position: l.position.to_array(),
+                    rotation: l.rotation.to_array(),
+                    material: l.material,
+                    seed: l.seed,
+                })
+                .collect();
+            if !instances.is_empty() {
+                gpu.queue.write_buffer(&self.letter_buffer, 0, bytemuck::cast_slice(&instances));
+            }
+            self.letters_sent = Some((frame.letters_step, letter_count));
+        }
 
         // Uniforms: every object's transform, every view, every cascade.
         for (i, drawable) in scene.drawables.iter().enumerate() {
@@ -735,7 +810,7 @@ impl ScenePass {
             });
             pass.set_pipeline(&self.pipelines.shadow);
             pass.set_bind_group(0, &self.cascade_bind_group, &[(layer as u64 * self.cascade_stride) as u32]);
-            self.draw_scene(&mut pass, scene, 1);
+            self.draw_scene(&mut pass, scene, frame.broken, 1);
         }
 
         // The one shadowed lantern or fire: six faces of a cube around it.
@@ -755,7 +830,7 @@ impl ScenePass {
             if self.lights.shadowed.is_some() {
                 pass.set_pipeline(&self.pipelines.shadow);
                 pass.set_bind_group(0, &self.cascade_bind_group, &[((CASCADES * SHADOWED_VIEWS + face) as u64 * self.cascade_stride) as u32]);
-                self.draw_scene(&mut pass, scene, 1);
+                self.draw_scene(&mut pass, scene, frame.broken, 1);
             }
         }
 
@@ -781,7 +856,7 @@ impl ScenePass {
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
-                self.draw_scene(&mut pass, scene, 2);
+                self.draw_scene(&mut pass, scene, frame.broken, 2);
             }
         }
         {
@@ -807,7 +882,13 @@ impl ScenePass {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
                 pass.set_pipeline(&self.pipelines.opaque);
-                self.draw_scene(&mut pass, scene, 2);
+                self.draw_scene(&mut pass, scene, frame.broken, 2);
+                if letter_count > 0 {
+                    pass.set_pipeline(&self.pipelines.letters);
+                    pass.set_bind_group(2, &self.object_bind_group, &[0]);
+                    pass.set_vertex_buffer(0, self.letter_buffer.slice(..));
+                    pass.draw(0..6, 0..letter_count as u32);
+                }
                 pass.set_pipeline(&self.pipelines.sky);
                 pass.set_bind_group(2, &self.object_bind_group, &[0]);
                 pass.draw(0..3, 0..1);

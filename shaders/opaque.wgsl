@@ -255,6 +255,85 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     return vec4<f32>(colour, glyphs.revealed);
 }
 
+// ---- loose letters: what a broken thing comes apart into ----
+
+struct LetterInput {
+    @builtin(vertex_index) vertex: u32,
+    @location(0) position: vec3<f32>,
+    @location(1) rotation: vec4<f32>,
+    @location(2) material: u32,
+    @location(3) seed: u32,
+}
+
+struct LetterVaryings {
+    @builtin(position) position: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) @interpolate(flat) material: u32,
+    @location(4) @interpolate(flat) seed: u32,
+}
+
+// Half the side of a loose letter, in metres. Matches `LETTER_HALF` in the rules.
+const LETTER_HALF: f32 = 0.0064;
+
+fn turn(q: vec4<f32>, v: vec3<f32>) -> vec3<f32> {
+    return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+}
+
+@vertex
+fn vs_letter(in: LetterInput) -> LetterVaryings {
+    let corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
+    );
+    let corner = corners[in.vertex];
+    let world = in.position + turn(in.rotation, vec3<f32>(corner * LETTER_HALF, 0.0));
+    var out: LetterVaryings;
+    out.position = view.view_proj * vec4<f32>(world, 1.0);
+    out.world = world;
+    out.normal = turn(in.rotation, vec3<f32>(0.0, 0.0, 1.0));
+    out.uv = vec2<f32>(corner.x, -corner.y) * 0.5 + 0.5;
+    out.material = in.material;
+    out.seed = in.seed;
+    return out;
+}
+
+@fragment
+fn fs_letter(in: LetterVaryings) -> @location(0) vec4<f32> {
+    // How tall the letter is on screen, in pixels.
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    let h = 1.0 / max(max(length(du), length(dv)), 1.0e-5);
+    // Too small to read, it is a chip of its material and no letter shows: the fine
+    // print is never seen from afar, loose or not.
+    let legible = smoothstep(4.0, 7.0, h);
+    let character = family_character(in.material, in.seed);
+    let glyph = cell_glyph(character - 32u, in.uv, du, dv, h, 0.6);
+    let cover = mix(0.6, glyph.cover, legible);
+    if cover < 0.04 {
+        discard;
+    }
+    if view.viewport.w > 0.5 {
+        return vec4<f32>(vec3<f32>(legible * 100.0), cover);
+    }
+
+    // The colour of the thing it was part of, taken broadly and deepened: a loose
+    // letter is ink without its page, and must read against whatever it lies on.
+    let place = vec2<f32>(f32(in.seed & 0xffu), f32((in.seed >> 8u) & 0xffu)) / 255.0;
+    let colour_texel = textureSampleLevel(material_colour, material_sampler, place, in.material, 4.0);
+    let normal_texel = textureSampleLevel(material_normal, material_sampler, place, in.material, 4.0);
+    let to_eye = view.eye_time.xyz - in.world;
+    var n = normalize(in.normal);
+    if dot(n, to_eye) < 0.0 {
+        n = -n;
+    }
+    let surface = Surface(colour_texel.rgb * colour_texel.rgb * 0.55, n, normal_texel.z, colour_texel.a);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0);
+    let colour = light_surface(surface, as_surface, n, 0.0);
+    return vec4<f32>(colour, cover);
+}
+
 // ---- the sky, drawn behind everything from one triangle ----
 
 struct SkyVaryings {

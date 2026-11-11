@@ -2,6 +2,31 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-11: loose letters
+
+**Each letter is its own body, against the world only.** Letter-on-letter contact would
+cost a broad phase over tens of thousands of bodies every step, and a spill of letters on
+a floor reads right without it. They land on the ground and on the scene's solid boxes;
+a letter that comes to rest on another's place simply lies a hair above or below it, each
+at a height set by its seed, so that overlapping letters never fight for depth.
+
+**A letter pushed out of a box leaves by the nearest face that opens into free space.**
+The first version took the nearest face, and a letter in the corner where the doorstep
+meets the wall was handed between them and came to rest inside the wall.
+
+**The scene keeps its boxes for the rules.** `VLMKSCN2` adds the static boxes as
+axis-aligned solids, and each object's boxes as its breakable parts. A turned box is given
+the box that bounds it, which is exact for everything in the yard.
+
+**Drawn as instances, sent only when they move.** One instance a letter (position, turn,
+material, seed); the buffer is rewritten only on the steps where letters moved, so a
+settled spill costs only its drawing. They are drawn after the opaque surfaces in the same
+pass, writing depth, with alpha to coverage cutting out the character. They are not in the
+shadow maps yet.
+
+**Deterministic.** The burst uses the rules' own random numbers, and the world's hash
+covers every letter, so a break replays exactly.
+
 ## 2026-11-11: the depth looks
 
 **The lattice is three families of planes, not a volume march.** Planes parallel to the
