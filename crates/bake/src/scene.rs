@@ -66,6 +66,13 @@ struct AuthoredText {
     level: u32,
     /// The stretches of surface it runs across, in reading order.
     runs: Vec<AuthoredRun>,
+    /// Rows from one line to the next. 2 leaves a blank row between lines.
+    #[serde(default = "one_row")]
+    leading: u32,
+}
+
+fn one_row() -> u32 {
+    1
 }
 
 #[derive(Deserialize)]
@@ -225,7 +232,10 @@ fn lay_out_texts(
             let b = run.block.unwrap_or(bounds);
             let block = CellRect { x0: to_cells(b.0, true), y0: to_cells(b.1, true), x1: to_cells(b.2, false), y1: to_cells(b.3, false) };
             let mut layout = Layout::on_surface(block, &surface);
-            next_word += layout.flow(&words[next_word..], &mut (0, 0));
+            layout.leading = text.leading.max(1);
+            // Start a row down, so that the plate has a margin above the first line.
+            next_word += layout.flow(&words[next_word..], &mut (1, 1));
+            layout.clear_plate();
 
             if shelf_x + layout.width > SHEET {
                 shelf_x = 0;

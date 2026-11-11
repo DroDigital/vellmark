@@ -22,6 +22,9 @@ pub struct Layout {
     covered: Vec<bool>,
     /// Row by row from the top. 0 where no text has been set.
     pub chars: Vec<u8>,
+    /// Rows from one line of text to the next. 1 sets every row; 2 leaves a blank row
+    /// between lines, which is what makes a block of text easy to read.
+    pub leading: u32,
 }
 
 impl Layout {
@@ -56,7 +59,7 @@ impl Layout {
                     surface.iter().any(|r| x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1);
             }
         }
-        Self { left: block.x0, top: block.y1 - 1, width, height, covered, chars: vec![0; (width * height) as usize] }
+        Self { left: block.x0, top: block.y1 - 1, width, height, covered, chars: vec![0; (width * height) as usize], leading: 1 }
     }
 
     /// Sets words from `words` into the page, starting where the last call stopped.
@@ -71,7 +74,7 @@ impl Layout {
                     break 'words;
                 }
                 if col + len > self.width {
-                    *cursor = (0, row + 1);
+                    *cursor = (0, row + self.leading);
                     continue;
                 }
                 let at = (row * self.width + col) as usize;
@@ -85,7 +88,7 @@ impl Layout {
                     });
                     *cursor = match next {
                         Some(c) if c > col => (c, row),
-                        _ => (0, row + 1),
+                        _ => (0, row + self.leading),
                     };
                     continue;
                 }
@@ -101,6 +104,26 @@ impl Layout {
             }
         }
         placed
+    }
+
+    /// Clears the grain from every cell of the block that the text has passed: the
+    /// rows it used, the blank rows between its lines, and a row of margin above and
+    /// below. A passage then sits on a quiet plate of its own, not in the wall's noise.
+    pub fn clear_plate(&mut self) {
+        let width = self.width as usize;
+        let used: Vec<usize> = (0..self.height as usize)
+            .filter(|r| self.chars[r * width..(r + 1) * width].iter().any(|&c| c != 0))
+            .collect();
+        let (Some(&first), Some(&last)) = (used.first(), used.last()) else { return };
+        let (from, to) = (first.saturating_sub(1), (last + 1).min(self.height as usize - 1));
+        for row in from..=to {
+            for col in 0..width {
+                let i = row * width + col;
+                if self.chars[i] == 0 && self.covered[i] {
+                    self.chars[i] = b' ';
+                }
+            }
+        }
     }
 }
 
@@ -153,6 +176,16 @@ mod tests {
         // Two faces that meet in the middle of column 3, and a gap after 6.5.
         let layout = Layout::on_surface(block, &[(0.0, 0.0, 3.5, 1.0), (3.5, 0.0, 6.5, 1.0)]);
         assert_eq!(layout.covered, vec![true, true, true, true, true, true, false, false]);
+    }
+
+    #[test]
+    fn leading_leaves_blank_rows_and_the_plate_is_cleared() {
+        let block = CellRect { x0: 0, y0: 0, x1: 6, y1: 5 };
+        let mut layout = Layout::new(block, &[block]);
+        layout.leading = 2;
+        layout.flow(&["ONE", "TWO"], &mut (0, 1));
+        layout.clear_plate();
+        assert_eq!(rows(&layout), vec!["      ", "ONE   ", "      ", "TWO   ", "      "]);
     }
 
     #[test]

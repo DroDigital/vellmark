@@ -2,6 +2,33 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-11: the depth looks
+
+**The lattice is three families of planes, not a volume march.** Planes parallel to the
+surface carry the edges that run across and up the page; planes standing on the page
+carry the edges that run into it. A pixel's ray is followed through at most seven planes
+of each family, a pitch of six cells (7.7 cm) apart, and on each it lands on a character
+or on nothing. The parallax and the perspective are exact, because each pixel uses its
+own ray.
+
+**No line is drawn.** Only cells on the lattice's edges hold characters. Crossings are
+drawn brighter, since they are what the eye lines up into a frame.
+
+**Depth is lit as depth:** dimmer and cooler the deeper it lies (redder in the source),
+with a slow pulse travelling inward.
+
+**Written words are given thickness.** A written letter is drawn again four times
+behind itself across a fifth of its cell, in shade, so that from the side it is a small
+block. The lattice is hushed behind a passage, easing off over one cell at its edges.
+
+**A passage sits on a quiet plate.** The bake clears the grain from the rows a text
+uses, the blank rows between its lines, and a row of margin, and a text may ask for a
+blank row between lines (`leading: 2`). In the flat look a written cell is drawn 1.7
+times firmer than grain, and the finer grain under it is quietened to 0.3.
+
+**Thickness is baked for every vertex** as the box's extent along the face's normal. The
+lattice reaches that far and stops.
+
 ## 2026-11-11: Phase S01
 
 **The yard's materials are generated until the textures are approved.** The brief allows
