@@ -1,12 +1,16 @@
-//! A colour grade: how a place's light is coloured through the day, as keys by the hour
-//! that are blended between. One grade for each Quire; the Showcase has the Vale's.
+//! A place's grade: how its light is coloured and how thick its air is through the day,
+//! as keys by the hour that are blended between. One for each Quire; the Showcase has
+//! the Vale's.
 //!
 //! ```text
-//! magic "VLMKGRD1", count u32, then count keys of 11 f32:
-//! hour, lift rgb, gamma rgb, gain rgb, saturation
+//! magic "VLMKGRD2", count u32, then count keys of 14 f32:
+//! hour, lift rgb, gamma rgb, gain rgb, saturation,
+//! fog density (per metre at its floor), fog floor (metres above the sea), fog falloff
+//! (metres in which it thins to a third)
 //! ```
 
-const MAGIC: &[u8; 8] = b"VLMKGRD1";
+const MAGIC: &[u8; 8] = b"VLMKGRD2";
+const KEY: usize = 14 * 4;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GradeKey {
@@ -20,10 +24,16 @@ pub struct GradeKey {
     pub gain: [f32; 3],
     /// 1 leaves colour as it is; less greys it, more strengthens it.
     pub saturation: f32,
+    /// The mist: how thick at its floor, per metre; the height of its floor; and how
+    /// quickly it thins above it.
+    pub fog_density: f32,
+    pub fog_floor: f32,
+    pub fog_falloff: f32,
 }
 
 impl GradeKey {
-    pub const NEUTRAL: Self = Self { hour: 0.0, lift: [0.0; 3], gamma: [1.0; 3], gain: [1.0; 3], saturation: 1.0 };
+    pub const NEUTRAL: Self =
+        Self { hour: 0.0, lift: [0.0; 3], gamma: [1.0; 3], gain: [1.0; 3], saturation: 1.0, fog_density: 0.0, fog_floor: 0.0, fog_falloff: 10.0 };
 
     fn mix(&self, other: &Self, t: f32) -> Self {
         let m = |a: [f32; 3], b: [f32; 3]| [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
@@ -33,6 +43,9 @@ impl GradeKey {
             gamma: m(self.gamma, other.gamma),
             gain: m(self.gain, other.gain),
             saturation: self.saturation + (other.saturation - self.saturation) * t,
+            fog_density: self.fog_density + (other.fog_density - self.fog_density) * t,
+            fog_floor: self.fog_floor + (other.fog_floor - self.fog_floor) * t,
+            fog_falloff: self.fog_falloff + (other.fog_falloff - self.fog_falloff) * t,
         }
     }
 }
@@ -65,7 +78,10 @@ impl Grade {
         let mut out = MAGIC.to_vec();
         out.extend_from_slice(&(self.keys.len() as u32).to_le_bytes());
         for k in &self.keys {
-            let values = [k.hour, k.lift[0], k.lift[1], k.lift[2], k.gamma[0], k.gamma[1], k.gamma[2], k.gain[0], k.gain[1], k.gain[2], k.saturation];
+            let values = [
+                k.hour, k.lift[0], k.lift[1], k.lift[2], k.gamma[0], k.gamma[1], k.gamma[2], k.gain[0], k.gain[1], k.gain[2], k.saturation,
+                k.fog_density, k.fog_floor, k.fog_falloff,
+            ];
             for v in values {
                 out.extend_from_slice(&v.to_le_bytes());
             }
@@ -78,19 +94,22 @@ impl Grade {
             return Err("not a colour grade".into());
         }
         let count = u32::from_le_bytes(bytes[8..12].try_into().unwrap()) as usize;
-        if bytes.len() != 12 + count * 44 {
+        if bytes.len() != 12 + count * KEY {
             return Err("colour grade has the wrong length".into());
         }
         let f = |at: usize| f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap());
         let keys = (0..count)
             .map(|i| {
-                let o = 12 + i * 44;
+                let o = 12 + i * KEY;
                 GradeKey {
                     hour: f(o),
                     lift: [f(o + 4), f(o + 8), f(o + 12)],
                     gamma: [f(o + 16), f(o + 20), f(o + 24)],
                     gain: [f(o + 28), f(o + 32), f(o + 36)],
                     saturation: f(o + 40),
+                    fog_density: f(o + 44),
+                    fog_floor: f(o + 48),
+                    fog_falloff: f(o + 52),
                 }
             })
             .collect();

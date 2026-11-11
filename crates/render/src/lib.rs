@@ -4,6 +4,7 @@
 
 mod atlas;
 mod camera;
+mod fog;
 mod frame;
 mod lights;
 mod scene_pass;

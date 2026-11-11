@@ -7,6 +7,8 @@
     height: 540,
     shots: [
         (name: "dawn", from: (eye: (-104.0, 1.7, 112.0), yaw: 60.0, pitch: 4.0), hour: 6.4, above_ground: true, pair: true),
+        (name: "dawn_mist", from: (eye: (-104.0, 1.7, 112.0), yaw: 70.0, pitch: -6.0), hour: 6.7, above_ground: true, pair: true),
+        (name: "god_rays", from: (eye: (-150.0, 1.7, 60.0), yaw: 80.0, pitch: 2.0), hour: 6.5, above_ground: true, pair: true),
         (name: "morning", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: 2.0), hour: 9.0, above_ground: true, pair: true),
         (name: "noon", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: 12.0), hour: 13.0, above_ground: true, pair: true),
         (name: "dusk", from: (eye: (-104.0, 1.7, 112.0), yaw: -70.0, pitch: 3.0), hour: 18.4, above_ground: true, pair: true),

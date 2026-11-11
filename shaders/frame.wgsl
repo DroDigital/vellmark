@@ -34,7 +34,8 @@ struct ViewUniform {
     effects: vec4<f32>,
     // xyz: towards the moon. w: how much of its face is lit, 0 to 1.
     moon_dir: vec4<f32>,
-    // x: how much of the sky is cloud, 0 to 1.
+    // x: how much of the sky is cloud, 0 to 1. y: the mist's density per metre at its
+    // floor. z: the height of its floor. w: the metres in which it thins to a third.
     sky: vec4<f32>,
 }
 

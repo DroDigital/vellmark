@@ -2,6 +2,30 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-11: the air (S02-T04)
+
+**A froxel volume per view:** 160 × 90 × 64 cells, slices spaced exponentially from
+0.5 m to 400 m. A compute pass lights each cell's mist (sun through the shadow maps with
+a forward-scattering phase of g 0.55, and the sky's light) and a second sums each column
+front to back, energy-conserving within each cell. Surfaces and the sky read the sum with
+one filtered sample. Its strength by the hour is in the place's grade (`VLMKGRD2`): thick
+in the river's hollow at dawn, nearly gone at noon.
+
+**God rays** are the shadow maps inside the mist. The last cascade now reaches 260 m, so
+that the hills shadow it across the valley. Their shafts are faint on bare hills; trees
+(S02-T08) and buildings (S06) will cut sharper ones. Nothing more is needed in the fog.
+
+**Aerial perspective** beyond the mist is the atmosphere's own extinction over the
+distance at the path's mean height, with the horizon's light filling in: far hills go
+blue and pale.
+
+**Shade.** Single scattering leaves out most of the light in shade, so the sky's light on
+surfaces is raised by half (`MULTIPLE`), and the sunlit ground sends a little back.
+The yard's reference images were accepted again for these and for the mist.
+
+**The fog's shaders are made at startup only:** a changed `fog.wgsl` needs a restart, not
+a hot reload.
+
 ## 2026-11-11: the sky (S02-T03)
 
 **One atmosphere, twice.** Single scattering by air (Rayleigh), haze (Mie, g 0.8), and

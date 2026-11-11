@@ -49,6 +49,8 @@ pub struct Atmosphere {
     pub moon_lit: f32,
     /// How much of the sky is cloud, 0 to 1. The weather (S02-T10) will drive this.
     pub cloud_cover: f32,
+    /// The mist: density per metre at its floor, the floor's height, and its falloff.
+    pub fog: [f32; 3],
     /// Towards whichever of the sun and the moon is casting shadows.
     pub light_dir: Vec3,
     pub light_colour: Vec3,
@@ -78,6 +80,7 @@ impl Atmosphere {
             moon_dir,
             moon_lit: sky.moon_lit,
             cloud_cover: 0.38,
+            fog: [0.0, 0.0, 10.0],
             light_dir,
             light_colour,
             sky_zenith: sky.zenith,
@@ -109,7 +112,9 @@ impl Default for GlyphTuning {
 }
 
 /// The far edge of each cascade, in metres in front of the eye.
-pub const CASCADE_FAR: [f32; CASCADES] = [7.0, 26.0, 90.0];
+/// The last reaches across the valley, so that hills cast their shadows into the mist:
+/// that is what god rays are.
+pub const CASCADE_FAR: [f32; CASCADES] = [7.0, 26.0, 260.0];
 
 /// The view-projection of one shadow cascade: an orthographic box around the part of
 /// the view between `near` and `far`, seen from the light, moved in whole texels so
@@ -193,7 +198,7 @@ pub fn view_uniform(
         viewport_origin: [origin.0, origin.1, 0.0, 0.0],
         effects: [dive, lamps, tuning.look as f32, 0.0],
         moon_dir: atmosphere.moon_dir.extend(atmosphere.moon_lit).to_array(),
-        sky: [atmosphere.cloud_cover, 0.0, 0.0, 0.0],
+        sky: [atmosphere.cloud_cover, atmosphere.fog[0], atmosphere.fog[1], atmosphere.fog[2]],
     }
 }
 

@@ -28,6 +28,10 @@ pub const MOON: f32 = 0.05;
 pub const NIGHT_GLOW: Vec3 = Vec3::new(0.0016, 0.0022, 0.0042);
 /// The eye's height above the sea for the sky, wherever it is in the valley.
 const EYE: f32 = 120.0;
+/// Single scattering leaves out the light the air scatters more than once, which is
+/// most of the light in shade. The sky's light on surfaces is raised by this to stand
+/// for it; the sky as seen is not.
+pub const MULTIPLE: f32 = 1.5;
 
 /// How much air, haze, and ozone there is at a height, as shares of sea level's.
 fn density(height: f32) -> (f32, f32, f32) {
@@ -136,12 +140,13 @@ pub fn sky_light(sun_dir: Vec3, moon_dir: Vec3) -> SkyLight {
     let moon_strength = SUN * MOON * moon_lit;
     let moon = transmittance(EYE, moon_dir.y) * moon_strength;
     let sky = |dir: Vec3| radiance(dir, sun_dir) * SUN + radiance(dir, moon_dir) * moon_strength + NIGHT_GLOW;
-    let zenith = sky(Vec3::Y);
+    let zenith = sky(Vec3::Y) * MULTIPLE;
     let horizon = [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z]
         .iter()
         .map(|d| sky((*d + Vec3::Y * 0.09).normalize()))
         .sum::<Vec3>()
-        * 0.25;
+        * 0.25
+        * MULTIPLE;
     SkyLight { sun, moon, moon_lit, zenith, horizon }
 }
 

@@ -16,6 +16,36 @@ struct ObjectUniform {
 @group(0) @binding(3) var<uniform> lights: Lights;
 @group(0) @binding(4) var light_clusters: texture_2d_array<u32>;
 @group(0) @binding(5) var light_shadow: texture_depth_cube;
+@group(0) @binding(6) var fog_volume: texture_3d<f32>;
+@group(0) @binding(7) var fog_sampler: sampler;
+
+const FOG_NEAR: f32 = 0.5;
+const FOG_FAR: f32 = 400.0;
+
+// The mist between the eye and a place, from the fog volume: how much of the place's
+// light gets through, and the mist's own light. `depth_in_view` is the distance in front
+// of the eye; `pixel` is the place on the view, in pixels.
+fn mist_between(depth_in_view: f32, pixel: vec2<f32>) -> vec4<f32> {
+    let uv = clamp(pixel / view.viewport.xy, vec2<f32>(0.0), vec2<f32>(1.0));
+    let slice = log(max(depth_in_view, FOG_NEAR) / FOG_NEAR) / log(FOG_FAR / FOG_NEAR);
+    return textureSampleLevel(fog_volume, fog_sampler, vec3<f32>(uv, clamp(slice - 0.5 / 64.0, 0.0, 1.0)), 0.0);
+}
+
+// A surface's light as it reaches the eye: through the mist, then through the air, which
+// takes blue light out and puts the sky's in, so that the far hills go blue.
+fn through_air(colour: vec3<f32>, world: vec3<f32>, pixel: vec2<f32>) -> vec3<f32> {
+    let to = world - view.eye_time.xyz;
+    let distance = max(length(to), 1.0e-3);
+    let depth_in_view = -(view.view * vec4<f32>(world, 1.0)).z;
+    let mist = mist_between(depth_in_view, pixel);
+    let misted = colour * mist.a + mist.rgb;
+    let dir = to / distance;
+    let height = max((world.y + view.eye_time.y) * 0.5, 0.0);
+    let extinction = RAYLEIGH * exp(-height / 8000.0) + vec3<f32>(MIE_EXTINCTION * exp(-height / 1200.0));
+    let through = exp(-extinction * distance);
+    let glow = view.light_colour.rgb * 0.03 * pow(max(dot(dir, view.light_dir_hour.xyz), 0.0), 6.0);
+    return misted * through + (view.sky_horizon.rgb + glow) * (1.0 - through);
+}
 
 struct PointLight {
     position_radius: vec4<f32>,
@@ -174,7 +204,9 @@ fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f
     let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
     let shadow = sun_shadow(in.world, flat_normal, depth_in_view);
     var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
-    colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb);
+    // What the ground sends back: the sky's light on it, and the sun's where it is lit.
+    let ground = view.sky_horizon.rgb * 0.35 + view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * 0.06;
+    colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb, ground);
     colour += shade_point_lights(surface, in.world, flat_normal, to_eye, in.position.xy - view.viewport_origin.xy, depth_in_view);
     colour += surface.albedo * glow * view.effects.y;
     return colour;
@@ -259,6 +291,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
             colour = glyph_depth(colour, in.anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), in.material, in.page, in.thickness, glyphs.ink, look, win);
         }
     }
+    colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
     if reading > 0.0 {
         // The text frame: colour drains to paper and ink, and light is only weight.
         // Divided by exposure so that paper is the same paper at noon and at night.
@@ -344,7 +377,7 @@ fn fs_letter(in: LetterVaryings) -> @location(0) vec4<f32> {
     }
     let surface = Surface(colour_texel.rgb * colour_texel.rgb * 0.55, n, normal_texel.z, colour_texel.a);
     let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0);
-    let colour = light_surface(surface, as_surface, n, 0.0);
+    let colour = through_air(light_surface(surface, as_surface, n, 0.0), in.world, in.position.xy - view.viewport_origin.xy);
     return vec4<f32>(colour, cover);
 }
 
@@ -403,6 +436,9 @@ fn fs_sky(in: SkyVaryings) -> @location(0) vec4<f32> {
             colour = mix(colour, colour * 0.2 + shine, edge * (1.0 - cloud));
         }
     }
+    // The mist in front of the sky: the god rays of a low sun are seen against it.
+    let mist = mist_between(FOG_FAR, in.position.xy - view.viewport_origin.xy);
+    colour = colour * mist.a + mist.rgb;
     if view.switches.y > 0.0 {
         // In close reading the sky is bare paper, a little darker towards the zenith.
         let paper = vec3<f32>(0.50, 0.46, 0.37) * (1.0 - 0.25 * clamp(dir.y, 0.0, 1.0)) / view.viewport.z;
@@ -595,6 +631,7 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
         let win = Window(anchor, tangent, bitangent, colour / albedo, 0.0);
         colour = glyph_depth(colour, anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), material, 0u, 1.2, glyphs.ink, look, win);
     }
+    colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
     if view.switches.y > 0.0 {
         let text = mix(paper_of(colour_texel.rgb), ink_of(colour_texel.rgb), glyphs.ink) / view.viewport.z;
         colour = mix(colour, text, view.switches.y);

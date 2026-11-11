@@ -13,6 +13,7 @@ struct Key {
     gamma: (f32, f32, f32),
     gain: (f32, f32, f32),
     saturation: f32,
+    fog: (f32, f32, f32),
 }
 
 /// Every grade in the folder, as (key, bytes).
@@ -29,7 +30,16 @@ pub fn bake_all(folder: &Path) -> Result<Vec<(String, Vec<u8>)>, BakeError> {
         let grade = Grade {
             keys: keys
                 .iter()
-                .map(|k| GradeKey { hour: k.hour, lift: t(k.lift), gamma: t(k.gamma), gain: t(k.gain), saturation: k.saturation })
+                .map(|k| GradeKey {
+                    hour: k.hour,
+                    lift: t(k.lift),
+                    gamma: t(k.gamma),
+                    gain: t(k.gain),
+                    saturation: k.saturation,
+                    fog_density: k.fog.0,
+                    fog_floor: k.fog.1,
+                    fog_falloff: k.fog.2,
+                })
                 .collect(),
         };
         out.push((format!("grade.{name}"), grade.to_bytes()));

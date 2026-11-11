@@ -88,6 +88,7 @@ pub struct ScenePass {
     shadow_sampler: wgpu::Sampler,
     shadow_layers: Vec<wgpu::TextureView>,
     frame_bind_groups: Vec<wgpu::BindGroup>,
+    fog: crate::fog::FogVolume,
     targets: Option<Targets>,
     target_format: wgpu::TextureFormat,
     /// One instance for each loose letter, and the step they were last sent at.
@@ -167,6 +168,23 @@ impl ScenePass {
                         view_dimension: wgpu::TextureViewDimension::Cube,
                         multisampled: false,
                     },
+                    count: None,
+                },
+                // The fog volume, summed along each line of sight, and its sampler.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D3,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
             ],
@@ -293,14 +311,21 @@ impl ScenePass {
             compare: Some(wgpu::CompareFunction::LessEqual),
             ..Default::default()
         });
-        let frame_bind_groups = (0..SHADOWED_VIEWS as u32)
+        let shadow_arrays: Vec<wgpu::TextureView> = (0..SHADOWED_VIEWS as u32)
             .map(|v| {
-                let array = shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+                shadow_texture.create_view(&wgpu::TextureViewDescriptor {
                     dimension: Some(wgpu::TextureViewDimension::D2Array),
                     base_array_layer: v * CASCADES as u32,
                     array_layer_count: Some(CASCADES as u32),
                     ..Default::default()
-                });
+                })
+            })
+            .collect();
+        let fog_module = shaders.module(gpu, "fog")?;
+        let fog = crate::fog::FogVolume::new(gpu, registry, &fog_module, SHADOWED_VIEWS, &view_buffer, view_size, &shadow_arrays, &shadow_sampler);
+        let frame_bind_groups = (0..SHADOWED_VIEWS)
+            .map(|v| {
+                let array = &shadow_arrays[v];
                 device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("frame"),
                     layout: &frame_layout,
@@ -313,11 +338,13 @@ impl ScenePass {
                                 size: wgpu::BufferSize::new(view_size),
                             }),
                         },
-                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&array) },
+                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(array) },
                         wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&shadow_sampler) },
                         wgpu::BindGroupEntry { binding: 3, resource: lights.uniform.as_entire_binding() },
                         wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&lights.cluster_view) },
                         wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&lights.cube_view) },
+                        wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&fog.integrated_views[v]) },
+                        wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
                     ],
                 })
             })
@@ -356,6 +383,7 @@ impl ScenePass {
             shadow_sampler,
             shadow_layers,
             frame_bind_groups,
+            fog,
             targets: None,
             target_format,
             letter_buffer: gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -838,7 +866,9 @@ impl ScenePass {
         timers: &mut PassTimers,
     ) {
         let _ = &self.shadow_sampler;
-        let atmosphere = Atmosphere::at(frame.time_of_day);
+        let mut atmosphere = Atmosphere::at(frame.time_of_day);
+        let air = self.grade.at(frame.time_of_day);
+        atmosphere.fog = [air.fog_density, air.fog_floor, air.fog_falloff];
         let views = &frame.views[..frame.views.len().min(MAX_VIEWS)];
         let letter_count = frame.letters.len().min(vellmark_sim::debris::MAX_LETTERS);
         if self.letters_sent != Some((frame.letters_step, letter_count)) {
@@ -976,6 +1006,13 @@ impl ScenePass {
         let targets = self.targets.as_ref().unwrap();
         let viewports: Vec<(f32, f32, f32, f32)> = views.iter().map(|v| v.viewport.pixels(target_size)).collect();
 
+        // The fog, now that the shadow maps it reads are drawn.
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("fog"), timestamp_writes: timers.compute_pass("fog") });
+            for v in 0..views.len().min(SHADOWED_VIEWS) {
+                self.fog.dispatch(&mut pass, v, (v as u64 * self.view_stride) as u32);
+            }
+        }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("depth"),
@@ -1090,3 +1127,4 @@ impl ScenePass {
         }
     }
 }
+

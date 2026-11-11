@@ -45,10 +45,10 @@ fn shade_light(s: Surface, v: vec3<f32>, l: vec3<f32>, radiance: vec3<f32>) -> v
     return (diffuse + specular) * radiance * n_dot_l;
 }
 
-// Light from the whole sky: brighter from above, with a little bounced from the ground.
-fn shade_sky(s: Surface, v: vec3<f32>, zenith: vec3<f32>, horizon: vec3<f32>) -> vec3<f32> {
+// Light from the whole sky: brighter from above, and from below what the ground sends
+// back, which `ground` is.
+fn shade_sky(s: Surface, v: vec3<f32>, zenith: vec3<f32>, horizon: vec3<f32>, ground: vec3<f32>) -> vec3<f32> {
     let up = s.normal.y * 0.5 + 0.5;
-    let ground = horizon * 0.35;
     let irradiance = mix(ground, mix(horizon, zenith, 0.6), up);
     let f0 = mix(vec3<f32>(0.04), s.albedo, s.metal);
     let diffuse = (1.0 - s.metal) * s.albedo * irradiance;
