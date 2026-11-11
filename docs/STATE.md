@@ -13,8 +13,8 @@
 
 ## Lane: Render
 
-**Done:** S02-T02, the terrain drawn: blended ground, rock by slope and height, letters per cell, shadows, rings cut where finer ones draw. Run the game with `--scene valley` to stand on Tithe Hill. Evidence: `docs/evidence/S02/valley.jpg`, `captures/s02_valley.ron`. The river has no water until S02-T09, and the sky and air are S02-T03 and T04.
-**Next:** S02-T03, the sky.
+**Done:** S02-T02, the terrain drawn. Run the game with `--scene valley`.
+**Task:** S02-T03, the sky. Plan: a single-scattering atmosphere (Rayleigh and Mie) evaluated per sky pixel and on the CPU for the sun's colour and the sky's ambient light; the sun's disc with limb darkening; the moon with its phase and seas that suggest an `@`; a turning star field; two cloud layers; and the Vale's colour grade by the hour, as data.
 
 ## Lane: Sim
 
