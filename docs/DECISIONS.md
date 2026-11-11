@@ -14,6 +14,19 @@ own ray.
 **No line is drawn.** Only cells on the lattice's edges hold characters. Crossings are
 drawn brighter, since they are what the eye lines up into a frame.
 
+**The lattice is fixed in the world, not in any surface.** It was first laid out on each
+surface's own page, so it was cut off wherever one thing met another. It is now one
+cubic grid along north, east, and up, and every surface is a window onto it: a wall, the
+frame of the door in it, and the ground at its foot all show the same grid, unbroken
+where they meet. Which character stands in a cell no longer depends on the material in
+front of it, only which alphabet it is drawn from. Its fog is measured in metres, not in
+shares of a thing's thickness, so a thin thing beside a thick one shows no seam, and a
+thin thing is seen into by at least a quarter of a metre.
+
+**The eye sees further in the closer it comes.** The fog between the letters thins with
+nearness: from two metres only the first centimetres can be made out, at arm's length
+the far side of a wall.
+
 **Nothing in a depth look is anything but a character.** The texture was first taken
 away with an ordered dither, whose dots are small squares, and the lattice's edges were
 solid rows of characters that read as bars. Both were geometry that is not writing, and

@@ -196,6 +196,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let colour_texel = textureSample(material_colour, material_sampler, uv, in.material);
     let normal_texel = textureSample(material_normal, material_sampler, uv, in.material);
     let footprint = AnchorFootprint(dpdx(in.anchor), dpdy(in.anchor));
+    let world = WorldFootprint(in.world, dpdx(in.world), dpdy(in.world));
 
     let n = normalize(in.normal);
     let t = normalize(in.tangent.xyz - n * dot(n, in.tangent.xyz));
@@ -241,7 +242,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         if look > 0u && glyphs.revealed > 0.0 && m.surface.w == 0.0 {
             let to_eye = normalize(view.eye_time.xyz - in.world);
             let in_frame = vec3<f32>(dot(to_eye, t), dot(to_eye, b), dot(to_eye, n));
-            colour = glyph_depth(colour, in.anchor, footprint, in_frame, length(view.eye_time.xyz - in.world), in.material, in.page, in.thickness, glyphs.ink, look);
+            colour = glyph_depth(colour, in.anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), in.material, in.page, in.thickness, glyphs.ink, look);
         }
     }
     if reading > 0.0 {

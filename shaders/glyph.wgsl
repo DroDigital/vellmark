@@ -420,13 +420,15 @@ fn depth_light(depth: f32, reach: f32, source: bool) -> vec3<f32> {
     return vec3<f32>(exp(-2.3 * clamp(depth / reach, 0.0, 1.0)));
 }
 
-// One character of the lattice, on some plane inside the thing. `q` is the place on
-// that plane in cells, `dqx` and `dqy` how far that moves across one pixel. Returns
-// how much of the pixel the character covers. The lattice is written in the thing's
-// own letters, or, in the source, in every printable character.
+// One character of the lattice, on one of its planes. `q` is the place on that plane
+// in cells, `dqx` and `dqy` how far that moves across one pixel. Returns how much of
+// the pixel the character covers. The lattice is written in the letters of whatever
+// it is seen through, or, in the source, in every printable character.
 fn lattice_glyph(q: vec2<f32>, dqx: vec2<f32>, dqy: vec2<f32>, salt: i32, material: u32, every: bool, tremble: f32) -> f32 {
     let cell = vec2<i32>(floor(q));
-    let pick = hash_cell(cell, salt, material);
+    // Which character stands in a cell does not depend on the material in front of
+    // it, only which alphabet it is drawn from: the lattice is one thing.
+    let pick = hash_cell(cell, salt, 0u);
     var character = family_character(material, pick);
     if every {
         character = 33u + pick % 94u;
@@ -447,117 +449,113 @@ fn lattice_glyph(q: vec2<f32>, dqx: vec2<f32>, dqy: vec2<f32>, salt: i32, materi
     return g.cover * smoothstep(2.5, 5.0, h);
 }
 
-// One lattice, at one scale. Inside the thing is a cubic grid of cells of side `size`,
-// with an edge every LATTICE cells on all three axes, as deep as `reach`. No line of it
-// is drawn. Along each edge stands a row of characters, and between the edges is
-// nothing but the dark; the eye joins the rows into a frame running away to a
-// vanishing point. The ray of this pixel is followed through the planes of the grid,
-// and on each plane it lands on a character or on nothing.
+// Where a point of the world is, and how that moves across one pixel.
+struct WorldFootprint {
+    at: vec3<f32>,
+    dx: vec3<f32>,
+    dy: vec3<f32>,
+}
+
+// One lattice, at one scale. The lattice does not belong to any surface. It is fixed
+// in the world: a cubic grid of cells of side `size`, with an edge every LATTICE cells
+// along north, east, and up, the same grid everywhere. A wall, the frame of the door
+// in it, the ground at its foot: each is only a window onto it, so where two things
+// meet, the lattice seen through one carries on, unbroken, through the other.
+//
+// No line of it is drawn. Along each edge stand separate characters, and between the
+// edges is nothing but the dark. The ray of this pixel is followed into the surface,
+// through the grid's planes, and on each plane it lands on a character or on nothing.
+// `ray` points from the eye into the surface. `steep` is how squarely it enters.
 // Returns the light gathered, and in w how much of the pixel the characters cover.
-fn lattice(anchor: vec2<f32>, footprint: AnchorFootprint, slide: vec2<f32>, steep: f32, distance: f32, size: f32, reach: f32, material: u32, look: u32, salt: i32) -> vec4<f32> {
+fn lattice(world: WorldFootprint, ray: vec3<f32>, steep: f32, distance: f32, size: f32, reach: f32, clarity: f32, material: u32, look: u32, salt: i32) -> vec4<f32> {
     let source = look == 3u;
     let pitch = size * f32(LATTICE);
     let tremble = select(0.0, 0.03, look == 1u);
-    // The source streams along its edges, into the dark.
+    // The source streams along its edges.
     let stream = select(0.0, view.eye_time.w * 2.2, source);
     var seen = vec3<f32>(0.0);
     var cover_so_far = 0.0;
-    let d_page_x = footprint.dx / size;
-    let d_page_y = footprint.dy / size;
+    // The furthest along the ray that is still inside the thing.
+    let far = reach / steep;
 
-    // Planes parallel to the surface, one pitch apart: the edges that run across the
-    // page and up it.
-    for (var k = 0; k <= LATTICE_STEPS; k++) {
-        let depth = pitch * f32(k);
-        if depth > reach {
-            break;
-        }
-        let q = (anchor - slide * depth) / size;
-        let cell = vec2<i32>(floor(q));
-        let across = on_line(cell.y);
-        let up = on_line(cell.x);
-        if !(across || up) {
-            continue;
-        }
-        // Along an edge, every other cell is left empty. Each character stands alone
-        // with dark on either side of it; the edge is only their alignment.
-        let crossing = across && up;
-        if !crossing && ((across && (cell.x & 1) != 0) || (up && (cell.y & 1) != 0)) {
-            continue;
-        }
-        // The larger the frame an edge belongs to, the brighter it is.
-        var gain = frame_rank(k);
-        if across {
-            gain *= frame_rank(cell.y / LATTICE - select(0, 1, cell.y < 0));
-        }
-        if up {
-            gain *= frame_rank(cell.x / LATTICE - select(0, 1, cell.x < 0));
-        }
-        gain = min(gain, 3.0);
-        // Further planes are further from the eye, and draw smaller.
-        let shrink = (distance + depth / steep) / distance;
-        var moved = q;
-        if across {
-            moved.x += stream;
-        } else {
-            moved.y += stream;
-        }
-        let c = lattice_glyph(moved, d_page_x * shrink, d_page_y * shrink, salt + 20 + k, material, source, tremble);
-        seen += (1.0 - cover_so_far) * c * gain * depth_light(depth, reach, source);
-        cover_so_far += (1.0 - cover_so_far) * c;
-    }
-
-    // Planes that stand on the page and run into it: the edges that run away from the
-    // eye. On each, the ray's place is (depth, the other page coordinate).
-    for (var axis = 0; axis < 2; axis++) {
-        let along = select(slide.y, slide.x, axis == 0);
+    for (var axis = 0; axis < 3; axis++) {
+        let along = ray[axis];
         if abs(along) < 0.03 {
-            // Looking straight down these planes: their edges are end on, a point each.
+            // Looking straight down these planes: nothing of them faces the eye.
             continue;
         }
-        let here = select(anchor.y, anchor.x, axis == 0);
-        let other = select(anchor.x, anchor.y, axis == 0);
-        let other_slide = select(slide.x, slide.y, axis == 0);
-        let d_here = vec2<f32>(select(footprint.dx.y, footprint.dx.x, axis == 0), select(footprint.dy.y, footprint.dy.x, axis == 0));
-        let d_other = vec2<f32>(select(footprint.dx.x, footprint.dx.y, axis == 0), select(footprint.dy.x, footprint.dy.y, axis == 0));
-        // The ray moves towards smaller coordinates when it slides the positive way.
-        let direction = -sign(along);
-        var plane = floor(here / pitch);
+        // The two directions that lie in these planes. On an upright plane the second
+        // is up, so that its characters stand the right way.
+        var a = 0;
+        var b = 1;
+        if axis == 0 {
+            a = 2;
+        } else if axis == 1 {
+            b = 2;
+        }
+        let direction = sign(along);
+        var plane = floor(world.at[axis] / pitch);
         if direction > 0.0 {
             plane += 1.0;
         }
         for (var k = 0; k < LATTICE_STEPS; k++) {
-            let depth = (here - plane * pitch) / along;
+            let t = (plane * pitch - world.at[axis]) / along;
             let plane_rank = frame_rank(i32(plane));
+            let plane_salt = i32(plane) & 63;
             plane += direction;
-            if depth <= 0.0 {
+            if t <= 0.0 {
                 continue;
             }
-            if depth > reach {
+            if t > far {
                 break;
             }
-            let place = other - other_slide * depth;
-            let q = vec2<f32>(depth, place) / size;
-            if !on_line(i32(floor(q.y))) {
+            let hit = world.at + ray * t;
+            let q = vec2<f32>(hit[a], hit[b]) / size;
+            let cell = vec2<i32>(floor(q));
+            // An edge is where the grid's lines on this plane run.
+            let line_a = on_line(cell.x);
+            let line_b = on_line(cell.y);
+            if !(line_a || line_b) {
                 continue;
             }
-            // Every other cell along the edge is left empty, as above.
-            if (i32(floor(q.x)) & 1) != 0 {
+            // Along an edge, every other cell is left empty. Each character stands
+            // alone with dark on either side of it; the edge is only their alignment.
+            if !(line_a && line_b) && ((line_b && (cell.x & 1) != 0) || (line_a && (cell.y & 1) != 0)) {
                 continue;
             }
-            // How this plane's coordinates move across one pixel.
-            let d_depth = d_here / along;
-            let d_place = d_other - other_slide * d_depth;
-            let dqx = vec2<f32>(d_depth.x, d_place.x) / size;
-            let dqy = vec2<f32>(d_depth.y, d_place.y) / size;
-            let row = i32(floor(q.y));
-            let gain = min(plane_rank * frame_rank(row / LATTICE - select(0, 1, row < 0)), 3.0);
-            let c = lattice_glyph(q + vec2<f32>(stream, 0.0), dqx, dqy, salt + 60 + axis, material, source, tremble);
-            seen += (1.0 - cover_so_far) * c * gain * depth_light(depth, reach, source);
+            // How this plane's coordinates move across one pixel: the surface point
+            // moves, and the ray, held steady, carries that to the plane. Further
+            // planes are further from the eye, and draw smaller.
+            let grow = (distance + t) / distance;
+            let tx = world.dx[axis] / along;
+            let ty = world.dy[axis] / along;
+            let dqx = vec2<f32>(world.dx[a] - ray[a] * tx, world.dx[b] - ray[b] * tx) * grow / size;
+            let dqy = vec2<f32>(world.dy[a] - ray[a] * ty, world.dy[b] - ray[b] * ty) * grow / size;
+            var moved = q;
+            if line_b {
+                moved.x += stream;
+            } else {
+                moved.y += stream;
+            }
+            let c = lattice_glyph(moved, dqx, dqy, salt + axis * 64 + plane_salt, material, source, tremble);
+            // The larger the frame an edge belongs to, the brighter it is.
+            var gain = plane_rank;
+            if line_a {
+                gain *= frame_rank(cell.x / LATTICE - select(0, 1, cell.x < 0));
+            }
+            if line_b {
+                gain *= frame_rank(cell.y / LATTICE - select(0, 1, cell.y < 0));
+            }
+            // The dark between the letters is a fog. It is measured in metres, not in
+            // shares of the thing's thickness, so that a thin thing beside a thick one
+            // dims at the same rate and no seam shows between them.
+            // And it thins as the eye comes closer: from two metres only the first few
+            // centimetres can be made out, and at arm's length the far side of a wall.
+            let fog = exp(-mix(16.0, 2.6, clarity) * t * steep);
+            seen += (1.0 - cover_so_far) * c * min(gain, 3.0) * fog;
             cover_so_far += (1.0 - cover_so_far) * c;
         }
     }
-
     return vec4<f32>(seen, cover_so_far);
 }
 
@@ -565,7 +563,7 @@ fn lattice(anchor: vec2<f32>, footprint: AnchorFootprint, slide: vec2<f32>, stee
 // surface's own frame: along the page, up the page, and out of it. `distance` is how
 // far the eye is. `thickness` is how deep the thing is behind this surface. `ink` is
 // how much of this pixel is a stroke of the surface's own fine print.
-fn glyph_depth(lit: vec3<f32>, anchor: vec2<f32>, footprint: AnchorFootprint, to_eye: vec3<f32>, distance: f32, material: u32, page: u32, thickness: f32, ink: f32, look: u32) -> vec3<f32> {
+fn glyph_depth(lit: vec3<f32>, anchor: vec2<f32>, footprint: AnchorFootprint, to_eye: vec3<f32>, world: WorldFootprint, ray: vec3<f32>, distance: f32, material: u32, page: u32, thickness: f32, ink: f32, look: u32) -> vec3<f32> {
     let squeeze = max(length(footprint.dx), length(footprint.dy));
     if squeeze <= 0.0 {
         return lit;
@@ -629,7 +627,11 @@ fn glyph_depth(lit: vec3<f32>, anchor: vec2<f32>, footprint: AnchorFootprint, to
     // is a second, a quarter the size, which shows when the eye is close enough to
     // read it: walking closer does not reach the end of it. It finds the next one.
     let gold = vec3<f32>(1.0, 0.58, 0.14) * 0.55 / view.viewport.z;
-    let reach = clamp(thickness, 0.08, 1.5);
+    // A thin thing is still a window onto the lattice: the eye sees at least a
+    // quarter of a metre into it, so that thin and thick things meet without a step.
+    let reach = clamp(thickness, 0.25, 1.2);
+    // How far in the eye can see grows as it comes closer.
+    let clarity = smoothstep(log2(8.0), log2(90.0), log2(max(h, 1.0e-3)));
     var seen = vec3<f32>(0.0);
     var cover_so_far = 0.0;
     for (var scale = 1; scale >= 0; scale--) {
@@ -643,7 +645,7 @@ fn glyph_depth(lit: vec3<f32>, anchor: vec2<f32>, footprint: AnchorFootprint, to
         // The small lattice does not run as deep: it fills the cube it stands in.
         let scale_reach = min(reach, cell_size * f32(LATTICE) * f32(LATTICE_STEPS));
         let strength = show * select(0.6, 1.0, scale == 1);
-        let l = lattice(anchor, footprint, slide, steep, distance, cell_size, scale_reach, material, look, scale * 200);
+        let l = lattice(world, ray, steep, distance, cell_size, scale_reach, clarity, material, look, scale * 200);
         seen += (1.0 - cover_so_far) * l.rgb * strength;
         cover_so_far += (1.0 - cover_so_far) * l.w * strength;
     }
