@@ -391,14 +391,6 @@ const LATTICE: i32 = 6;
 // The most planes of each family a ray is followed through.
 const LATTICE_STEPS: i32 = 7;
 
-// A 4 by 4 ordered dither threshold, 0 to 1, for a cell of the dither grid.
-fn bayer(cell: vec2<i32>) -> f32 {
-    let x = u32(cell.x) & 3u;
-    let y = u32(cell.y) & 3u;
-    let table = array<u32, 16>(0u, 8u, 2u, 10u, 12u, 4u, 14u, 6u, 3u, 11u, 1u, 9u, 15u, 7u, 13u, 5u);
-    return (f32(table[y * 4u + x]) + 0.5) / 16.0;
-}
-
 fn unit(h: u32) -> f32 {
     return f32(h & 0xffffu) / 65535.0;
 }
@@ -487,6 +479,12 @@ fn lattice(anchor: vec2<f32>, footprint: AnchorFootprint, slide: vec2<f32>, stee
         if !(across || up) {
             continue;
         }
+        // Along an edge, every other cell is left empty. Each character stands alone
+        // with dark on either side of it; the edge is only their alignment.
+        let crossing = across && up;
+        if !crossing && ((across && (cell.x & 1) != 0) || (up && (cell.y & 1) != 0)) {
+            continue;
+        }
         // The larger the frame an edge belongs to, the brighter it is.
         var gain = frame_rank(k);
         if across {
@@ -543,6 +541,10 @@ fn lattice(anchor: vec2<f32>, footprint: AnchorFootprint, slide: vec2<f32>, stee
             if !on_line(i32(floor(q.y))) {
                 continue;
             }
+            // Every other cell along the edge is left empty, as above.
+            if (i32(floor(q.x)) & 1) != 0 {
+                continue;
+            }
             // How this plane's coordinates move across one pixel.
             let d_depth = d_here / along;
             let d_place = d_other - other_slide * d_depth;
@@ -580,20 +582,17 @@ fn glyph_depth(lit: vec3<f32>, anchor: vec2<f32>, footprint: AnchorFootprint, to
     }
     let source = look == 3u;
 
-    // The realistic texture is taken away by an ordered dither, a few dots, then most.
-    var gone = near;
+    // The realistic texture is not cut away with any shape of its own. It retreats into
+    // the letters it was always made of: first it thins, and what is left of it is left
+    // only inside the strokes of the surface's fine print, each stroke still carrying
+    // the colour and the light of that spot. Nothing is on screen but characters.
+    let into_letters = smoothstep(0.0, 0.65, near);
+    var film = mix(1.0, ink, into_letters);
     if look == 2u {
-        gone = near * 0.6;
+        // The lattice look keeps a veil of the texture over what lies behind.
+        film = mix(1.0, max(ink, 0.42), into_letters);
     }
-    let dots = anchor / (size / 4.0);
-    let dot_pixels = h / 4.0;
-    let hole = step(bayer(vec2<i32>(floor(dots))), gone);
-    // Dots too small to draw cleanly are averaged: the surface thins before it breaks.
-    let crisp = smoothstep(1.2, 2.6, dot_pixels);
-    let film = mix(1.0 - gone, 1.0 - hole, crisp);
-    // The surface's scattered fine print goes with the texture; the lattice's own
-    // first layer, at the surface, takes its place.
-    var keep = max(film, ink * (1.0 - near));
+    var keep = film;
 
     // Written words come first. Where the surface carries a sentence its letters stand
     // whole at the front, and they are given what the solid wall could not give them:
@@ -618,7 +617,7 @@ fn glyph_depth(lit: vec3<f32>, anchor: vec2<f32>, footprint: AnchorFootprint, to
             body = max(body, side * (1.0 - 0.15 * f32(step)));
         }
         // Nothing else is left where words are written: no dots, no grain.
-        keep = mix(keep, film * (1.0 - near), presence);
+        keep = mix(keep, 0.0, presence * into_letters);
     }
     let hush = mix(1.0, 0.10, presence);
     if keep >= 0.999 && sentence <= 0.0 && body <= 0.0 {

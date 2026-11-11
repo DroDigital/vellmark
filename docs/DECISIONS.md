@@ -14,6 +14,13 @@ own ray.
 **No line is drawn.** Only cells on the lattice's edges hold characters. Crossings are
 drawn brighter, since they are what the eye lines up into a frame.
 
+**Nothing in a depth look is anything but a character.** The texture was first taken
+away with an ordered dither, whose dots are small squares, and the lattice's edges were
+solid rows of characters that read as bars. Both were geometry that is not writing, and
+the owner asked for it gone. Now the texture retreats into the strokes of the surface's
+own fine print, and along a lattice edge every other cell is empty, so each character
+stands alone and the grid is only their alignment.
+
 **The lattice is written in the thing's own letters, and lit only by depth.** A version
 ruled in ASCII's special characters, with a pulse, a colour shift with depth, glowing
 crossings, and loose drifting characters, was built and shown; the owner preferred the
