@@ -1,7 +1,7 @@
 # Build state
 
 **Phase file:** `phases/S02-the-ground.md` (S01's Look Gate deferred by the owner)
-**Status:** Waiting on owner: choose a depth look
+**Status:** In progress. The owner asked to continue; the flat look stays the default until they choose one
 
 ## Integration
 
@@ -20,7 +20,7 @@ Nothing yet.
 
 ## Lane: Content
 
-Nothing yet.
+**Task:** S02-T01, the terrain as tiles. Plan: a deterministic terrain bake (`crates/bake/src/terrain.rs`) shaped by `assets/terrain/valley.ron`, with hydraulic and thermal erosion, written as `VLMKTER1` tiles: the 512 m area at level 0 (1 m), a far ring at level 3 (8 m) out to 2 km, and the horizon at level 5 (32 m) with the white band to the north.
 
 ## Lane: Shell
 
