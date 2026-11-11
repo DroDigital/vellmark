@@ -9,3 +9,4 @@ publish.workspace = true
 [dependencies]
 glam.workspace = true
 vellmark-content.workspace = true
+vellmark-sim.workspace = true

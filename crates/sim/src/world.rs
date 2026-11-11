@@ -65,6 +65,7 @@ pub struct World {
     letters: Arc<Vec<LetterSnap>>,
     letters_step: u64,
     heat: Arc<Vec<(u64, f32)>>,
+    ground: Option<Arc<dyn crate::Ground>>,
 }
 
 impl World {
@@ -84,6 +85,7 @@ impl World {
             letters: Arc::default(),
             letters_step: 0,
             heat: Arc::default(),
+            ground: None,
         }
     }
 
@@ -146,6 +148,17 @@ impl World {
         self.heat = Arc::new(all);
     }
 
+    /// Gives the world ground to walk on. Without it the players walk on the level of
+    /// wherever they started, as in the yard.
+    pub fn set_ground(&mut self, ground: Arc<dyn crate::Ground>) {
+        self.ground = Some(ground);
+        for p in &mut self.players {
+            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.feet.x, p.feet.z)) {
+                p.feet.y = h;
+            }
+        }
+    }
+
     pub fn loose_letters(&self) -> usize {
         self.debris.letters.len()
     }
@@ -204,6 +217,10 @@ impl World {
             let forward = Vec3::new(sin, 0.0, -cos);
             let right = Vec3::new(cos, 0.0, sin);
             p.feet += (right * wish.x + forward * wish.y) * speed * STEP_SECONDS;
+            // Feet on the ground. Steps, slopes, and falling come with the character in S03.
+            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.feet.x, p.feet.z)) {
+                p.feet.y = h;
+            }
         }
         if self.debris.awake() > 0 {
             self.debris.step(STEP_SECONDS);

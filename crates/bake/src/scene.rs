@@ -107,6 +107,10 @@ struct AuthoredSpawn {
 #[derive(Deserialize)]
 struct Authored {
     spawn: AuthoredSpawn,
+    /// The terrain the scene stands on, by name: `valley` for `terrain/valley.ron`.
+    #[serde(default)]
+    terrain: Option<String>,
+    #[serde(default)]
     boxes: Vec<AuthoredBox>,
     #[serde(default)]
     objects: Vec<AuthoredObject>,
@@ -337,6 +341,7 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
             lights,
             colliders,
             breakables,
+            terrain: authored.terrain.as_ref().map_or(AssetId(0), |t| AssetId::from_key(&format!("terrain.{t}"))),
             pages: if pages.entries.is_empty() { AssetId(0) } else { AssetId::from_key(&format!("scene.{name}.pages")) },
             spawn: [
                 authored.spawn.eye.0,

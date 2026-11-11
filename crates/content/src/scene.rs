@@ -377,16 +377,20 @@ pub struct Scene {
     pub breakables: Vec<Breakable>,
     /// Where a visitor starts: eye position, yaw, pitch.
     pub spawn: [f32; 5],
+    /// The terrain the scene stands on, by its key, or `AssetId(0)` if it has none. Its
+    /// tiles are found by where they are, as `TileCoord::asset_id` gives them.
+    pub terrain: AssetId,
 }
 
 impl Scene {
-    const MAGIC: &'static [u8; 8] = b"VLMKSCN2";
+    const MAGIC: &'static [u8; 8] = b"VLMKSCN3";
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(Self::MAGIC);
         out.extend_from_slice(&self.static_mesh.0.to_le_bytes());
         out.extend_from_slice(&self.pages.0.to_le_bytes());
+        out.extend_from_slice(&self.terrain.0.to_le_bytes());
         out.extend_from_slice(&(self.objects.len() as u32).to_le_bytes());
         out.extend_from_slice(&(self.lights.len() as u32).to_le_bytes());
         put_f32s(&mut out, &self.spawn);
@@ -430,6 +434,7 @@ impl Scene {
         }
         let static_mesh = AssetId(r.u64()?);
         let pages = AssetId(r.u64()?);
+        let terrain = AssetId(r.u64()?);
         let (object_count, light_count) = (r.u32()? as usize, r.u32()? as usize);
         let spawn = r.f32s()?;
         let mut objects = Vec::with_capacity(object_count);
@@ -466,7 +471,7 @@ impl Scene {
         if r.1 != bytes.len() {
             return Err("scene has trailing bytes");
         }
-        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn })
+        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn, terrain })
     }
 }
 
@@ -531,6 +536,7 @@ mod tests {
             colliders: vec![SolidBox { min: [0.0; 3], max: [1.0; 3], material: 2 }],
             breakables: vec![Breakable { key: AssetId(5), transform: [0.5; 12], boxes: vec![SolidBox { min: [0.0; 3], max: [2.0; 3], material: 1 }] }],
             spawn: [0.0, 1.7, 5.0, 0.0, 0.0],
+            terrain: AssetId::from_key("terrain.valley"),
         };
         assert_eq!(Scene::from_bytes(&scene.to_bytes()).unwrap(), scene);
     }

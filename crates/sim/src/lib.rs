@@ -6,6 +6,12 @@
 
 mod clock;
 pub mod debris;
+
+/// The ground the players walk on: its height at a point, if there is ground there.
+/// The world crate answers this from the terrain; the rules only ask.
+pub trait Ground: Send + Sync + std::fmt::Debug {
+    fn height(&self, x: f32, z: f32) -> Option<f32>;
+}
 mod hash;
 mod input;
 mod snapshot;
