@@ -14,6 +14,13 @@ own ray.
 **No line is drawn.** Only cells on the lattice's edges hold characters. Crossings are
 drawn brighter, since they are what the eye lines up into a frame.
 
+**The lattice is ruled in ASCII's special characters,** all thirty-two of them, chosen by
+what they suggest: dashes and tildes along edges across the page, bars and colons up it,
+points and commas along edges running away, and the heavy marks (`+ * # % & @ $`) at
+crossings, heavier for the larger frames. One cell in six is one of the thing's own
+letters. It stays inside the 95 printable characters: the atlas holds no others, and
+the rule that the world is written in them is the owner's to lift.
+
 **Depth is lit as depth:** dimmer and cooler the deeper it lies (redder in the source),
 with a slow pulse travelling inward.
 

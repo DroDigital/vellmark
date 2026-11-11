@@ -437,17 +437,82 @@ fn depth_light(depth: f32, reach: f32, source: bool) -> vec3<f32> {
     return tint * fog * pulse;
 }
 
+// What part of the lattice a cell belongs to.
+const EDGE_ACROSS: u32 = 0u;
+const EDGE_UP: u32 = 1u;
+const EDGE_DEEP: u32 = 2u;
+const NODE: u32 = 3u;
+const MOTE: u32 = 4u;
+
+// The lattice is ruled the way a typist rules a table: with whatever on the keyboard
+// leans the right way. Edges across the page are set in dashes, edges up it in bars,
+// edges running away from the eye in points, and crossings in the heavy marks. Every
+// special character in ASCII has a place, all thirty-two; and now and then, among
+// them, one of the thing's own letters, so that the frame is still written in its
+// voice. The larger the frame an edge belongs to, the heavier the marks it is set in.
+// `rank` is 1 for the small frame, more for the larger ones.
+fn lattice_character(kind: u32, rank: f32, pick: u32, material: u32, every: bool) -> u32 {
+    let r = (pick >> 5u) % 6u;
+    // One cell in six is a letter of the thing itself, or in the source a digit.
+    if kind != NODE && (pick >> 11u) % 6u == 0u {
+        if every {
+            return 48u + (pick >> 14u) % 10u;
+        }
+        return family_character(material, pick);
+    }
+    let heavy = rank > 1.5;
+    if kind == EDGE_ACROSS {
+        // - ~ _ - - =   or, in the larger frames,   = = # = ~ =
+        let light = array<u32, 6>(45u, 126u, 95u, 45u, 45u, 61u);
+        let dark = array<u32, 6>(61u, 61u, 35u, 61u, 126u, 61u);
+        if heavy {
+            return dark[r];
+        }
+        return light[r];
+    }
+    if kind == EDGE_UP {
+        // | ! : | ; |   or   | | $ | ! |
+        let light = array<u32, 6>(124u, 33u, 58u, 124u, 59u, 124u);
+        let dark = array<u32, 6>(124u, 124u, 36u, 124u, 33u, 124u);
+        if heavy {
+            return dark[r];
+        }
+        return light[r];
+    }
+    if kind == EDGE_DEEP {
+        // . : ' ` , .   or   / \ * + / \
+        let light = array<u32, 6>(46u, 58u, 39u, 96u, 44u, 46u);
+        let dark = array<u32, 6>(47u, 92u, 42u, 43u, 47u, 92u);
+        if heavy {
+            return dark[r];
+        }
+        return light[r];
+    }
+    if kind == NODE {
+        // + + * + x-like marks for the small frame, then # % &, then @ $ at the largest.
+        let small = array<u32, 6>(43u, 43u, 42u, 43u, 60u, 62u);
+        let middle = array<u32, 6>(35u, 37u, 38u, 35u, 42u, 35u);
+        let large = array<u32, 6>(64u, 36u, 35u, 64u, 38u, 64u);
+        if rank > 4.0 {
+            return large[r];
+        }
+        if heavy {
+            return middle[r];
+        }
+        return small[r];
+    }
+    // Loose marks, adrift: ^ " ? ( ) [ ] { } and the rest that fit nowhere else.
+    let loose = array<u32, 12>(94u, 34u, 63u, 40u, 41u, 91u, 93u, 123u, 125u, 60u, 62u, 126u);
+    return loose[(pick >> 5u) % 12u];
+}
+
 // One character of the lattice, on some plane inside the thing. `q` is the place on
 // that plane in cells, `dqx` and `dqy` how far that moves across one pixel. Returns
 // how much of the pixel the character covers.
-fn lattice_glyph(q: vec2<f32>, dqx: vec2<f32>, dqy: vec2<f32>, salt: i32, material: u32, every: bool, tremble: f32) -> f32 {
+fn lattice_glyph(q: vec2<f32>, dqx: vec2<f32>, dqy: vec2<f32>, salt: i32, material: u32, every: bool, tremble: f32, kind: u32, rank: f32) -> f32 {
     let cell = vec2<i32>(floor(q));
     let pick = hash_cell(cell, salt, material);
-    var character = family_character(material, pick);
-    if every {
-        // The source is written in every printable character but the space.
-        character = 33u + pick % 94u;
-    }
+    let character = lattice_character(kind, rank, pick, material, every);
     var f = fract(q);
     if tremble > 0.0 {
         let phase = unit(pick >> 8u) * 6.283;
@@ -460,7 +525,9 @@ fn lattice_glyph(q: vec2<f32>, dqx: vec2<f32>, dqy: vec2<f32>, salt: i32, materi
     if h < 2.5 {
         return 0.0;
     }
-    let g = cell_glyph(character - 32u, uv, vec2<f32>(dqx.x, -dqx.y), vec2<f32>(dqy.x, -dqy.y), h, 0.34);
+    // Marks are thin things. They are drawn at their fullest so that they hold their
+    // own beside letters.
+    let g = cell_glyph(character - 32u, uv, vec2<f32>(dqx.x, -dqx.y), vec2<f32>(dqy.x, -dqy.y), h, 0.40);
     return g.cover * smoothstep(2.5, 5.0, h);
 }
 
@@ -521,7 +588,15 @@ fn lattice(anchor: vec2<f32>, footprint: AnchorFootprint, slide: vec2<f32>, stee
         } else {
             moved.y += stream;
         }
-        let c = lattice_glyph(moved, d_page_x * shrink, d_page_y * shrink, salt + 20 + k, material, source, select(tremble, 0.09, mote));
+        var kind = EDGE_UP;
+        if mote {
+            kind = MOTE;
+        } else if across && up {
+            kind = NODE;
+        } else if across {
+            kind = EDGE_ACROSS;
+        }
+        let c = lattice_glyph(moved, d_page_x * shrink, d_page_y * shrink, salt + 20 + k, material, source, select(tremble, 0.09, mote), kind, gain);
         seen += (1.0 - cover_so_far) * c * gain * depth_light(depth, reach, source);
         cover_so_far += (1.0 - cover_so_far) * c;
     }
@@ -565,9 +640,9 @@ fn lattice(anchor: vec2<f32>, footprint: AnchorFootprint, slide: vec2<f32>, stee
             let d_place = d_other - other_slide * d_depth;
             let dqx = vec2<f32>(d_depth.x, d_place.x) / size;
             let dqy = vec2<f32>(d_depth.y, d_place.y) / size;
-            let c = lattice_glyph(q + vec2<f32>(stream, 0.0), dqx, dqy, salt + 60 + axis, material, source, tremble);
             let row = i32(floor(q.y));
             let gain = min(select(1.0, 1.8, on_line(i32(floor(q.x)))) * plane_rank * frame_rank(row / LATTICE - select(0, 1, row < 0)), 4.5);
+            let c = lattice_glyph(q + vec2<f32>(stream, 0.0), dqx, dqy, salt + 60 + axis, material, source, tremble, select(EDGE_DEEP, NODE, on_line(i32(floor(q.x)))), gain);
             seen += (1.0 - cover_so_far) * c * gain * depth_light(depth, reach, source);
             cover_so_far += (1.0 - cover_so_far) * c;
         }
