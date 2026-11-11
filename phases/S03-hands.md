@@ -31,7 +31,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S03-T05** [Sim] Implement Inscriptions on targets, tap and charge from either hand, both hands together, resistance, fading, Ink, and the plain preview at the crosshair
 - [ ] **S03-T06** [Render] Build the five-part magic effect on the shared particle system: charge, flight as a moving light, impact, the rewrite wave in the surface shader, and lasting states
 - [ ] **S03-T07** [Sim] Add typos for the seven words, the five compounds, and the systemic chain between neighbouring targets
-- [ ] **S03-T08** [Sim] Add physics props, breakable props that fracture along their text, and the bridge as a marked structure that `WHOLE` pulls back together
+- [ ] **S03-T08** [Sim] Add physics props, breakable props that fracture along their text, and the bridge as a marked structure that `WHOLE` pulls back together. Loose letters are already built (see `docs/PLAN_CHANGES.md`, 2026-11-11): fracture pieces should crumble into them, and `WHOLE` should use each letter's home
 - [ ] **S03-T09** [Sim] Implement melee: the tap chain, one heavy attack, blocking, the shield bash, Stamina, Ink returned by hits, and hit stop for each view
 - [ ] **S03-T10** [Sim] Add words on the held weapon, each word's combat line, the bow, and sneak attacks
 - [ ] **S03-T11** [Render] Build the first-person hands and weapons: procedural arm IK, swing, block, draw, and writing gestures with a visible charge

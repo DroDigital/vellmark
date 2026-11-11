@@ -17,7 +17,7 @@ use vellmark_ui::Canvas;
 use vellmark_sim::{buttons, FixedClock, PlayerInput, Snapshot, World, WorldConfig};
 
 /// The scene a new game starts in. The yard, until the valley exists.
-const START_SCENE: &str = "scene.yard";
+const START_SCENE: &str = "yard";
 
 struct Screen {
     surface: wgpu::Surface<'static>,
@@ -166,13 +166,29 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Ok(r) => r,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
-    let scene = match vellmark_render::load_scene(&gpu, &base, START_SCENE) {
+    let scene_key = format!("scene.{}", args.scene.as_deref().unwrap_or(START_SCENE));
+    let scene = match vellmark_render::load_scene(&gpu, &base, &scene_key) {
         Ok((scene, on_gpu)) => {
             renderer.set_scene(&gpu, on_gpu);
             scene
         }
         Err(detail) => return fail(sid!("sys.packs.missing"), &detail),
     };
+    // The ground the scene stands on, if it stands on any.
+    let terrain = if scene.terrain.0 != 0 {
+        match vellmark_world::Terrain::from_pack(&base) {
+            Ok(t) => Some(std::sync::Arc::new(t)),
+            Err(detail) => return fail(sid!("sys.packs.missing"), &detail),
+        }
+    } else {
+        None
+    };
+    if let Some(t) = &terrain {
+        let tiles: Vec<&vellmark_content::TerrainTile> = t.tiles().collect();
+        if let Err(detail) = renderer.set_terrain(&gpu, &tiles, &assets.materials) {
+            return fail(sid!("sys.gpu.failed"), &detail);
+        }
+    }
     registry.seal();
     log::line(&format!("renderer ready, presenting {:?} as {:?}", screen.config.format, screen.config.present_mode));
     let mut timers = PassTimers::new(&gpu, cfg!(feature = "dev") || args.perf_run);
@@ -193,9 +209,16 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
 
     let mut world = World::new(WorldConfig::default());
+    let (solids, breakables) = vellmark_render::scene_rules(&scene);
+    #[cfg_attr(not(feature = "dev"), allow(unused_variables))]
+    let breakable_places: Vec<(u64, Vec3)> = breakables.iter().map(|b| (b.id, Vec3::from(b.to_world.translation))).collect();
+    world.set_scene(solids, breakables);
     // The simulation holds the feet; the scene's spawn is given as an eye.
     let spawn = scene.spawn;
     world.add_player(Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]), spawn[3]);
+    if let Some(t) = &terrain {
+        world.set_ground(t.clone());
+    }
     let mut previous: Arc<Snapshot> = world.snapshot();
     let mut current: Arc<Snapshot> = previous.clone();
 
@@ -272,6 +295,17 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     Command::Reveal(v) => tuning.reveal = v,
                     Command::Contrast(v) => tuning.contrast = v,
                     Command::Look(n) => tuning.look = n,
+                    Command::Heat(name, h) => {
+                        world.set_heat(AssetId::from_key(&format!("{scene_key}.{name}")).0, h);
+                    }
+                    Command::Break(name, strength) => {
+                        let id = AssetId::from_key(&format!("{scene_key}.{name}"));
+                        let blow = current.views.first().map_or(Vec3::ZERO, |v| v.eye);
+                        match world.break_thing_with(id.0, blow, strength) {
+                            Some(letters) => log::line(&format!("broke `{name}` into {letters} letters")),
+                            None => log::line(&format!("nothing called `{name}` is left to break")),
+                        }
+                    }
                     Command::Quit => break 'frames,
                 }
             }
@@ -300,7 +334,21 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         close_reading += (wanted - close_reading).clamp(-ease, ease);
         #[cfg(feature = "dev")]
         if actions.pressed(Action::DevLook) {
-            tuning.look = (tuning.look + 1) % 4;
+            tuning.look = (tuning.look + 1) % 5;
+        }
+        #[cfg(feature = "dev")]
+        if actions.pressed(Action::DevBreak) {
+            // The nearest thing that is still whole, struck from where the player stands.
+            let eye = current.views.first().map_or(Vec3::ZERO, |v| v.eye);
+            let nearest = breakable_places
+                .iter()
+                .filter(|(id, _)| !current.broken.contains(id))
+                .min_by(|a, b| a.1.distance_squared(eye).total_cmp(&b.1.distance_squared(eye)));
+            if let Some(&(id, _)) = nearest {
+                if let Some(letters) = world.break_thing(id, eye) {
+                    log::line(&format!("broke a thing into {letters} letters"));
+                }
+            }
         }
         if cfg!(feature = "dev") && actions.pressed(Action::DevLamps) {
             lamps_lit = !lamps_lit;
@@ -359,6 +407,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 lamps,
                 tuning,
                 reveal_mask: false,
+                letters: &current.letters,
+                letters_step: current.letters_step,
+                broken: &current.broken,
+                heat: &current.heat,
                 ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());

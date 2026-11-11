@@ -95,6 +95,8 @@ struct MaterialParams {
     surface: [f32; 4],
     info: [u32; 4],
     family: [u32; 8],
+    /// The lexicon's slots, four characters to a word of the vector.
+    words: [[u32; 4]; vellmark_content::Lexicon::SLOTS],
 }
 
 /// Material maps, the glyph atlas, and the per-glyph tone table: everything a surface
@@ -174,7 +176,12 @@ impl SurfaceResources {
         let mut table = [MaterialParams::zeroed(); MAX_MATERIALS];
         for (slot, m) in table.iter_mut().zip(&set.materials) {
             slot.surface = [m.tile_metres, m.contrast, m.relief, m.emissive];
-            slot.info = [m.family.len() as u32, 0, 0, 0];
+            slot.info = [m.family.len() as u32, m.lexicon.elements.len() as u32, m.lexicon.hot.len() as u32, m.lexicon.cold.len() as u32];
+            for (word, letters) in slot.words.iter_mut().zip(m.lexicon.slots()) {
+                for (i, chunk) in letters.chunks_exact(4).enumerate() {
+                    word[i] = u32::from_le_bytes(chunk.try_into().unwrap());
+                }
+            }
             for (i, c) in m.family.iter().enumerate() {
                 slot.family[i] = *c as u32;
             }

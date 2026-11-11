@@ -1,0 +1,15 @@
+// The easter egg: a wall and the door from an arm's length, over twenty seconds, to see
+// how often a material spells its name or what it is made of. Frames 4 s apart.
+#![enable(implicit_some)]
+(
+    name: "names",
+    scene: "scene.yard",
+    width: 960,
+    height: 540,
+    limits: (tone_shift: 1.0, pair_mean: 1.0, pair_max: 1.0),
+    shots: [
+        (name: "wall", from: (eye: (2.4, 1.6, -5.0), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 0, frames: 6, frame_seconds: 4.0),
+        (name: "wall_2m", from: (eye: (2.4, 1.6, -4.0), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 0, frames: 3, frame_seconds: 4.0),
+        (name: "door", from: (eye: (0.1, 1.2, -5.2), yaw: -6.0, pitch: -3.0), hour: 15.0, look: 0, frames: 6, frame_seconds: 4.0),
+    ],
+)

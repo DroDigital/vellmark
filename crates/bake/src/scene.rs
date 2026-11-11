@@ -8,7 +8,7 @@ use serde::Deserialize;
 use std::path::Path;
 use crate::pages::{CellRect, Layout};
 use std::collections::BTreeMap;
-use vellmark_content::{AssetId, Light, MaterialSet, Mesh, Object, PageEntry, Scene, TextPages, Vertex};
+use vellmark_content::{AssetId, Breakable, Light, MaterialSet, Mesh, Object, PageEntry, Scene, SolidBox, TextPages, Vertex};
 
 type V3 = (f32, f32, f32);
 
@@ -107,6 +107,10 @@ struct AuthoredSpawn {
 #[derive(Deserialize)]
 struct Authored {
     spawn: AuthoredSpawn,
+    /// The terrain the scene stands on, by name: `valley` for `terrain/valley.ron`.
+    #[serde(default)]
+    terrain: Option<String>,
+    #[serde(default)]
     boxes: Vec<AuthoredBox>,
     #[serde(default)]
     objects: Vec<AuthoredObject>,
@@ -181,6 +185,19 @@ fn build(boxes: &[AuthoredBox], set: &MaterialSet, file: &Path, page_of: &dyn Fn
         add_box(&mut mesh, b, material, page_of);
     }
     Ok(mesh)
+}
+
+/// A box as the simulation sees it. A turned box is given the box that bounds it.
+fn solid(b: &AuthoredBox, set: &MaterialSet) -> SolidBox {
+    let centre = [(b.min.0 + b.max.0) * 0.5, (b.min.1 + b.max.1) * 0.5, (b.min.2 + b.max.2) * 0.5];
+    let half = [(b.max.0 - b.min.0) * 0.5, (b.max.1 - b.min.1) * 0.5, (b.max.2 - b.min.2) * 0.5];
+    let (sin, cos) = b.yaw.to_radians().sin_cos();
+    let (hx, hz) = (half[0] * cos.abs() + half[2] * sin.abs(), half[0] * sin.abs() + half[2] * cos.abs());
+    SolidBox {
+        min: [centre[0] - hx, centre[1] - half[1], centre[2] - hz],
+        max: [centre[0] + hx, centre[1] + half[1], centre[2] + hz],
+        material: set.index_of(material_id(&b.material)).unwrap_or(0),
+    }
 }
 
 pub struct BakedScene {
@@ -295,16 +312,17 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
         let static_mesh = AssetId::from_key(&format!("scene.{name}.static"));
         meshes.push((static_mesh, build(&authored.boxes, set, &file, &page_of)?));
 
+        let colliders = authored.boxes.iter().map(|b| solid(b, set)).collect();
+        let mut breakables = Vec::new();
         let mut objects = Vec::new();
         for o in &authored.objects {
             let mesh = AssetId::from_key(&format!("scene.{name}.{}.mesh", o.key));
             meshes.push((mesh, build(&o.boxes, set, &file, &page_of)?));
             let (s, c) = o.yaw.to_radians().sin_cos();
-            objects.push(Object {
-                key: AssetId::from_key(&format!("scene.{name}.{}", o.key)),
-                mesh,
-                transform: [c, 0.0, s, o.position.0, 0.0, 1.0, 0.0, o.position.1, -s, 0.0, c, o.position.2],
-            });
+            let transform = [c, 0.0, s, o.position.0, 0.0, 1.0, 0.0, o.position.1, -s, 0.0, c, o.position.2];
+            let key = AssetId::from_key(&format!("scene.{name}.{}", o.key));
+            breakables.push(Breakable { key, transform, boxes: o.boxes.iter().map(|b| solid(b, set)).collect() });
+            objects.push(Object { key, mesh, transform });
         }
         let lights = authored
             .lights
@@ -321,6 +339,9 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
             static_mesh,
             objects,
             lights,
+            colliders,
+            breakables,
+            terrain: authored.terrain.as_ref().map_or(AssetId(0), |t| AssetId::from_key(&format!("terrain.{t}"))),
             pages: if pages.entries.is_empty() { AssetId(0) } else { AssetId::from_key(&format!("scene.{name}.pages")) },
             spawn: [
                 authored.spawn.eye.0,

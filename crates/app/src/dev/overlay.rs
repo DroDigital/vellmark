@@ -7,7 +7,7 @@ use vellmark_platform::RawInput;
 use vellmark_ui::{dev_text, Canvas, TextStyle};
 
 /// What the console can ask of the game.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     /// Fix the hour of the day, or let the clock run again.
     Hour(Option<f32>),
@@ -20,6 +20,10 @@ pub enum Command {
     Contrast(f32),
     /// Choose the depth look, 0 to 3.
     Look(u32),
+    /// Break a thing in the scene into its letters, by its name.
+    Break(String, f32),
+    /// Heat or cool a thing, by its name: -1 frozen to 1 as hot as it gets.
+    Heat(String, f32),
     Quit,
 }
 
@@ -128,7 +132,9 @@ impl Overlay {
                     "lamps on|off   light the lamps or put them out",
                     "reveal <n>     scale the reveal distance (1 is the brief's)",
                     "contrast <n>   scale the letter contrast",
-                    "look <0-3>     flat, atoms, lattice, source (F6)",
+                    "look <0-4>     flat, atoms, lattice, source, living (F6)",
+                    "break <name> [strength]  break a thing into its letters; 0.1 crumbles it (F7)",
+                    "heat <name> <-1 to 1>  heat or cool a thing; up close its letters say so",
                     "quit           leave",
                     "F1 profiler  F2 free camera  F3 glyphs  F4 tuning  F5 lamps",
                 ] {
@@ -153,8 +159,17 @@ impl Overlay {
                 _ => self.say("contrast takes a number from 0 to 4"),
             },
             (Some("look"), Some(v)) => match v.parse::<u32>() {
-                Ok(n) if n <= 3 => self.commands.push(Command::Look(n)),
-                _ => self.say("look takes 0 (flat), 1 (atoms), 2 (lattice), or 3 (source)"),
+                Ok(n) if n <= 4 => self.commands.push(Command::Look(n)),
+                _ => self.say("look takes 0 (flat), 1 (atoms), 2 (lattice), 3 (source), or 4 (living)"),
+            },
+            (Some("break"), Some(name)) => match words.next().map(str::parse::<f32>) {
+                None => self.commands.push(Command::Break(name.to_string(), 1.0)),
+                Some(Ok(s)) if (0.0..=4.0).contains(&s) => self.commands.push(Command::Break(name.to_string(), s)),
+                _ => self.say("break takes a name, then a strength from 0 to 4 if you like"),
+            },
+            (Some("heat"), Some(name)) => match words.next().map(str::parse::<f32>) {
+                Some(Ok(h)) if (-1.0..=1.0).contains(&h) => self.commands.push(Command::Heat(name.to_string(), h)),
+                _ => self.say("heat takes a name, then a number from -1 to 1"),
             },
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),

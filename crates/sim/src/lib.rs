@@ -5,6 +5,13 @@
 //! [`Snapshot`], which is all that drawing, bots, and replays ever read.
 
 mod clock;
+pub mod debris;
+
+/// The ground the players walk on: its height at a point, if there is ground there.
+/// The world crate answers this from the terrain; the rules only ask.
+pub trait Ground: Send + Sync + std::fmt::Debug {
+    fn height(&self, x: f32, z: f32) -> Option<f32>;
+}
 mod hash;
 mod input;
 mod snapshot;
@@ -13,5 +20,5 @@ mod world;
 pub use clock::{FixedClock, StepPlan, STEP_HZ, STEP_SECONDS};
 pub use hash::Fnv64;
 pub use input::{buttons, PlayerInput};
-pub use snapshot::{PlayerSnap, Snapshot, ViewSnap};
-pub use world::{PlayerId, World, WorldConfig, EYE_HEIGHT};
+pub use snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
+pub use world::{BreakableThing, PlayerId, World, WorldConfig, EYE_HEIGHT};

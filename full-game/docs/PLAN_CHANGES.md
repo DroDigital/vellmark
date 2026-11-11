@@ -2,6 +2,18 @@
 
 Newest first. Record every change to scope, design, order, or tools here.
 
+## 2026-11-11: every material has its words
+
+Owner's direction during the Showcase. Every material of the game has a lexicon (its name, up to three things it is made of, and its words hot and cold), kept in `assets/materials/lexicon.ron` and written out in `docs/brief/2-art-direction.md`. Names and elements are typed into the fine print evenly and often, in the grain's own style; state words glitch in and out. The living lattice is the Showcase's default look until the Look Gate.
+
+## 2026-11-11: the lattice is animated, names its material, and shows a thing's state
+
+Owner's direction during the Showcase. Inside the close-up lattice every character changes over time by crossfades, and words and structures form with the eye's angle; a surface's own fine print stays stable. Each material's lattice now and then spells its name (`stone`, `wood`, `iron`), and rarely what it is made of (`SiO2`, `C6H10O5`). A thing's state shows as a word in its letters up close: `BURNING`, `MELTING`, `BOILING`, and the like, extending Section 2a's typographic body language to things. Details are in the Showcase's `docs/PLAN_CHANGES.md`.
+
+## 2026-11-11: a broken thing comes apart into its letters
+
+Owner's direction during the Showcase. When a thing is destroyed, all of it, not only its small debris, scatters as tens of thousands of loose characters, each simulated with gravity, bounce, and friction against the world until it lies flat. At most 60,000 loose letters at once. Each letter keeps the place it came from, so that `WHOLE` can pull them back along their paths. Details are in the Showcase's `docs/PLAN_CHANGES.md`.
+
 ## 2026-11-11: up close, surfaces open onto a lattice of characters
 
 Owner's direction during the Showcase. Within about two metres the realistic texture dithers away and the eye looks into a three-dimensional lattice of small characters, as deep as the object is thick, with exact parallax. Authored text stays whole at the front. Three variants (atoms, lattice, source) are built for the owner to choose between. Rule 3.5 of the brief, tone preservation, now holds only outside that range; the glyph-off comparison beyond the reveal distance is unchanged. Details are in the Showcase's `docs/PLAN_CHANGES.md`.

@@ -105,6 +105,55 @@ pub struct Material {
     pub emissive: f32,
     /// The characters this material is written in, when no authored text covers it.
     pub family: Vec<u8>,
+    /// What the material's lattice may spell, now and then: its own name, what it is
+    /// made of, and the words for it hot and cold, from least to most.
+    pub lexicon: Lexicon,
+}
+
+/// The words a material's letters may form. Every word is 1 to 16 printable ASCII
+/// characters.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Lexicon {
+    pub name: Vec<u8>,
+    pub elements: Vec<Vec<u8>>,
+    pub hot: Vec<Vec<u8>>,
+    pub cold: Vec<Vec<u8>>,
+}
+
+impl Lexicon {
+    pub const WORD: usize = 16;
+    pub const ELEMENTS: usize = 3;
+    pub const HOT: usize = 3;
+    pub const COLD: usize = 2;
+    /// Slots in order: the name, the elements, the hot words, the cold words.
+    pub const SLOTS: usize = 1 + Self::ELEMENTS + Self::HOT + Self::COLD;
+
+    /// Every slot, empty where there is no word.
+    pub fn slots(&self) -> [[u8; Self::WORD]; Self::SLOTS] {
+        let mut out = [[0u8; Self::WORD]; Self::SLOTS];
+        let words = std::iter::once(Some(&self.name))
+            .chain((0..Self::ELEMENTS).map(|i| self.elements.get(i)))
+            .chain((0..Self::HOT).map(|i| self.hot.get(i)))
+            .chain((0..Self::COLD).map(|i| self.cold.get(i)));
+        for (slot, word) in out.iter_mut().zip(words) {
+            if let Some(word) = word {
+                let n = word.len().min(Self::WORD);
+                slot[..n].copy_from_slice(&word[..n]);
+            }
+        }
+        out
+    }
+
+    fn from_slots(slots: &[[u8; Self::WORD]]) -> Self {
+        let word = |s: &[u8; Self::WORD]| s.iter().take_while(|&&b| b != 0).copied().collect::<Vec<u8>>();
+        let list = |range: std::ops::Range<usize>| range.map(|i| word(&slots[i])).filter(|w| !w.is_empty()).collect();
+        Self {
+            name: word(&slots[0]),
+            elements: list(1..1 + Self::ELEMENTS),
+            hot: list(1 + Self::ELEMENTS..1 + Self::ELEMENTS + Self::HOT),
+            cold: list(1 + Self::ELEMENTS + Self::HOT..Self::SLOTS),
+        }
+    }
 }
 
 /// Every material's maps as two array textures: colour, and normal with roughness.
@@ -119,7 +168,7 @@ pub struct MaterialSet {
 }
 
 impl MaterialSet {
-    const MAGIC: &'static [u8; 8] = b"VLMKMAT1";
+    const MAGIC: &'static [u8; 8] = b"VLMKMAT2";
     pub const MAX_FAMILY: usize = 8;
 
     pub fn index_of(&self, key: AssetId) -> Option<u32> {
@@ -152,6 +201,9 @@ impl MaterialSet {
             let mut family = [0u8; Self::MAX_FAMILY];
             family[..m.family.len()].copy_from_slice(&m.family);
             out.extend_from_slice(&family);
+            for slot in m.lexicon.slots() {
+                out.extend_from_slice(&slot);
+            }
         }
         out.extend_from_slice(&self.texels);
         out
@@ -175,7 +227,19 @@ impl MaterialSet {
             if len == 0 || len > Self::MAX_FAMILY {
                 return Err("material has no glyph family");
             }
-            materials.push(Material { key, tile_metres, contrast, relief, emissive, family: family[..len].to_vec() });
+            let mut slots = [[0u8; Lexicon::WORD]; Lexicon::SLOTS];
+            for slot in &mut slots {
+                slot.copy_from_slice(r.take(Lexicon::WORD)?);
+            }
+            materials.push(Material {
+                key,
+                tile_metres,
+                contrast,
+                relief,
+                emissive,
+                family: family[..len].to_vec(),
+                lexicon: Lexicon::from_slots(&slots),
+            });
         }
         let set = Self { size, mips, materials, texels: bytes[r.1..].to_vec() };
         if set.level_range(mips - 1, 1).end != set.texels.len() {
@@ -282,6 +346,24 @@ pub struct Light {
     pub casts_shadow: bool,
 }
 
+/// A box of one material, for collision and for breaking into letters. Axis-aligned
+/// in its owner's space: `min` then `max`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SolidBox {
+    pub min: [f32; 3],
+    pub max: [f32; 3],
+    pub material: u32,
+}
+
+/// A thing that can be broken into its letters: an object, by its key, and the boxes
+/// it is made of, in the object's own space.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Breakable {
+    pub key: AssetId,
+    pub transform: [f32; 12],
+    pub boxes: Vec<SolidBox>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scene {
     /// Everything that never moves, as one mesh.
@@ -290,18 +372,25 @@ pub struct Scene {
     pub lights: Vec<Light>,
     /// The scene's authored text, or `AssetId(0)` if it has none.
     pub pages: AssetId,
+    /// Everything that never moves, as boxes in the world, for things to land on.
+    pub colliders: Vec<SolidBox>,
+    pub breakables: Vec<Breakable>,
     /// Where a visitor starts: eye position, yaw, pitch.
     pub spawn: [f32; 5],
+    /// The terrain the scene stands on, by its key, or `AssetId(0)` if it has none. Its
+    /// tiles are found by where they are, as `TileCoord::asset_id` gives them.
+    pub terrain: AssetId,
 }
 
 impl Scene {
-    const MAGIC: &'static [u8; 8] = b"VLMKSCN1";
+    const MAGIC: &'static [u8; 8] = b"VLMKSCN3";
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(Self::MAGIC);
         out.extend_from_slice(&self.static_mesh.0.to_le_bytes());
         out.extend_from_slice(&self.pages.0.to_le_bytes());
+        out.extend_from_slice(&self.terrain.0.to_le_bytes());
         out.extend_from_slice(&(self.objects.len() as u32).to_le_bytes());
         out.extend_from_slice(&(self.lights.len() as u32).to_le_bytes());
         put_f32s(&mut out, &self.spawn);
@@ -317,6 +406,24 @@ impl Scene {
             put_f32s(&mut out, &[l.radius]);
             out.extend_from_slice(&(l.casts_shadow as u32).to_le_bytes());
         }
+        let put_box = |out: &mut Vec<u8>, b: &SolidBox| {
+            put_f32s(out, &b.min);
+            put_f32s(out, &b.max);
+            out.extend_from_slice(&b.material.to_le_bytes());
+        };
+        out.extend_from_slice(&(self.colliders.len() as u32).to_le_bytes());
+        for b in &self.colliders {
+            put_box(&mut out, b);
+        }
+        out.extend_from_slice(&(self.breakables.len() as u32).to_le_bytes());
+        for breakable in &self.breakables {
+            out.extend_from_slice(&breakable.key.0.to_le_bytes());
+            put_f32s(&mut out, &breakable.transform);
+            out.extend_from_slice(&(breakable.boxes.len() as u32).to_le_bytes());
+            for b in &breakable.boxes {
+                put_box(&mut out, b);
+            }
+        }
         out
     }
 
@@ -327,6 +434,7 @@ impl Scene {
         }
         let static_mesh = AssetId(r.u64()?);
         let pages = AssetId(r.u64()?);
+        let terrain = AssetId(r.u64()?);
         let (object_count, light_count) = (r.u32()? as usize, r.u32()? as usize);
         let spawn = r.f32s()?;
         let mut objects = Vec::with_capacity(object_count);
@@ -343,10 +451,27 @@ impl Scene {
                 casts_shadow: r.u32()? != 0,
             });
         }
+        fn solid(r: &mut Reader<'_>) -> Result<SolidBox, &'static str> {
+            Ok(SolidBox { min: r.f32s()?, max: r.f32s()?, material: r.u32()? })
+        }
+        let mut colliders = Vec::new();
+        for _ in 0..r.u32()? {
+            colliders.push(solid(&mut r)?);
+        }
+        let mut breakables = Vec::new();
+        for _ in 0..r.u32()? {
+            let key = AssetId(r.u64()?);
+            let transform = r.f32s()?;
+            let mut boxes = Vec::new();
+            for _ in 0..r.u32()? {
+                boxes.push(solid(&mut r)?);
+            }
+            breakables.push(Breakable { key, transform, boxes });
+        }
         if r.1 != bytes.len() {
             return Err("scene has trailing bytes");
         }
-        Ok(Self { static_mesh, objects, lights, pages, spawn })
+        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn, terrain })
     }
 }
 
@@ -372,6 +497,12 @@ mod tests {
             relief: -0.5,
             emissive: 0.0,
             family: b"HEB[]".to_vec(),
+            lexicon: Lexicon {
+                name: b"stone".to_vec(),
+                elements: vec![b"SiO2".to_vec(), b"CaCO3".to_vec()],
+                hot: vec![b"HOT".to_vec(), b"CRACKING".to_vec()],
+                cold: vec![b"COLD".to_vec()],
+            },
         };
         // Two materials, 2x2 with two levels: (4 + 1) texels * 4 bytes * 2 maps * 2 materials.
         let set = MaterialSet { size: 2, mips: 2, materials: vec![material("a"), material("b")], texels: (0..80).collect() };
@@ -402,7 +533,10 @@ mod tests {
             objects: vec![Object { key: AssetId(1), mesh: AssetId(2), transform: [1.0; 12] }],
             lights: vec![Light { key: AssetId(3), position: [1.0, 2.0, 3.0], colour: [4.0, 3.0, 2.0], radius: 9.0, casts_shadow: true }],
             pages: AssetId(77),
+            colliders: vec![SolidBox { min: [0.0; 3], max: [1.0; 3], material: 2 }],
+            breakables: vec![Breakable { key: AssetId(5), transform: [0.5; 12], boxes: vec![SolidBox { min: [0.0; 3], max: [2.0; 3], material: 1 }] }],
             spawn: [0.0, 1.7, 5.0, 0.0, 0.0],
+            terrain: AssetId::from_key("terrain.valley"),
         };
         assert_eq!(Scene::from_bytes(&scene.to_bytes()).unwrap(), scene);
     }

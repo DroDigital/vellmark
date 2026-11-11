@@ -1,7 +1,8 @@
 use crate::clock::STEP_SECONDS;
 use crate::hash::Fnv64;
 use crate::input::{buttons, PlayerInput};
-use crate::snapshot::{PlayerSnap, Snapshot, ViewSnap};
+use crate::debris::{shatter, Debris, Solid};
+use crate::snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
 use glam::{Vec2, Vec3};
 use std::sync::Arc;
 
@@ -31,6 +32,15 @@ impl Default for WorldConfig {
     }
 }
 
+/// A thing that can be broken into its letters: its permanent ID, where it stands, and
+/// the boxes it is made of in its own space, each with its material.
+#[derive(Clone, Debug)]
+pub struct BreakableThing {
+    pub id: u64,
+    pub to_world: glam::Affine3A,
+    pub boxes: Vec<(Vec3, Vec3, u32)>,
+}
+
 #[derive(Clone, Debug)]
 struct Player {
     id: PlayerId,
@@ -49,13 +59,34 @@ pub struct World {
     time_of_day: f32,
     players: Vec<Player>,
     next_player: u32,
+    debris: Debris,
+    breakables: Vec<BreakableThing>,
+    broken: Arc<Vec<u64>>,
+    letters: Arc<Vec<LetterSnap>>,
+    letters_step: u64,
+    heat: Arc<Vec<(u64, f32)>>,
+    ground: Option<Arc<dyn crate::Ground>>,
 }
 
 impl World {
     pub fn new(config: WorldConfig) -> Self {
         let rng = config.seed ^ 0x9e37_79b9_7f4a_7c15;
         let time_of_day = config.start_time_of_day.rem_euclid(24.0);
-        Self { config, step: 0, rng, time_of_day, players: Vec::new(), next_player: 0 }
+        Self {
+            config,
+            step: 0,
+            rng,
+            time_of_day,
+            players: Vec::new(),
+            next_player: 0,
+            debris: Debris::default(),
+            breakables: Vec::new(),
+            broken: Arc::default(),
+            letters: Arc::default(),
+            letters_step: 0,
+            heat: Arc::default(),
+            ground: None,
+        }
     }
 
     /// Adds a player and their view. The list may hold any number, though the Showcase
@@ -65,6 +96,86 @@ impl World {
         self.next_player += 1;
         self.players.push(Player { id, feet, yaw, pitch: 0.0 });
         id
+    }
+
+    /// Gives the world the scene's solid boxes and the things in it that can break.
+    pub fn set_scene(&mut self, solids: Vec<Solid>, breakables: Vec<BreakableThing>) {
+        self.debris.set_solids(solids);
+        self.breakables = breakables;
+    }
+
+    /// Breaks a thing into its letters, thrown outwards from `blow`. Returns how many
+    /// letters it made, or `None` if there is no such thing or it is already broken.
+    pub fn break_thing(&mut self, id: u64, blow: Vec3) -> Option<usize> {
+        self.break_thing_with(id, blow, 1.0)
+    }
+
+    /// Breaks a thing with a blow of the given strength: 1 throws its letters across
+    /// the yard, and near 0 it falls in on itself.
+    pub fn break_thing_with(&mut self, id: u64, blow: Vec3, strength: f32) -> Option<usize> {
+        if self.broken.contains(&id) {
+            return None;
+        }
+        let thing = self.breakables.iter().find(|b| b.id == id)?.clone();
+        let mut made = 0;
+        for (min, max, material) in &thing.boxes {
+            let mut rng = self.rng;
+            let mut random = || {
+                rng = rng.wrapping_add(0x9e37_79b9_7f4a_7c15);
+                let mut z = rng;
+                z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+                z ^ (z >> 31)
+            };
+            made += shatter(&mut self.debris, *min, *max, thing.to_world, *material, blow, strength, &mut random);
+            self.rng = rng;
+        }
+        let mut broken = (*self.broken).clone();
+        broken.push(id);
+        self.broken = Arc::new(broken);
+        self.refresh_letters();
+        Some(made)
+    }
+
+    /// Sets how hot or cold a thing is, -1 (frozen) to 1 (as hot as it gets). 0 lets it
+    /// be. The words of S05 will set this; until then the development tools do.
+    pub fn set_heat(&mut self, id: u64, heat: f32) {
+        let heat = heat.clamp(-1.0, 1.0);
+        let mut all: Vec<(u64, f32)> = self.heat.iter().copied().filter(|(i, _)| *i != id).collect();
+        if heat != 0.0 {
+            all.push((id, heat));
+        }
+        self.heat = Arc::new(all);
+    }
+
+    /// Gives the world ground to walk on. Without it the players walk on the level of
+    /// wherever they started, as in the yard.
+    pub fn set_ground(&mut self, ground: Arc<dyn crate::Ground>) {
+        self.ground = Some(ground);
+        for p in &mut self.players {
+            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.feet.x, p.feet.z)) {
+                p.feet.y = h;
+            }
+        }
+    }
+
+    pub fn loose_letters(&self) -> usize {
+        self.debris.letters.len()
+    }
+
+    pub fn letters_moving(&self) -> usize {
+        self.debris.awake()
+    }
+
+    fn refresh_letters(&mut self) {
+        self.letters_step = self.step + 1;
+        self.letters = Arc::new(
+            self.debris
+                .letters
+                .iter()
+                .map(|l| LetterSnap { position: l.position, rotation: l.rotation, material: l.material, seed: l.seed })
+                .collect(),
+        );
     }
 
     pub fn remove_player(&mut self, id: PlayerId) {
@@ -106,6 +217,14 @@ impl World {
             let forward = Vec3::new(sin, 0.0, -cos);
             let right = Vec3::new(cos, 0.0, sin);
             p.feet += (right * wish.x + forward * wish.y) * speed * STEP_SECONDS;
+            // Feet on the ground. Steps, slopes, and falling come with the character in S03.
+            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.feet.x, p.feet.z)) {
+                p.feet.y = h;
+            }
+        }
+        if self.debris.awake() > 0 {
+            self.debris.step(STEP_SECONDS);
+            self.refresh_letters();
         }
         self.time_of_day =
             (self.time_of_day + self.config.hours_per_second * STEP_SECONDS).rem_euclid(24.0);
@@ -129,7 +248,16 @@ impl World {
                 pitch: p.pitch,
             })
             .collect();
-        Arc::new(Snapshot { step: self.step, time_of_day: self.time_of_day, players, views })
+        Arc::new(Snapshot {
+            step: self.step,
+            time_of_day: self.time_of_day,
+            players,
+            views,
+            letters: self.letters.clone(),
+            letters_step: self.letters_step,
+            broken: self.broken.clone(),
+            heat: self.heat.clone(),
+        })
     }
 
     /// A hash of every bit of state that the rules can read. Two worlds with equal hashes
@@ -148,6 +276,12 @@ impl World {
             h.f32(p.feet.z);
             h.f32(p.yaw);
             h.f32(p.pitch);
+        }
+        h.u32(self.debris.letters.len() as u32);
+        for l in &self.debris.letters {
+            for v in l.position.to_array().into_iter().chain(l.velocity.to_array()) {
+                h.f32(v);
+            }
         }
         h.finish()
     }

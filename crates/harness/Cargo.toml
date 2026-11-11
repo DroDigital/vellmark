@@ -11,6 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 vellmark-gpu.workspace = true
+vellmark-world.workspace = true
 vellmark-render = { workspace = true, features = ["dev"] }
 vellmark-sim.workspace = true
 vellmark-content.workspace = true

@@ -93,13 +93,15 @@ pub struct GlyphTuning {
     /// Scales every material's letter contrast.
     pub contrast: f32,
     /// How letters sit in a surface up close: 0 flat on it, 1 atoms through it,
-    /// 2 a lattice in front of deeper layers, 3 a lattice over the glowing source.
+    /// 2 a lattice in front of deeper layers, 3 a lattice over the glowing source,
+    /// 4 the living lattice, coloured and lit by the material, turning over as the eye
+    /// moves. 4 is the default until the owner chooses at the Look Gate.
     pub look: u32,
 }
 
 impl Default for GlyphTuning {
     fn default() -> Self {
-        Self { reveal: 1.0, contrast: 1.0, look: 0 }
+        Self { reveal: 1.0, contrast: 1.0, look: 4 }
     }
 }
 

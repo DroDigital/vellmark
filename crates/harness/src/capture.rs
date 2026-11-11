@@ -56,7 +56,7 @@ pub struct Shot {
     /// Close reading, from 0, the realistic frame, to 1, the text frame.
     #[serde(default)]
     pub close_reading: f32,
-    /// The depth look: 0 flat, 1 atoms, 2 lattice, 3 source.
+    /// The depth look: 0 flat, 1 atoms, 2 lattice, 3 source, 4 living.
     #[serde(default)]
     pub look: u32,
     /// Put the lamps out for this shot.
@@ -72,6 +72,33 @@ pub struct Shot {
     /// For judging letters pixel for pixel in a frame too large to look at whole.
     #[serde(default)]
     pub crop: Option<(u32, u32, u32, u32)>,
+    /// Break this thing of the scene into its letters before the shot, by its name.
+    #[serde(default)]
+    pub break_thing: Option<String>,
+    /// Where the blow that breaks it lands. The camera, if not given.
+    #[serde(default)]
+    pub blow: Option<(f32, f32, f32)>,
+    /// How hard the blow is: 1 throws the letters across the yard, near 0 the thing
+    /// falls in on itself.
+    #[serde(default)]
+    pub strength: Option<f32>,
+    /// Seconds of the clock between one frame and the next. One fixed step, if not
+    /// given; a video at 24 frames a second wants 1/24.
+    #[serde(default)]
+    pub frame_seconds: Option<f32>,
+    /// Fixed steps of the rules run after the break and before the first frame.
+    #[serde(default)]
+    pub settle: u32,
+    /// Fixed steps of the rules run between one frame and the next.
+    #[serde(default)]
+    pub steps_per_frame: u32,
+    /// Heat a thing of the scene before the shot, by its name: -1 frozen to 1 as hot as
+    /// it gets.
+    #[serde(default)]
+    pub heat: Option<(String, f32)>,
+    /// The eye's heights are above the ground rather than above sea level.
+    #[serde(default)]
+    pub above_ground: bool,
     /// Keep the first frame of this shot as a reference image.
     #[serde(default)]
     pub reference: bool,
@@ -211,6 +238,10 @@ pub struct Offscreen {
     pub timers: PassTimers,
     texture: wgpu::Texture,
     size: (u32, u32),
+    /// The scene being drawn, as the rules need it.
+    pub scene: Option<vellmark_content::Scene>,
+    /// The ground it stands on, if any.
+    pub terrain: Option<vellmark_world::Terrain>,
 }
 
 pub const CAPTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -249,8 +280,18 @@ impl Offscreen {
         let pack = baked_base_pack()?;
         let assets = LoadedAssets::from_pack(&pack)?;
         let mut renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &assets.borrow())?;
+        let mut loaded = None;
+        let mut terrain = None;
         if let Some(key) = scene {
-            renderer.set_scene(&gpu, load_scene(&gpu, &pack, key)?.1);
+            let (data, on_gpu) = load_scene(&gpu, &pack, key)?;
+            renderer.set_scene(&gpu, on_gpu);
+            if data.terrain.0 != 0 {
+                let t = vellmark_world::Terrain::from_pack(&pack)?;
+                let tiles: Vec<&vellmark_content::TerrainTile> = t.tiles().collect();
+                renderer.set_terrain(&gpu, &tiles, &assets.materials)?;
+                terrain = Some(t);
+            }
+            loaded = Some(data);
         }
         registry.seal();
         let timers = PassTimers::new(&gpu, true);
@@ -264,7 +305,7 @@ impl Offscreen {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        Ok(Self { gpu, registry, renderer, timers, texture, size: (width, height) })
+        Ok(Self { gpu, registry, renderer, timers, texture, size: (width, height), scene: loaded, terrain })
     }
 
     pub fn frame(&mut self, frame: &FrameInput<'_>) -> Image {
@@ -296,12 +337,47 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
         let mut frames = Vec::new();
         let mut glyph_off = None;
         let mut reveal_mask: Option<Image> = None;
+        // A shot that breaks something runs the rules for it, from a fresh world.
+        let mut world = None;
+        if let Some(name) = &shot.break_thing {
+            let scene = offscreen.scene.as_ref().ok_or("a shot breaks something, but the script names no scene")?;
+            let mut w = vellmark_sim::World::new(vellmark_sim::WorldConfig::default());
+            let (solids, breakables) = vellmark_render::scene_rules(scene);
+            w.set_scene(solids, breakables);
+            let id = vellmark_content::AssetId::from_key(&format!("{}.{name}", script.scene));
+            let blow = shot.blow.map_or(shot.from.camera().eye, |b| b.into());
+            w.break_thing_with(id.0, blow, shot.strength.unwrap_or(1.0)).ok_or_else(|| format!("shot `{}`: the scene has nothing called `{name}` to break", shot.name))?;
+            for _ in 0..shot.settle {
+                w.step(&[]);
+            }
+            world = Some(w);
+        }
+        let heat: Vec<(u64, f32)> = match &shot.heat {
+            Some((name, h)) => vec![(vellmark_content::AssetId::from_key(&format!("{}.{name}", script.scene)).0, *h)],
+            None => Vec::new(),
+        };
         for i in 0..frames_wanted {
+            if let (Some(w), true) = (world.as_mut(), i > 0) {
+                for _ in 0..shot.steps_per_frame {
+                    w.step(&[]);
+                }
+            }
+            let snapshot = world.as_ref().map(|w| w.snapshot());
+            let (letters, letters_step, broken): (&[vellmark_sim::LetterSnap], u64, &[u64]) = match &snapshot {
+                Some(s) => (&s.letters, s.letters_step, &s.broken),
+                None => (&[], 0, &[]),
+            };
             let t = if frames_wanted > 1 { i as f32 / (frames_wanted - 1) as f32 } else { 0.0 };
             let pose = match &shot.to {
                 Some(to) => shot.from.lerp(to, t),
                 None => shot.from,
             };
+            let mut pose = pose;
+            if shot.above_ground {
+                if let Some(h) = offscreen.terrain.as_ref().and_then(|t| t.height_at(pose.eye.0, pose.eye.2)) {
+                    pose.eye.1 += h;
+                }
+            }
             let mut camera = pose.camera();
             if let Some(near) = shot.near {
                 camera.near = near;
@@ -310,13 +386,17 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
             let input = FrameInput {
                 views: &views,
                 time_of_day: shot.hour,
-                seconds: i as f32 * vellmark_sim::STEP_SECONDS,
+                seconds: i as f32 * shot.frame_seconds.unwrap_or(vellmark_sim::STEP_SECONDS),
                 glyph_layer: true,
                 close_reading: shot.close_reading,
                 dive: shot.dive,
                 lamps: if shot.lamps_out { 0.0 } else { 1.0 },
                 tuning: GlyphTuning { look: shot.look, ..GlyphTuning::default() },
                 reveal_mask: false,
+                letters,
+                letters_step,
+                broken,
+                heat: &heat,
                 ui: None,
             };
             frames.push(offscreen.frame(&input));

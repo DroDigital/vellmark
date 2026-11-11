@@ -2,6 +2,130 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-11: drawing the terrain (S02-T02)
+
+**One shared grid, heights in a texture.** Every tile is drawn from one index buffer of
+64 × 64 cells; the vertex shader reads the tile's heights from a layer of an array
+texture. The heights carry a border sample from each neighbour, so normals agree across
+seams. One draw call a pass draws all 192 tiles as instances. Culling comes in S02-T06.
+
+**Rings cut by a test, not by geometry.** A coarse ring discards fragments inside the
+next finer ring, in the depth pre-pass, the lit pass, and the shadow maps. The rings'
+borders lie on the coarse grid's lines, so no cell is ever half in.
+
+**Ground blends two materials at a time,** the strongest two of the four samples' classes
+and rock, by their weights and their own height maps. Steep ground (normal below about
+55 degrees from vertical) and the highest ground are rock; roads, river beds, and the
+Erasure stay what they are however they lie.
+
+**Letters are projected per 1 m cell,** along the axis the cell's own normal most faces,
+chosen hard and never blended, as rule 3.1 asks. The letters are those of whichever of
+the two materials shows at the pixel.
+
+**The rules stand players on the ground** through a `Ground` trait the world crate
+answers from the finest tile. Steps, slopes, and falling come with the character (S03).
+
+**The hill lane is as steep as the hill,** about one in three. A gentler limit built it up
+into a dyke several metres high.
+
+## 2026-11-11: the living lattice (look 4)
+
+**A separate function, not a mode of the old one.** `living_lattice` follows the same
+world-fixed planes as `lattice`, so the earlier looks stay as they were for comparison.
+
+**Colour from the material at the character's own place.** The hit point is carried
+back into the page's anchor frame through the surface's tangent and bitangent, and the
+material's colour is read there at mip 3 (one texel about a character), shifted a
+little with depth so each layer is a different slice. The light is the surface's own
+(lit colour over albedo), dying away as `exp(-7 × depth)`, plus a faint glow of the
+material's hue divided by exposure, so the inside can be seen at night.
+
+**The surface opens by letters, not by a shape.** Each front cell has its own threshold
+and fades over a band, so nothing pops and no outline is ever drawn.
+
+**Fewer planes, stepped.** Four planes per family, each 0.72 of the last's brightness,
+read as layers; seven read as static.
+
+**No character is mirrored.** Which families of planes are seen from behind is known
+from the ray's sign; their characters and words are turned back.
+
+**Names and elements in the fine print use an ordered pattern.** The surface is ruled
+into patches twenty cells by three rows, offset half a patch row by row; each patch
+shows in its turn by a 4 × 4 Bayer order, so the words shown at any moment are evenly
+spread. The owner asked twice for them in the grain's own style (not brighter, not
+bolder, not set apart) and more often: 0.6 of patches from a step back, 0.3 at arm's
+length.
+
+**One file of words for every material.** `lexicon.ron` is keyed like `materials.ron`;
+the bake joins them and fails if a material has no words. The brief's table is that
+file written out, and a test compares them.
+
+## 2026-11-11: the terrain (S02-T01)
+
+**Three nested grids, each one level of the tile layout.** The playable 512 m at a
+metre (level 0), the far ring to 2 km at 8 m (level 3), and the horizon to 8 km at 32 m
+(level 5), each 513 samples square and cut into 8 × 8 tiles of 65. Format `VLMKTER1`:
+heights, the water's surface (NaN where dry), and a ground class for each sample.
+
+**One function shapes the land at every level,** with as many octaves of noise as the
+grid can carry, so the levels agree. Then erosion (droplets, then slumping), then the
+landmarks from `assets/terrain/valley.ron`. A finer grid eases into the coarser one over
+28 of its samples at its border, so that along the border it lies exactly on the coarser
+ground, and is then written into the coarser grid wherever both have a sample.
+
+**Water finds its own level** from the land: a running minimum down the river, a little
+below the ground, so it never runs uphill and moving a river never floods a field. A
+bank holds the level of the river a little upstream, so a bend cannot let water out.
+
+**Where the water check is not held.** Each region is checked on its own grid, except in
+each grid's outer seam band, where a river is carved at two widths as one grid eases into
+the next. In the playable area that band is the last 28 m, beyond the steep edges; the
+largest spill found there is 8 cm, where the river leaves through its gorge.
+
+**Roads have a steepest grade.** Where the land is steeper the road is cut in or banked
+up. Where the road meets the brook it dips to the water, and the footbridge (S06) spans it.
+
+**Generated, not hand-modelled, and cached.** The bake takes about five seconds with
+optimisation, so the bake crate is always built optimised, and the tiles are cached by
+the hash of the file and the generator's version.
+
+## 2026-11-11: loose letters
+
+**Letters in flight against the world and the heaps; heaps as a height map.** Contact
+between every pair of tens of thousands of bodies would cost a broad phase every step,
+and in a spill nothing shows two letters in flight striking. What does show is letters
+lying on letters, so the letters at rest are kept as a map of heap tops, one cell a
+letter wide (1.28 cm), each cell holding a heap for each surface it stands on (under a
+bench and on it). A letter landing on a heap lies on its top. Before it lies down it
+slides to the lowest neighbouring cell while that cell is lower than the angle of repose
+allows (0.7 of a cell, about 35 degrees, which is how steep flat flakes stand), which is
+the sandpile rule, and gives true cones and ridges. It keeps its place within its cell
+as it slides, so a heap is never laid out on a grid. Each letter adds 3 mm: thicker than
+a letter looks, so that a broken door still makes a heap of a door's size, and thin
+enough that layers seen edge-on do not gape. When letters at rest are swept, the heaps
+are measured again from the letters left.
+
+**Shadows of loose letters are their squares, drawn smaller.** The cascades are too
+coarse to carry a 1.28 cm character's shape, and a whole square shades like a tile; a
+square of 0.62 of the side matches the ink a character covers.
+
+**A letter pushed out of a box leaves by the nearest face that opens into free space.**
+The first version took the nearest face, and a letter in the corner where the doorstep
+meets the wall was handed between them and came to rest inside the wall.
+
+**The scene keeps its boxes for the rules.** `VLMKSCN2` adds the static boxes as
+axis-aligned solids, and each object's boxes as its breakable parts. A turned box is given
+the box that bounds it, which is exact for everything in the yard.
+
+**Drawn as instances, sent only when they move.** One instance a letter (position, turn,
+material, seed); the buffer is rewritten only on the steps where letters moved, so a
+settled spill costs only its drawing. They are drawn after the opaque surfaces in the same
+pass, writing depth, with alpha to coverage cutting out the character. They are not in the
+shadow maps yet.
+
+**Deterministic.** The burst uses the rules' own random numbers, and the world's hash
+covers every letter, so a break replays exactly.
+
 ## 2026-11-11: the depth looks
 
 **The lattice is three families of planes, not a volume march.** Planes parallel to the
@@ -14,8 +138,31 @@ own ray.
 **No line is drawn.** Only cells on the lattice's edges hold characters. Crossings are
 drawn brighter, since they are what the eye lines up into a frame.
 
-**Depth is lit as depth:** dimmer and cooler the deeper it lies (redder in the source),
-with a slow pulse travelling inward.
+**The lattice is fixed in the world, not in any surface.** It was first laid out on each
+surface's own page, so it was cut off wherever one thing met another. It is now one
+cubic grid along north, east, and up, and every surface is a window onto it: a wall, the
+frame of the door in it, and the ground at its foot all show the same grid, unbroken
+where they meet. Which character stands in a cell no longer depends on the material in
+front of it, only which alphabet it is drawn from. Its fog is measured in metres, not in
+shares of a thing's thickness, so a thin thing beside a thick one shows no seam, and a
+thin thing is seen into by at least a quarter of a metre.
+
+**The eye sees further in the closer it comes.** The fog between the letters thins with
+nearness: from two metres only the first centimetres can be made out, at arm's length
+the far side of a wall.
+
+**Nothing in a depth look is anything but a character.** The texture was first taken
+away with an ordered dither, whose dots are small squares, and the lattice's edges were
+solid rows of characters that read as bars. Both were geometry that is not writing, and
+the owner asked for it gone. Now the texture retreats into the strokes of the surface's
+own fine print, and along a lattice edge every other cell is empty, so each character
+stands alone and the grid is only their alignment.
+
+**The lattice is written in the thing's own letters, and lit only by depth.** A version
+ruled in ASCII's special characters, with a pulse, a colour shift with depth, glowing
+crossings, and loose drifting characters, was built and shown; the owner preferred the
+plainer lattice, and those were taken out again. The nested frames stay: an edge of a
+larger frame is brighter. Deeper is dimmer, and that is all.
 
 **Written words are given thickness.** A written letter is drawn again four times
 behind itself across a fifth of its cell, in shade, so that from the side it is a small

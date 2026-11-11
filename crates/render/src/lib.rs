@@ -8,6 +8,7 @@ mod frame;
 mod lights;
 mod scene_pass;
 mod shaders;
+mod terrain;
 mod ui_pass;
 mod world_gpu;
 
@@ -45,6 +46,15 @@ pub struct FrameInput<'a> {
     pub tuning: GlyphTuning,
     /// A tool's view: white where the fine print is drawn, black elsewhere.
     pub reveal_mask: bool,
+    /// Every loose letter of every broken thing.
+    pub letters: &'a [vellmark_sim::LetterSnap],
+    /// Changes whenever `letters` does, so that they are sent to the GPU only then.
+    pub letters_step: u64,
+    /// The permanent IDs of broken things, which are not drawn.
+    pub broken: &'a [u64],
+    /// How hot or cold things are, by permanent ID, from -1 (frozen) to 1 (as hot as
+    /// it gets). Up close their letters say so.
+    pub heat: &'a [(u64, f32)],
     /// The interface, drawn over the finished frame.
     pub ui: Option<&'a Canvas>,
 }
@@ -95,12 +105,41 @@ pub fn load_scene(gpu: &Gpu, pack: &vellmark_content::Pack, key: &str) -> Result
     Ok((scene, on_gpu))
 }
 
+/// What the rules need of a scene: the boxes loose letters land on and bounce from,
+/// and the things in it that can be broken.
+pub fn scene_rules(scene: &vellmark_content::Scene) -> (Vec<vellmark_sim::debris::Solid>, Vec<vellmark_sim::BreakableThing>) {
+    use glam::{Affine3A, Mat3A, Vec3, Vec3A};
+    let solids = scene
+        .colliders
+        .iter()
+        .map(|b| vellmark_sim::debris::Solid { min: b.min.into(), max: b.max.into() })
+        .collect();
+    let breakables = scene
+        .breakables
+        .iter()
+        .map(|b| {
+            let t = &b.transform;
+            let to_world = Affine3A::from_mat3_translation(
+                Mat3A::from_cols(Vec3A::new(t[0], t[4], t[8]), Vec3A::new(t[1], t[5], t[9]), Vec3A::new(t[2], t[6], t[10])).into(),
+                Vec3::new(t[3], t[7], t[11]),
+            );
+            vellmark_sim::BreakableThing {
+                id: b.key.0,
+                to_world,
+                boxes: b.boxes.iter().map(|s| (Vec3::from(s.min), Vec3::from(s.max), s.material)).collect(),
+            }
+        })
+        .collect();
+    (solids, breakables)
+}
+
 pub struct Renderer {
     world: ScenePass,
     surface: SurfaceResources,
     ui: UiPass,
     atlas: AtlasGpu,
     scene: SceneGpu,
+    terrain: Option<terrain::TerrainGpu>,
     target_format: wgpu::TextureFormat,
 }
 
@@ -122,6 +161,7 @@ impl Renderer {
             surface,
             atlas,
             scene: SceneGpu::default(),
+            terrain: None,
             target_format,
         })
     }
@@ -134,6 +174,13 @@ impl Renderer {
     pub fn set_scene(&mut self, gpu: &Gpu, scene: SceneGpu) {
         self.surface.set_pages(gpu, &scene.pages);
         self.scene = scene;
+    }
+
+    /// Replaces the terrain being drawn, or removes it. Buffers and textures only, so it
+    /// is safe in play.
+    pub fn set_terrain(&mut self, gpu: &Gpu, tiles: &[&vellmark_content::TerrainTile], materials: &MaterialSet) -> Result<(), String> {
+        self.terrain = if tiles.is_empty() { None } else { Some(terrain::TerrainGpu::new(gpu, self.world.terrain_layout(), tiles, materials)?) };
+        Ok(())
     }
 
     pub fn scene_mut(&mut self) -> &mut SceneGpu {
@@ -170,7 +217,7 @@ impl Renderer {
         frame: &FrameInput<'_>,
         timers: &mut PassTimers,
     ) {
-        self.world.render(gpu, encoder, target, target_size, frame, &self.scene, &self.surface, timers);
+        self.world.render(gpu, encoder, target, target_size, frame, &self.scene, &self.surface, self.terrain.as_ref(), timers);
 
         if let Some(canvas) = frame.ui.filter(|c| !c.quads.is_empty()) {
             self.ui.prepare(gpu, target_size, canvas);
