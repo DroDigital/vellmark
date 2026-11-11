@@ -1,0 +1,41 @@
+// The depth looks, side by side: flat (as built in Phase S01), atoms, lattice, and
+// source, each from 2 m, 60 cm, at an angle, 25 cm, and by lantern light at night.
+// The looks change brightness where letters show, on purpose, so that limit is lifted
+// here. Beyond the reveal distance the frames must still match exactly.
+#![enable(implicit_some)]
+(
+    name: "looks",
+    scene: "scene.yard",
+    width: 1920,
+    height: 1080,
+    // Bloom carries a little of the changed near wall onto the sky beside it, so the
+    // comparison beyond the reveal distance is loosened here too. The yard's own
+    // captures, with the flat look, hold it exactly.
+    limits: (tone_shift: 1.0, pair_mean: 0.05, pair_max: 0.2),
+    shots: [
+        (name: "flat_2m", from: (eye: (1.9, 1.68, -4.0), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 0, pair: true, crop: (480, 270, 960, 540)),
+        (name: "flat_60cm", from: (eye: (1.9, 1.68, -5.4), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 0, pair: true, crop: (480, 270, 960, 540)),
+        (name: "flat_oblique", from: (eye: (2.6, 1.68, -5.55), yaw: 48.0, pitch: -4.0), hour: 15.0, look: 0, pair: true, crop: (480, 270, 960, 540)),
+        (name: "flat_25cm", from: (eye: (1.9, 1.68, -5.75), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 0, pair: true, crop: (480, 270, 960, 540)),
+        (name: "flat_night", from: (eye: (-0.4, 1.7, -5.3), yaw: -25.0, pitch: 3.0), hour: 23.0, look: 0, pair: true, crop: (480, 270, 960, 540)),
+        (name: "flat_ledger", from: (eye: (0.75, 2.05, -5.25), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 0, pair: true, crop: (480, 270, 960, 540)),
+        (name: "atoms_2m", from: (eye: (1.9, 1.68, -4.0), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 1, pair: true, crop: (480, 270, 960, 540)),
+        (name: "atoms_60cm", from: (eye: (1.9, 1.68, -5.4), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 1, pair: true, crop: (480, 270, 960, 540)),
+        (name: "atoms_oblique", from: (eye: (2.6, 1.68, -5.55), yaw: 48.0, pitch: -4.0), hour: 15.0, look: 1, pair: true, crop: (480, 270, 960, 540)),
+        (name: "atoms_25cm", from: (eye: (1.9, 1.68, -5.75), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 1, pair: true, crop: (480, 270, 960, 540)),
+        (name: "atoms_night", from: (eye: (-0.4, 1.7, -5.3), yaw: -25.0, pitch: 3.0), hour: 23.0, look: 1, pair: true, crop: (480, 270, 960, 540)),
+        (name: "atoms_ledger", from: (eye: (0.75, 2.05, -5.25), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 1, pair: true, crop: (480, 270, 960, 540)),
+        (name: "lattice_2m", from: (eye: (1.9, 1.68, -4.0), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 2, pair: true, crop: (480, 270, 960, 540)),
+        (name: "lattice_60cm", from: (eye: (1.9, 1.68, -5.4), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 2, pair: true, crop: (480, 270, 960, 540)),
+        (name: "lattice_oblique", from: (eye: (2.6, 1.68, -5.55), yaw: 48.0, pitch: -4.0), hour: 15.0, look: 2, pair: true, crop: (480, 270, 960, 540)),
+        (name: "lattice_25cm", from: (eye: (1.9, 1.68, -5.75), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 2, pair: true, crop: (480, 270, 960, 540)),
+        (name: "lattice_night", from: (eye: (-0.4, 1.7, -5.3), yaw: -25.0, pitch: 3.0), hour: 23.0, look: 2, pair: true, crop: (480, 270, 960, 540)),
+        (name: "lattice_ledger", from: (eye: (0.75, 2.05, -5.25), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 2, pair: true, crop: (480, 270, 960, 540)),
+        (name: "source_2m", from: (eye: (1.9, 1.68, -4.0), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 3, pair: true, crop: (480, 270, 960, 540)),
+        (name: "source_60cm", from: (eye: (1.9, 1.68, -5.4), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 3, pair: true, crop: (480, 270, 960, 540)),
+        (name: "source_oblique", from: (eye: (2.6, 1.68, -5.55), yaw: 48.0, pitch: -4.0), hour: 15.0, look: 3, pair: true, crop: (480, 270, 960, 540)),
+        (name: "source_25cm", from: (eye: (1.9, 1.68, -5.75), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 3, pair: true, crop: (480, 270, 960, 540)),
+        (name: "source_night", from: (eye: (-0.4, 1.7, -5.3), yaw: -25.0, pitch: 3.0), hour: 23.0, look: 3, pair: true, crop: (480, 270, 960, 540)),
+        (name: "source_ledger", from: (eye: (0.75, 2.05, -5.25), yaw: 0.0, pitch: 0.0), hour: 15.0, look: 3, pair: true, crop: (480, 270, 960, 540)),
+    ],
+)

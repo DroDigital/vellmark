@@ -2,6 +2,18 @@
 
 Newest first. Record every change to scope, design, order, or tools here. The full-game plan keeps its own history in `full-game/docs/PLAN_CHANGES.md`.
 
+## 2026-11-11: the close-up look gains depth, and the Look Gate is deferred
+
+Owner's direction, given in a session after Phases S00 and S01 were merged.
+
+- **The Look Gate is deferred, not passed.** The owner asked for the next phase to begin before playing the yard on their Mac. The gate's checks stay open in `docs/PLAYTEST_CHECKLIST.md`, and S00-T16, S01-T12, and S01-T13 stay unticked.
+- **Up close, a surface is no longer a flat page.** The owner found the fine print flat. What they asked for: near the eye the realistic texture dithers away and the eye looks *into* the thing, at a three-dimensional grid of the same small characters, as deep as the thing is thick, sliding with the camera. The grid is a lattice whose lines are never drawn, only implied by rows of characters along its edges on all three axes. The characters are to feel like the atoms the model and its texture are made of.
+- **Authored sentences stay.** The owner liked reading them. In the new look they stand whole at the front, with the lattice hushed behind them.
+- **Three variants are built for the owner to choose between,** switchable with F6 or `look 0` to `look 3`: *atoms* (the texture goes entirely, the lattice keeps the thing's own colours, and the characters tremble), *lattice* (the texture stays as a half-dithered film over a still lattice), and *source* (the lattice is every printable character in gold, streaming along its edges). Look 0 is the flat fine print of Phase S01 and remains the default until the owner picks.
+- **What this changes in the brief.** Rule 3.5 of `full-game/docs/brief/3a-renderer-core.md`, that letters are invisible in aggregate, now holds only beyond the depth look's range: within about two metres a depth look darkens the surface on purpose. The first promise of `docs/TECH.md` is untouched: beyond the reveal distance the frame is still exactly the frame with the glyph layer off. The source look's motion is confined to the layers behind the surface; a surface's own sentences still never move.
+- **Each surface now carries its object's thickness,** baked for every vertex, so the lattice reaches the far side of the thing and no further.
+- Recorded in `full-game/docs/PLAN_CHANGES.md` as well, because it changes the full game's look.
+
 ## 2026-11-10: the Showcase comes first
 
 Owner's decision.

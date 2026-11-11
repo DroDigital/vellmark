@@ -18,6 +18,8 @@ pub enum Command {
     Reveal(f32),
     /// Scale the letter contrast.
     Contrast(f32),
+    /// Choose the depth look, 0 to 3.
+    Look(u32),
     Quit,
 }
 
@@ -126,6 +128,7 @@ impl Overlay {
                     "lamps on|off   light the lamps or put them out",
                     "reveal <n>     scale the reveal distance (1 is the brief's)",
                     "contrast <n>   scale the letter contrast",
+                    "look <0-3>     flat, atoms, lattice, source (F6)",
                     "quit           leave",
                     "F1 profiler  F2 free camera  F3 glyphs  F4 tuning  F5 lamps",
                 ] {
@@ -148,6 +151,10 @@ impl Overlay {
             (Some("contrast"), Some(v)) => match v.parse::<f32>() {
                 Ok(n) if (0.0..=4.0).contains(&n) => self.commands.push(Command::Contrast(n)),
                 _ => self.say("contrast takes a number from 0 to 4"),
+            },
+            (Some("look"), Some(v)) => match v.parse::<u32>() {
+                Ok(n) if n <= 3 => self.commands.push(Command::Look(n)),
+                _ => self.say("look takes 0 (flat), 1 (atoms), 2 (lattice), or 3 (source)"),
             },
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),

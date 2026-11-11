@@ -271,6 +271,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     Command::Lamps(on) => lamps_lit = on,
                     Command::Reveal(v) => tuning.reveal = v,
                     Command::Contrast(v) => tuning.contrast = v,
+                    Command::Look(n) => tuning.look = n,
                     Command::Quit => break 'frames,
                 }
             }
@@ -297,6 +298,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         let wanted = if actions.held(Action::Read) { 1.0 } else { 0.0 };
         let ease = (frame_time.as_secs_f32() / 0.35).min(1.0);
         close_reading += (wanted - close_reading).clamp(-ease, ease);
+        #[cfg(feature = "dev")]
+        if actions.pressed(Action::DevLook) {
+            tuning.look = (tuning.look + 1) % 4;
+        }
         if cfg!(feature = "dev") && actions.pressed(Action::DevLamps) {
             lamps_lit = !lamps_lit;
         }

@@ -50,6 +50,7 @@ struct VertexInput {
     @location(3) anchor: vec2<f32>,
     @location(4) material: u32,
     @location(5) page: u32,
+    @location(6) thickness: f32,
 }
 
 struct Varyings {
@@ -60,6 +61,7 @@ struct Varyings {
     @location(3) anchor: vec2<f32>,
     @location(4) @interpolate(flat) material: u32,
     @location(5) @interpolate(flat) page: u32,
+    @location(6) @interpolate(flat) thickness: f32,
 }
 
 @vertex
@@ -79,6 +81,7 @@ fn vs(in: VertexInput) -> Varyings {
     out.anchor = in.anchor;
     out.material = in.material;
     out.page = in.page;
+    out.thickness = in.thickness;
     return out;
 }
 
@@ -233,6 +236,13 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
         let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
         colour = light_surface(surface, in, n, m.surface.w);
+        // The depth looks: up close, the surface opens onto the writing behind it.
+        let look = u32(view.effects.z + 0.5);
+        if look > 0u && glyphs.revealed > 0.0 && m.surface.w == 0.0 {
+            let to_eye = normalize(view.eye_time.xyz - in.world);
+            let in_frame = vec3<f32>(dot(to_eye, t), dot(to_eye, b), dot(to_eye, n));
+            colour = glyph_depth(colour, in.anchor, footprint, in_frame, length(view.eye_time.xyz - in.world), in.material, in.page, in.thickness, glyphs.ink, look);
+        }
     }
     if reading > 0.0 {
         // The text frame: colour drains to paper and ink, and light is only weight.

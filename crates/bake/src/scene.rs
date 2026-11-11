@@ -154,6 +154,8 @@ fn add_box(mesh: &mut Mesh, b: &AuthoredBox, material: u32, page_of: &dyn Fn(&st
                 anchor,
                 material,
                 page,
+                // The box's extent along this face's normal.
+                thickness: 2.0 * (normal[0].abs() * half[0] + normal[1].abs() * half[1] + normal[2].abs() * half[2]),
             });
         }
         mesh.indices.extend_from_slice(&[first, first + 1, first + 2, first, first + 2, first + 3]);

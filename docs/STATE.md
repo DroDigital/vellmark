@@ -1,15 +1,13 @@
 # Build state
 
-**Phase file:** `phases/S01-the-look.md`
-**Status:** Waiting on owner
+**Phase file:** `phases/S02-the-ground.md` (S01's Look Gate deferred by the owner)
+**Status:** Waiting on owner: choose a depth look
 
 ## Integration
 
-**Branch:** `claude/charming-bardeen-5aqf5c`, pull request 2. One integration session did every lane.
-**Phase S00:** every task done but S00-T16, whose last line is the owner's: open the macOS build and run the performance run once.
-**Phase S01:** T01, T02a, T03 to T11 done in the cloud. Evidence is in `docs/evidence/S01/`.
-**Not done:** S01-T02b (textures, waits on approval), S01-T12 (measure on the owner's Mac), S01-T13 (the gate itself).
-**Exact next step:** When the owner has answered, either fix what the Look Gate found or, if it passed, tag `showcase-01-done` and open `phases/S02-the-ground.md`. If textures are approved first, do S01-T02b: fetch them into `third_party/`, add manifest entries, and switch `assets/materials/materials.ron` from generators to maps.
+**Branch:** `claude/charming-bardeen-5aqf5c`, restarted from `main` after pull request 2 was merged.
+**Current task:** the depth looks, at the owner's direction (see `docs/PLAN_CHANGES.md`, 2026-11-11). Three variants are built and switchable; captures are in `docs/looks/`.
+**Exact next step:** the owner picks a look (atoms, lattice, or source) or asks for changes. Make the pick the default in `GlyphTuning`, re-accept the yard's reference images, and adjust the capture limits for the depth range. Then begin `phases/S02-the-ground.md` at S02-T01.
 
 ## Lane: Render
 
@@ -33,6 +31,7 @@ None.
 
 ## Waiting on the owner
 
+0. **Choose a depth look.** See `docs/looks/`, or press F6 in the build. Atoms, lattice, or source.
 1. **Look Gate.** Download the macOS build from the newest green CI run and follow "Phase S01: the Look Gate" in `docs/PLAYTEST_CHECKLIST.md`. Five minutes.
 2. **The performance run.** Right-click `perf-run.command`, Open, and send back `vellmark-perf-report.txt`. This closes S00-T16 and S01-T12.
 3. **Texture approval.** Say yes to the list in `third_party/DOWNLOADS.md`, or change it. The yard is on generated materials until then, and it will not look its best without real ones.

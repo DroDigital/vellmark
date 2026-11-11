@@ -82,9 +82,10 @@ pub enum Action {
     DevMore,
     DevNext,
     DevLamps,
+    DevLook,
 }
 
-const ACTION_COUNT: usize = Action::DevLamps as usize + 1;
+const ACTION_COUNT: usize = Action::DevLook as usize + 1;
 
 /// The device a player last touched. Button prompts follow it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -138,6 +139,7 @@ impl Default for Bindings {
                 (Key::Right, DevMore),
                 (Key::Down, DevNext),
                 (Key::F5, DevLamps),
+                (Key::F6, DevLook),
             ],
             mouse: vec![(MouseButton::Left, MainHand), (MouseButton::Right, OffHand)],
             pad: vec![
