@@ -92,11 +92,14 @@ pub struct GlyphTuning {
     pub reveal: f32,
     /// Scales every material's letter contrast.
     pub contrast: f32,
+    /// How letters sit in a surface up close: 0 flat on it, 1 atoms through it,
+    /// 2 a lattice in front of deeper layers, 3 a lattice over the glowing source.
+    pub look: u32,
 }
 
 impl Default for GlyphTuning {
     fn default() -> Self {
-        Self { reveal: 1.0, contrast: 1.0 }
+        Self { reveal: 1.0, contrast: 1.0, look: 0 }
     }
 }
 
@@ -183,7 +186,7 @@ pub fn view_uniform(
         ],
         indices: [index, 0, 0, 0],
         viewport_origin: [origin.0, origin.1, 0.0, 0.0],
-        effects: [dive, lamps, 0.0, 0.0],
+        effects: [dive, lamps, tuning.look as f32, 0.0],
     }
 }
 

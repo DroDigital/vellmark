@@ -1,0 +1,14 @@
+// The depth looks in motion: a walk up to the wall from two metres, turning to look
+// along it. Depth is only seen when the eye moves, so these are saved as frames.
+#![enable(implicit_some)]
+(
+    name: "looks_motion",
+    scene: "scene.yard",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "atoms", from: (eye: (1.2, 1.68, -3.9), yaw: 8.0, pitch: 0.0), to: (eye: (2.6, 1.62, -5.6), yaw: 40.0, pitch: -3.0), hour: 15.0, look: 1, frames: 48),
+        (name: "lattice", from: (eye: (1.2, 1.68, -3.9), yaw: 8.0, pitch: 0.0), to: (eye: (2.6, 1.62, -5.6), yaw: 40.0, pitch: -3.0), hour: 15.0, look: 2, frames: 48),
+        (name: "source", from: (eye: (1.2, 1.68, -3.9), yaw: 8.0, pitch: 0.0), to: (eye: (2.6, 1.62, -5.6), yaw: 40.0, pitch: -3.0), hour: 15.0, look: 3, frames: 48),
+    ],
+)

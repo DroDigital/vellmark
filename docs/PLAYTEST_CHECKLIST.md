@@ -45,9 +45,12 @@ Keys: W A S D and the mouse to move and look. Hold **R** to read. **F5** lights 
    - [ ] Dusk and lantern light are beautiful
 6. **Smoothness.** Press F1 for the profiler and walk around.
    - [ ] It is smooth, and the frame line stays under 16.7 ms
-7. **Tune.** Press F4. Down picks a row, left and right change it.
+7. **The depth looks.** Stand within a metre of the north wall and press F6 to step through flat, atoms, lattice, and source. Move: strafe and lean.
+   - [ ] One of them makes you feel you are looking into the wall. Which: ______
+   - [ ] The wall's sentences can still be read in it
+8. **Tune.** Press F4. Down picks a row, left and right change it.
    - [ ] Write down the reveal and contrast values you like best: reveal ____ contrast ____
-8. **Measure.** Quit, then run `perf-run.command` and send back the report.
+9. **Measure.** Quit, then run `perf-run.command` and send back the report.
 
 If something is wrong, a sentence is enough: where you stood and what you saw.
 

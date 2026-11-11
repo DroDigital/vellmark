@@ -2,6 +2,10 @@
 
 Newest first. Record every change to scope, design, order, or tools here.
 
+## 2026-11-11: up close, surfaces open onto a lattice of characters
+
+Owner's direction during the Showcase. Within about two metres the realistic texture dithers away and the eye looks into a three-dimensional lattice of small characters, as deep as the object is thick, with exact parallax. Authored text stays whole at the front. Three variants (atoms, lattice, source) are built for the owner to choose between. Rule 3.5 of the brief, tone preservation, now holds only outside that range; the glyph-off comparison beyond the reveal distance is unchanged. Details are in the Showcase's `docs/PLAN_CHANGES.md`.
+
 ## 2026-11-10: more words and more compounds
 
 Owner's decision.

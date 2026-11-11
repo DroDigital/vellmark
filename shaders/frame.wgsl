@@ -30,6 +30,7 @@ struct ViewUniform {
     viewport_origin: vec4<f32>,
     // x: the dive, 0 to 1: levels finer than the finest print are drawn.
     // y: how brightly lamps and glowing things burn, 0 to 1.
+    // z: the depth look: 0 flat, 1 atoms, 2 lattice, 3 source.
     effects: vec4<f32>,
 }
 

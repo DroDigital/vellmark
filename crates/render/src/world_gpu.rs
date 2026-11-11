@@ -8,8 +8,8 @@ use vellmark_gpu::{wgpu, Gpu};
 pub const MAX_OBJECTS: usize = 256;
 pub const MAX_MATERIALS: usize = 32;
 
-pub const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 6] =
-    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Uint32, 5 => Uint32];
+pub const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 7] =
+    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Uint32, 5 => Uint32, 6 => Float32];
 
 pub fn vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {

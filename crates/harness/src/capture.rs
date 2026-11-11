@@ -56,6 +56,9 @@ pub struct Shot {
     /// Close reading, from 0, the realistic frame, to 1, the text frame.
     #[serde(default)]
     pub close_reading: f32,
+    /// The depth look: 0 flat, 1 atoms, 2 lattice, 3 source.
+    #[serde(default)]
+    pub look: u32,
     /// Put the lamps out for this shot.
     #[serde(default)]
     pub lamps_out: bool,
@@ -312,7 +315,7 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 close_reading: shot.close_reading,
                 dive: shot.dive,
                 lamps: if shot.lamps_out { 0.0 } else { 1.0 },
-                tuning: GlyphTuning::default(),
+                tuning: GlyphTuning { look: shot.look, ..GlyphTuning::default() },
                 reveal_mask: false,
                 ui: None,
             };
