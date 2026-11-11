@@ -4,6 +4,7 @@
 use crate::frame::{
     cascade_matrix, view_uniform, Atmosphere, ViewUniform, CASCADES, CASCADE_FAR, MAX_VIEWS, SHADOW_SIZE,
 };
+use crate::lights::{cube_face_matrix, Lights};
 use crate::world_gpu::{vertex_layout, SceneGpu, SurfaceResources, MAX_OBJECTS};
 use crate::{FrameInput, ShaderLibrary};
 use glam::Mat4;
@@ -16,12 +17,21 @@ pub const SAMPLES: u32 = 4;
 /// Views whose shadows are drawn. Further views borrow the first view's.
 const SHADOWED_VIEWS: usize = 2;
 
+const BLOOM_LEVELS: usize = 5;
+const CUBE_FACES: usize = 6;
+/// The size of one cascade or cube-face uniform: a matrix and a row of flags.
+const CASCADE_UNIFORM: u64 = 80;
+
 struct Targets {
     size: (u32, u32),
     colour_msaa: wgpu::TextureView,
     depth_msaa: wgpu::TextureView,
     resolved: wgpu::TextureView,
     post_bind_group: wgpu::BindGroup,
+    /// Each level of the bloom chain, largest first, as a target and as a source.
+    bloom_levels: Vec<wgpu::TextureView>,
+    bloom_sources: Vec<wgpu::BindGroup>,
+    scene_source: wgpu::BindGroup,
 }
 
 struct Pipelines {
@@ -30,6 +40,9 @@ struct Pipelines {
     opaque: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
+    bloom_first: wgpu::RenderPipeline,
+    bloom_down: wgpu::RenderPipeline,
+    bloom_up: wgpu::RenderPipeline,
 }
 
 pub struct ScenePass {
@@ -38,6 +51,8 @@ pub struct ScenePass {
     object_layout: wgpu::BindGroupLayout,
     cascade_layout: wgpu::BindGroupLayout,
     post_layout: wgpu::BindGroupLayout,
+    bloom_layout: wgpu::BindGroupLayout,
+    lights: Lights,
     view_buffer: wgpu::Buffer,
     view_stride: u64,
     object_buffer: wgpu::Buffer,
@@ -85,7 +100,7 @@ impl ScenePass {
         let view_size = std::mem::size_of::<ViewUniform>() as u64;
         let view_stride = aligned(view_size, align);
         let object_stride = aligned(64, align);
-        let cascade_stride = aligned(64, align);
+        let cascade_stride = aligned(CASCADE_UNIFORM, align);
 
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("frame"),
@@ -107,6 +122,49 @@ impl ScenePass {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
                     count: None,
                 },
+                uniform_entry(3, wgpu::ShaderStages::FRAGMENT, false, 0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let lights = Lights::new(gpu);
+        let bloom_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("bloom"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
             ],
         });
         let object_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -115,7 +173,7 @@ impl ScenePass {
         });
         let cascade_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cascade"),
-            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX, true, 64)],
+            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX, true, CASCADE_UNIFORM)],
         });
         let post_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("post"),
@@ -137,6 +195,16 @@ impl ScenePass {
                     count: None,
                 },
                 uniform_entry(2, wgpu::ShaderStages::FRAGMENT, false, 16),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -150,7 +218,7 @@ impl ScenePass {
         };
         let view_buffer = buffer("views", view_stride * MAX_VIEWS as u64);
         let object_buffer = buffer("objects", object_stride * MAX_OBJECTS as u64);
-        let cascade_buffer = buffer("cascades", cascade_stride * (CASCADES * SHADOWED_VIEWS) as u64);
+        let cascade_buffer = buffer("cascades", cascade_stride * (CASCADES * SHADOWED_VIEWS + CUBE_FACES) as u64);
         let post_buffer = buffer("post", 16);
 
         let one = |label, layout: &wgpu::BindGroupLayout, buffer: &wgpu::Buffer, size| {
@@ -164,7 +232,7 @@ impl ScenePass {
             })
         };
         let object_bind_group = one("object", &object_layout, &object_buffer, 64);
-        let cascade_bind_group = one("cascade", &cascade_layout, &cascade_buffer, 64);
+        let cascade_bind_group = one("cascade", &cascade_layout, &cascade_buffer, CASCADE_UNIFORM);
 
         // Shadow maps: three cascades for each shadowed view, in one array. Each view's
         // three layers are bound as their own array.
@@ -221,6 +289,9 @@ impl ScenePass {
                         },
                         wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&array) },
                         wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&shadow_sampler) },
+                        wgpu::BindGroupEntry { binding: 3, resource: lights.uniform.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&lights.cluster_view) },
+                        wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&lights.cube_view) },
                     ],
                 })
             })
@@ -233,7 +304,7 @@ impl ScenePass {
         });
 
         let pipelines = Self::pipelines(
-            gpu, registry, shaders, surface, target_format, &frame_layout, &object_layout, &cascade_layout, &post_layout,
+            gpu, registry, shaders, surface, target_format, &frame_layout, &object_layout, &cascade_layout, &post_layout, &bloom_layout,
         )?;
         Ok(Self {
             pipelines,
@@ -241,6 +312,8 @@ impl ScenePass {
             object_layout,
             cascade_layout,
             post_layout,
+            bloom_layout,
+            lights,
             view_buffer,
             view_stride,
             object_buffer,
@@ -270,11 +343,13 @@ impl ScenePass {
         object_layout: &wgpu::BindGroupLayout,
         cascade_layout: &wgpu::BindGroupLayout,
         post_layout: &wgpu::BindGroupLayout,
+        bloom_layout: &wgpu::BindGroupLayout,
     ) -> Result<Pipelines, String> {
         let device = &gpu.device;
         let opaque_module = shaders.module(gpu, "opaque")?;
         let shadow_module = shaders.module(gpu, "shadow")?;
         let post_module = shaders.module(gpu, "post")?;
+        let bloom_module = shaders.module(gpu, "bloom")?;
 
         let layout = |label, groups: &[Option<&wgpu::BindGroupLayout>]| {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -421,7 +496,41 @@ impl ScenePass {
                 cache: None,
             },
         );
-        Ok(Pipelines { shadow, depth, opaque, sky, post })
+        let bloom_pipeline_layout = layout("bloom", &[Some(bloom_layout)]);
+        let mut bloom = |label, entry, blend| {
+            registry.render_pipeline(
+                device,
+                &wgpu::RenderPipelineDescriptor {
+                    label: Some(label),
+                    layout: Some(&bloom_pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &bloom_module,
+                        entry_point: Some("vs"),
+                        compilation_options: Default::default(),
+                        buffers: &[],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &bloom_module,
+                        entry_point: Some(entry),
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState { format: HDR_FORMAT, blend, write_mask: wgpu::ColorWrites::ALL })],
+                    }),
+                    primitive: Default::default(),
+                    depth_stencil: None,
+                    multisample: Default::default(),
+                    multiview_mask: None,
+                    cache: None,
+                },
+            )
+        };
+        let add = wgpu::BlendState {
+            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+            alpha: wgpu::BlendComponent::REPLACE,
+        };
+        let bloom_first = bloom("bloom first", "fs_first", None);
+        let bloom_down = bloom("bloom down", "fs_down", None);
+        let bloom_up = bloom("bloom up", "fs_up", Some(add));
+        Ok(Pipelines { shadow, depth, opaque, sky, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -443,6 +552,7 @@ impl ScenePass {
             &self.object_layout,
             &self.cascade_layout,
             &self.post_layout,
+            &self.bloom_layout,
         )?;
         Ok(())
     }
@@ -469,6 +579,37 @@ impl ScenePass {
             let colour_msaa = texture("scene colour", HDR_FORMAT, SAMPLES, attachment);
             let depth_msaa = texture("scene depth", DEPTH_FORMAT, SAMPLES, attachment);
             let resolved = texture("scene resolved", HDR_FORMAT, 1, attachment | wgpu::TextureUsages::TEXTURE_BINDING);
+            let bloom_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("bloom"),
+                size: wgpu::Extent3d { width: (size.0 / 2).max(16), height: (size.1 / 2).max(16), depth_or_array_layers: 1 },
+                mip_level_count: BLOOM_LEVELS as u32,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: HDR_FORMAT,
+                usage: attachment | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            let bloom_levels: Vec<wgpu::TextureView> = (0..BLOOM_LEVELS as u32)
+                .map(|level| {
+                    bloom_texture.create_view(&wgpu::TextureViewDescriptor {
+                        base_mip_level: level,
+                        mip_level_count: Some(1),
+                        ..Default::default()
+                    })
+                })
+                .collect();
+            let source = |view: &wgpu::TextureView| {
+                gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("bloom source"),
+                    layout: &self.bloom_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
+                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.post_sampler) },
+                    ],
+                })
+            };
+            let bloom_sources = bloom_levels.iter().map(&source).collect();
+            let scene_source = source(&resolved);
             let post_bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("post"),
                 layout: &self.post_layout,
@@ -476,11 +617,19 @@ impl ScenePass {
                     wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&resolved) },
                     wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.post_sampler) },
                     wgpu::BindGroupEntry { binding: 2, resource: self.post_buffer.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&bloom_levels[0]) },
                 ],
             });
-            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, post_bind_group });
+            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, post_bind_group, bloom_levels, bloom_sources, scene_source });
         }
         self.targets.as_ref().unwrap()
+    }
+
+    fn write_cascade(&self, gpu: &Gpu, slot: usize, matrix: &Mat4, glowing: u32) {
+        let mut bytes = [0u8; CASCADE_UNIFORM as usize];
+        bytes[..64].copy_from_slice(bytemuck::cast_slice(&matrix.to_cols_array()));
+        bytes[64..68].copy_from_slice(&glowing.to_le_bytes());
+        gpu.queue.write_buffer(&self.cascade_buffer, slot as u64 * self.cascade_stride, &bytes);
     }
 
     fn draw_scene(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, object_group: u32) {
@@ -526,11 +675,7 @@ impl ScenePass {
                 *slot = cascade_matrix(source, sw / sh, near, CASCADE_FAR[c], atmosphere.light_dir);
                 near = CASCADE_FAR[c] * 0.9;
                 if i < SHADOWED_VIEWS {
-                    gpu.queue.write_buffer(
-                        &self.cascade_buffer,
-                        (i * CASCADES + c) as u64 * self.cascade_stride,
-                        bytemuck::cast_slice(&slot.to_cols_array()),
-                    );
+                    self.write_cascade(gpu, i * CASCADES + c, slot, surface.glowing);
                 }
             }
             let uniform = view_uniform(
@@ -543,11 +688,33 @@ impl ScenePass {
                 frame.close_reading,
                 &frame.tuning,
                 frame.reveal_mask,
+                i as u32,
+                {
+                    let (x, y, _, _) = view.viewport.pixels(target_size);
+                    (x, y)
+                },
                 &cascades,
             );
             gpu.queue.write_buffer(&self.view_buffer, i as u64 * self.view_stride, bytemuck::bytes_of(&uniform));
         }
-        gpu.queue.write_buffer(&self.post_buffer, 0, bytemuck::cast_slice(&[atmosphere.exposure, 0.0, 0.0, 0.0]));
+        // In the reveal mask nothing may bleed from one pixel to the next.
+        let (bloom, edge) = if frame.reveal_mask { (0.0, 0.0) } else { (0.045, 1.0) };
+        gpu.queue.write_buffer(&self.post_buffer, 0, bytemuck::cast_slice(&[atmosphere.exposure, bloom, edge, 0.0]));
+
+        let aspects: Vec<f32> = views
+            .iter()
+            .map(|v| {
+                let (_, _, w, h) = v.viewport.pixels(target_size);
+                w / h
+            })
+            .collect();
+        self.lights.update(gpu, &scene.lights, views, &aspects);
+        if let Some((position, radius)) = self.lights.shadowed {
+            for face in 0..CUBE_FACES {
+                let matrix = cube_face_matrix(position, radius, face);
+                self.write_cascade(gpu, CASCADES * SHADOWED_VIEWS + face, &matrix, surface.glowing);
+            }
+        }
 
         // Sun shadows, one pass for each cascade of each shadowed view. Only the first
         // is timed; the timer's name covers them all in the report.
@@ -567,6 +734,27 @@ impl ScenePass {
             pass.set_pipeline(&self.pipelines.shadow);
             pass.set_bind_group(0, &self.cascade_bind_group, &[(layer as u64 * self.cascade_stride) as u32]);
             self.draw_scene(&mut pass, scene, 1);
+        }
+
+        // The one shadowed lantern or fire: six faces of a cube around it.
+        for face in 0..CUBE_FACES {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("light shadow"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.lights.cube_faces[face],
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: timers.render_pass(["light shadow", "light shadow 2", "light shadow 3", "light shadow 4", "light shadow 5", "light shadow 6"][face]),
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            if self.lights.shadowed.is_some() {
+                pass.set_pipeline(&self.pipelines.shadow);
+                pass.set_bind_group(0, &self.cascade_bind_group, &[((CASCADES * SHADOWED_VIEWS + face) as u64 * self.cascade_stride) as u32]);
+                self.draw_scene(&mut pass, scene, 1);
+            }
         }
 
         self.targets(gpu, target_size);
@@ -622,6 +810,35 @@ impl ScenePass {
                 pass.set_bind_group(2, &self.object_bind_group, &[0]);
                 pass.draw(0..3, 0..1);
             }
+        }
+        // Bloom: down the chain, then back up it, each level added to the one above.
+        let fullscreen = |encoder: &mut wgpu::CommandEncoder, name, target: &wgpu::TextureView, pipeline: &wgpu::RenderPipeline, source: &wgpu::BindGroup, load, timers: &mut PassTimers| {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("bloom"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: timers.render_pass(name),
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, source, &[]);
+            pass.draw(0..3, 0..1);
+        };
+        let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
+        const DOWN: [&str; BLOOM_LEVELS] = ["bloom", "bloom down 2", "bloom down 3", "bloom down 4", "bloom down 5"];
+        const UP: [&str; BLOOM_LEVELS] = ["bloom up 1", "bloom up 2", "bloom up 3", "bloom up 4", "bloom up 5"];
+        fullscreen(encoder, DOWN[0], &targets.bloom_levels[0], &self.pipelines.bloom_first, &targets.scene_source, clear, timers);
+        for level in 1..BLOOM_LEVELS {
+            fullscreen(encoder, DOWN[level], &targets.bloom_levels[level], &self.pipelines.bloom_down, &targets.bloom_sources[level - 1], clear, timers);
+        }
+        for level in (0..BLOOM_LEVELS - 1).rev() {
+            fullscreen(encoder, UP[level], &targets.bloom_levels[level], &self.pipelines.bloom_up, &targets.bloom_sources[level + 1], wgpu::LoadOp::Load, timers);
         }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

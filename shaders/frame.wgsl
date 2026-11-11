@@ -24,6 +24,10 @@ struct ViewUniform {
     // The far edge of each shadow cascade, as distance in front of the eye.
     cascade_far: vec4<f32>,
     shadow: array<mat4x4<f32>, 3>,
+    // x: this view's index among the frame's views.
+    indices: vec4<u32>,
+    // xy: the top left of the view on the target, in pixels.
+    viewport_origin: vec4<f32>,
 }
 
 // The colour of the sky in a direction.

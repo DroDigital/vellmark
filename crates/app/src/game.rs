@@ -168,7 +168,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
     let scene = match vellmark_render::load_scene(&gpu, &base, START_SCENE) {
         Ok((scene, on_gpu)) => {
-            renderer.set_scene(on_gpu);
+            renderer.set_scene(&gpu, on_gpu);
             scene
         }
         Err(detail) => return fail(sid!("sys.packs.missing"), &detail),

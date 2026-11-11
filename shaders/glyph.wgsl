@@ -23,6 +23,17 @@ struct MaterialTable {
     entries: array<MaterialParams, 32>,
 }
 
+struct PageEntry {
+    // Left column, top row, width, height, in cells of the page's level.
+    place: vec4<i32>,
+    // xy: where the page starts on the sheet. z: its level.
+    sheet_level: vec4<u32>,
+}
+
+struct PageTable {
+    entries: array<PageEntry, 64>,
+}
+
 struct AnchorFootprint {
     // How far the anchor moves across one pixel, right and down, in metres.
     dx: vec2<f32>,
@@ -104,6 +115,27 @@ fn family_character(material: u32, pick: u32) -> u32 {
     return m.family[i / 4u][i % 4u];
 }
 
+// The character a cell shows. Authored text comes first: if the surface has a page at
+// this level and the page has a character for this cell, that is the character. A
+// space on a page is a blank cell. Elsewhere the surface shows its material's grain.
+// Either way the answer depends only on where the cell is.
+fn cell_character(cell: vec2<i32>, level: u32, material: u32, page: u32) -> u32 {
+    if page != 0u {
+        let entry = pages.entries[page - 1u];
+        if entry.sheet_level.z == level {
+            let column = cell.x - entry.place.x;
+            let row = entry.place.y - cell.y;
+            if column >= 0 && row >= 0 && column < entry.place.z && row < entry.place.w {
+                let c = textureLoad(page_sheet, vec2<i32>(entry.sheet_level.xy) + vec2<i32>(column, row), 0).r;
+                if c != 0u {
+                    return c;
+                }
+            }
+        }
+    }
+    return family_character(material, hash_cell(cell, level, material));
+}
+
 // Draws the glyph of one cell. `uv` is the place within the cell, with v down the
 // page. `du` and `dv` are how far uv moves across one pixel. `h` is the cell's height
 // on screen in pixels. `wanted` is the share of the cell the glyph should cover.
@@ -144,7 +176,7 @@ fn cell_glyph(layer_small: u32, uv: vec2<f32>, du: vec2<f32>, dv: vec2<f32>, h: 
     return out;
 }
 
-fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, albedo: vec3<f32>) -> GlyphResult {
+fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, page: u32, albedo: vec3<f32>) -> GlyphResult {
     var result = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     let m = materials.entries[material];
 
@@ -179,7 +211,7 @@ fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, a
     let f1 = fract(p1);
     let uv1 = vec2<f32>(f1.x, 1.0 - f1.y);
     let scale1 = 1.0 / (CELL_0 * 4.0);
-    let char1 = family_character(material, hash_cell(cell1, 1u, material));
+    let char1 = cell_character(cell1, 1u, material, page);
     let layer1 = char1 - 32u;
     let g1 = cell_glyph(layer1, uv1, footprint.dx * vec2<f32>(scale1, -scale1), footprint.dy * vec2<f32>(scale1, -scale1), h1, base_cover);
 
@@ -206,7 +238,7 @@ fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, a
         let built = influence_rise(h1);
         let target0 = base_cover + built * 0.40 * (parent_cover - g1.mean) * base_cover / max(g1.mean, 0.05);
 
-        let char0 = family_character(material, hash_cell(cell0, 0u, material));
+        let char0 = cell_character(cell0, 0u, material, page);
         let layer0 = char0 - 32u;
         let du = footprint.dx * vec2<f32>(scale0, -scale0);
         let dv = footprint.dy * vec2<f32>(scale0, -scale0);

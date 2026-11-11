@@ -2,14 +2,14 @@
 
 use bytemuck::{Pod, Zeroable};
 use glam::Mat4;
-use vellmark_content::{AssetId, GlyphAtlas, MaterialSet, Mesh, Scene, Vertex, GLYPHS_PER_FACE, TONE_STEPS};
+use vellmark_content::{AssetId, GlyphAtlas, MaterialSet, Mesh, Scene, TextPages, Vertex, GLYPHS_PER_FACE, TONE_STEPS};
 use vellmark_gpu::{wgpu, Gpu};
 
 pub const MAX_OBJECTS: usize = 256;
 pub const MAX_MATERIALS: usize = 32;
 
-pub const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 5] =
-    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Uint32];
+pub const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 6] =
+    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Uint32, 5 => Uint32];
 
 pub fn vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
@@ -56,11 +56,13 @@ pub struct Drawable {
 pub struct SceneGpu {
     pub drawables: Vec<Drawable>,
     pub lights: Vec<vellmark_content::Light>,
+    /// The scene's authored text. The renderer uploads it when the scene is set.
+    pub pages: TextPages,
 }
 
 impl SceneGpu {
     /// `mesh_of` returns a mesh by its ID, from the pack.
-    pub fn new(gpu: &Gpu, scene: &Scene, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
+    pub fn new(gpu: &Gpu, scene: &Scene, pages: TextPages, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
         let mut drawables = Vec::new();
         let static_mesh = mesh_of(scene.static_mesh).ok_or("the scene's static mesh is missing")?;
         drawables.push(Drawable { key: scene.static_mesh, mesh: MeshGpu::new(gpu, &static_mesh), transform: Mat4::IDENTITY });
@@ -75,7 +77,7 @@ impl SceneGpu {
         if drawables.len() > MAX_OBJECTS {
             return Err(format!("the scene has {} objects; the limit is {MAX_OBJECTS}", drawables.len()));
         }
-        Ok(Self { drawables, lights: scene.lights.clone() })
+        Ok(Self { drawables, lights: scene.lights.clone(), pages })
     }
 
     /// Moves an object. The simulation's snapshot will drive this once doors open.
@@ -97,9 +99,26 @@ struct MaterialParams {
 
 /// Material maps, the glyph atlas, and the per-glyph tone table: everything a surface
 /// needs beyond its own geometry, in one bind group.
+/// Side of the sheet that holds a scene's authored text, in characters.
+pub const PAGE_SHEET: u32 = 1024;
+
+/// Matches `PageEntry` in `shaders/glyph.wgsl`.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct PageParams {
+    /// Left column, top row, width, height, in cells of the page's level.
+    place: [i32; 4],
+    /// Where the page starts on the sheet, then its level.
+    sheet_level: [u32; 4],
+}
+
 pub struct SurfaceResources {
     pub layout: wgpu::BindGroupLayout,
     pub bind_group: wgpu::BindGroup,
+    page_table: wgpu::Buffer,
+    page_sheet: wgpu::Texture,
+    /// Bit i is set if material i gives off light.
+    pub glowing: u32,
 }
 
 fn array_texture(gpu: &Gpu, label: &str, size: u32, mips: u32, layers: u32, format: wgpu::TextureFormat) -> wgpu::Texture {
@@ -197,6 +216,24 @@ impl SurfaceResources {
         );
         let tone_view = tone_texture.create_view(&Default::default());
 
+        let page_table = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("text page table"),
+            size: (std::mem::size_of::<PageParams>() * TextPages::MAX_PAGES) as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let page_sheet = gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("text pages"),
+            size: wgpu::Extent3d { width: PAGE_SHEET, height: PAGE_SHEET, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Uint,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let page_view = page_sheet.create_view(&Default::default());
+
         let texture_array = |binding| wgpu::BindGroupLayoutEntry {
             binding,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -237,6 +274,22 @@ impl SurfaceResources {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -250,8 +303,32 @@ impl SurfaceResources {
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&atlas.view) },
                 wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&atlas.sampler) },
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&tone_view) },
+                wgpu::BindGroupEntry { binding: 7, resource: page_table.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(&page_view) },
             ],
         });
-        Ok(Self { layout, bind_group })
+        let glowing = set.materials.iter().enumerate().filter(|(_, m)| m.emissive > 0.0).fold(0u32, |bits, (i, _)| bits | 1 << i);
+        let resources = Self { layout, bind_group, page_table, page_sheet, glowing };
+        resources.set_pages(gpu, &TextPages::default());
+        Ok(resources)
+    }
+
+    /// Replaces the authored text with a scene's. Text travels with its scene, so this
+    /// is called whenever the scene changes.
+    pub fn set_pages(&self, gpu: &Gpu, pages: &TextPages) {
+        let mut table = [PageParams::zeroed(); TextPages::MAX_PAGES];
+        for (slot, e) in table.iter_mut().zip(&pages.entries) {
+            slot.place = [e.left, e.top, e.width as i32, e.height as i32];
+            slot.sheet_level = [e.sheet_x, e.sheet_y, e.level, 0];
+        }
+        gpu.queue.write_buffer(&self.page_table, 0, bytemuck::cast_slice(&table));
+        if pages.sheet_size == PAGE_SHEET && !pages.sheet.is_empty() {
+            gpu.queue.write_texture(
+                self.page_sheet.as_image_copy(),
+                &pages.sheet,
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(PAGE_SHEET), rows_per_image: Some(PAGE_SHEET) },
+                wgpu::Extent3d { width: PAGE_SHEET, height: PAGE_SHEET, depth_or_array_layers: 1 },
+            );
+        }
     }
 }

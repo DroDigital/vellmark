@@ -1,0 +1,15 @@
+// The authored text: the wall's ledger from reading distance, where it flows around
+// the door, and the bench's count in the finest print.
+#![enable(implicit_some)]
+(
+    name: "s01_text",
+    scene: "scene.yard",
+    width: 1920,
+    height: 1080,
+    shots: [
+        (name: "ledger_2m", from: (eye: (0.0, 1.75, -4.0), yaw: 0.0, pitch: 8.0), hour: 15.0, pair: true, crop: (560, 300, 800, 450)),
+        (name: "ledger_1m", from: (eye: (0.6, 2.1, -5.0), yaw: 0.0, pitch: 0.0), hour: 15.0, pair: true, crop: (560, 300, 800, 450)),
+        (name: "ledger_door", from: (eye: (0.0, 1.9, -3.6), yaw: 0.0, pitch: 3.0), hour: 15.0, pair: true),
+        (name: "bench_30cm", from: (eye: (5.35, 0.78, -0.75), yaw: 10.0, pitch: -80.0), hour: 15.0, pair: true, crop: (560, 300, 800, 450)),
+    ],
+)

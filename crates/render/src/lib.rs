@@ -5,6 +5,7 @@
 mod atlas;
 mod camera;
 mod frame;
+mod lights;
 mod scene_pass;
 mod shaders;
 mod ui_pass;
@@ -77,10 +78,14 @@ impl LoadedAssets {
 /// Reads a scene and its meshes from a pack. `key` is the scene's authored key, such as
 /// `scene.yard`. Returns the scene's data beside what was put on the GPU.
 pub fn load_scene(gpu: &Gpu, pack: &vellmark_content::Pack, key: &str) -> Result<(vellmark_content::Scene, SceneGpu), String> {
-    use vellmark_content::{AssetId, AssetKind, Mesh, Scene};
+    use vellmark_content::{AssetId, AssetKind, Mesh, Scene, TextPages};
     let bytes = pack.get(AssetKind::Scene, AssetId::from_key(key)).ok_or_else(|| format!("the pack has no `{key}`"))?;
     let scene = Scene::from_bytes(bytes)?;
-    let on_gpu = SceneGpu::new(gpu, &scene, &|id| pack.get(AssetKind::Mesh, id).and_then(|b| Mesh::from_bytes(b).ok()))?;
+    let pages = match pack.get(AssetKind::TextPage, scene.pages) {
+        Some(bytes) => TextPages::from_bytes(bytes)?,
+        None => TextPages::default(),
+    };
+    let on_gpu = SceneGpu::new(gpu, &scene, pages, &|id| pack.get(AssetKind::Mesh, id).and_then(|b| Mesh::from_bytes(b).ok()))?;
     Ok((scene, on_gpu))
 }
 
@@ -120,7 +125,8 @@ impl Renderer {
     }
 
     /// Replaces the scene being drawn. Buffers, not pipelines, so it is safe in play.
-    pub fn set_scene(&mut self, scene: SceneGpu) {
+    pub fn set_scene(&mut self, gpu: &Gpu, scene: SceneGpu) {
+        self.surface.set_pages(gpu, &scene.pages);
         self.scene = scene;
     }
 

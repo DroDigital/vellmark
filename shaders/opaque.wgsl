@@ -11,6 +11,25 @@ struct ObjectUniform {
 @group(0) @binding(0) var<uniform> view: ViewUniform;
 @group(0) @binding(1) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(2) var shadow_sampler: sampler_comparison;
+@group(0) @binding(3) var<uniform> lights: Lights;
+@group(0) @binding(4) var light_clusters: texture_2d_array<u32>;
+@group(0) @binding(5) var light_shadow: texture_depth_cube;
+
+struct PointLight {
+    position_radius: vec4<f32>,
+    // rgb: colour times strength. w: 1 if this light's shadow is in the cube.
+    colour_shadow: vec4<f32>,
+}
+
+struct Lights {
+    count: vec4<u32>,
+    lights: array<PointLight, 64>,
+}
+
+const CLUSTERS: vec3<u32> = vec3<u32>(16u, 9u, 16u);
+const CLUSTER_NEAR: f32 = 0.1;
+const CLUSTER_FAR: f32 = 120.0;
+const CUBE_NEAR: f32 = 0.04;
 
 @group(1) @binding(0) var material_colour: texture_2d_array<f32>;
 @group(1) @binding(1) var material_normal: texture_2d_array<f32>;
@@ -19,6 +38,8 @@ struct ObjectUniform {
 @group(1) @binding(4) var glyph_atlas: texture_2d_array<f32>;
 @group(1) @binding(5) var glyph_sampler: sampler;
 @group(1) @binding(6) var glyph_tone: texture_2d<f32>;
+@group(1) @binding(7) var<uniform> pages: PageTable;
+@group(1) @binding(8) var page_sheet: texture_2d<u32>;
 
 @group(2) @binding(0) var<uniform> object: ObjectUniform;
 
@@ -28,6 +49,7 @@ struct VertexInput {
     @location(2) tangent: vec4<f32>,
     @location(3) anchor: vec2<f32>,
     @location(4) material: u32,
+    @location(5) page: u32,
 }
 
 struct Varyings {
@@ -37,6 +59,7 @@ struct Varyings {
     @location(2) tangent: vec4<f32>,
     @location(3) anchor: vec2<f32>,
     @location(4) @interpolate(flat) material: u32,
+    @location(5) @interpolate(flat) page: u32,
 }
 
 @vertex
@@ -55,6 +78,7 @@ fn vs(in: VertexInput) -> Varyings {
     out.tangent = vec4<f32>((object.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz, in.tangent.w);
     out.anchor = in.anchor;
     out.material = in.material;
+    out.page = in.page;
     return out;
 }
 
@@ -89,6 +113,55 @@ fn sun_shadow(world: vec3<f32>, normal: vec3<f32>, depth_in_view: f32) -> f32 {
     return lit / 9.0;
 }
 
+// How much of a point light reaches a point, through its shadow cube.
+fn light_shadow_at(from_light: vec3<f32>, radius: f32, normal: vec3<f32>) -> f32 {
+    // Step off the surface, then compare depths along the cube face's own axis.
+    let d = from_light + normal * 0.02;
+    let a = abs(d);
+    let m = max(a.x, max(a.y, a.z)) * 0.985 - 0.012;
+    let depth = radius * (m - CUBE_NEAR) / (max(m, 1.0e-4) * (radius - CUBE_NEAR));
+    // Four taps a little apart: a soft edge that widens with distance.
+    let side = normalize(cross(d, vec3<f32>(0.3, 1.0, 0.2))) * length(d) * 0.006;
+    let up = normalize(cross(d, side)) * length(d) * 0.006;
+    var lit = 0.0;
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side + up, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side + up, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side - up, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side - up, depth);
+    return lit * 0.25;
+}
+
+// The light of every fire and lantern that reaches this pixel's cluster.
+fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>, to_eye: vec3<f32>, pixel: vec2<f32>, depth_in_view: f32) -> vec3<f32> {
+    let cell = vec2<u32>(clamp(pixel / view.viewport.xy, vec2<f32>(0.0), vec2<f32>(0.9999)) * vec2<f32>(CLUSTERS.xy));
+    let t = log(max(depth_in_view, CLUSTER_NEAR) / CLUSTER_NEAR) / log(CLUSTER_FAR / CLUSTER_NEAR);
+    let slice = min(u32(t * f32(CLUSTERS.z)), CLUSTERS.z - 1u);
+    let bits = textureLoad(light_clusters, vec2<u32>(slice * CLUSTERS.x + cell.x, cell.y), view.indices.x, 0).xy;
+    var total = vec3<f32>(0.0);
+    for (var word = 0u; word < 2u; word++) {
+        var remaining = bits[word];
+        while remaining != 0u {
+            let bit = firstTrailingBit(remaining);
+            remaining &= remaining - 1u;
+            let light = lights.lights[word * 32u + bit];
+            let offset = light.position_radius.xyz - world;
+            let distance = length(offset);
+            let radius = light.position_radius.w;
+            if distance >= radius {
+                continue;
+            }
+            // Inverse square, eased to nothing at the light's radius.
+            let window = pow(clamp(1.0 - pow(distance / radius, 4.0), 0.0, 1.0), 2.0);
+            var radiance = light.colour_shadow.rgb * window / (distance * distance + 0.02);
+            if light.colour_shadow.w > 0.5 {
+                radiance *= light_shadow_at(-offset, radius, flat_normal);
+            }
+            total += shade_light(surface, to_eye, offset / distance, radiance);
+        }
+    }
+    return total;
+}
+
 @fragment
 fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let m = materials.entries[in.material];
@@ -101,7 +174,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let footprint = AnchorFootprint(dpdx(in.anchor), dpdy(in.anchor));
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     if view.switches.x > 0.5 {
-        glyphs = glyph_surface(in.anchor, footprint, in.material, colour_texel.rgb);
+        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb);
     }
 
     if view.viewport.w > 0.5 {
@@ -125,8 +198,10 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let shadow = sun_shadow(in.world, n, depth_in_view);
     var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
     colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb);
+    colour += shade_point_lights(surface, in.world, n, to_eye, in.position.xy - view.viewport_origin.xy, depth_in_view);
     colour += surface.albedo * m.surface.w;
-    return vec4<f32>(colour, 1.0);
+    // Alpha carries where the letters are, so that the edge filter leaves them crisp.
+    return vec4<f32>(colour, glyphs.revealed);
 }
 
 // ---- the sky, drawn behind everything from one triangle ----
@@ -153,5 +228,5 @@ fn fs_sky(in: SkyVaryings) -> @location(0) vec4<f32> {
     if view.viewport.w > 0.5 {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    return vec4<f32>(sky_colour(dir, view), 1.0);
+    return vec4<f32>(sky_colour(dir, view), 0.0);
 }

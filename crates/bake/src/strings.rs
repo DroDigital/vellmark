@@ -9,10 +9,13 @@ pub struct BakedStrings {
     pub bytes: Vec<u8>,
     pub count: usize,
     pub keys: Vec<String>,
+    /// Every string by its key, for bakes that set text into the world.
+    pub text: BTreeMap<String, String>,
 }
 
 pub fn bake_language(dir: &Path) -> Result<BakedStrings, BakeError> {
     let mut builder = StringTableBuilder::new();
+    let mut all = BTreeMap::new();
     let files = sorted_files(dir, "ron")?;
     if files.is_empty() {
         return err(format!("no string files found in {}", dir.display()));
@@ -26,11 +29,12 @@ pub fn bake_language(dir: &Path) -> Result<BakedStrings, BakeError> {
             check_key(&key).map_err(|m| BakeError(format!("{}: {m}", file.display())))?;
             check_text(&text).map_err(|m| BakeError(format!("{}: `{key}`: {m}", file.display())))?;
             builder.add(&key, &text).map_err(|m| BakeError(format!("{}: {m}", file.display())))?;
+            all.insert(key, text);
         }
     }
     let keys: Vec<String> = builder.keys().map(str::to_owned).collect();
     let count = keys.len();
-    Ok(BakedStrings { bytes: builder.finish(), count, keys })
+    Ok(BakedStrings { bytes: builder.finish(), count, keys, text: all })
 }
 
 fn check_key(key: &str) -> Result<(), String> {

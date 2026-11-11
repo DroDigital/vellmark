@@ -238,7 +238,7 @@ impl Offscreen {
         let assets = LoadedAssets::from_pack(&pack)?;
         let mut renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &assets.borrow())?;
         if let Some(key) = scene {
-            renderer.set_scene(load_scene(&gpu, &pack, key)?.1);
+            renderer.set_scene(&gpu, load_scene(&gpu, &pack, key)?.1);
         }
         registry.seal();
         let timers = PassTimers::new(&gpu, true);
@@ -314,7 +314,23 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
         let pair = match (&glyph_off, &reveal_mask) {
             (Some(off), Some(mask)) => {
                 let revealed: Vec<bool> = mask.rgba.chunks_exact(4).map(|p| p[0] > 4).collect();
-                let beyond: Vec<bool> = revealed.iter().map(|r| !r).collect();
+                // The edge filter reads a pixel's neighbours, so a pixel beside lettered
+                // ones is not held to the comparison. Three pixels is its reach.
+                let (w, h) = (mask.width as i32, mask.height as i32);
+                let beyond: Vec<bool> = (0..revealed.len())
+                    .map(|i| {
+                        let (x, y) = (i as i32 % w, i as i32 / w);
+                        for dy in -3..=3 {
+                            for dx in -3..=3 {
+                                let (xx, yy) = (x + dx, y + dy);
+                                if xx >= 0 && yy >= 0 && xx < w && yy < h && revealed[(yy * w + xx) as usize] {
+                                    return false;
+                                }
+                            }
+                        }
+                        true
+                    })
+                    .collect();
                 let far = difference_masked(&frames[0], off, Some(&beyond))?;
                 if far.mean > script.limits.pair_mean || far.max > script.limits.pair_max {
                     report.failures.push(format!(
