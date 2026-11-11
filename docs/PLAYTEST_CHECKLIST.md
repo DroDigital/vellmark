@@ -25,6 +25,32 @@ There is no game yet. This checks that the build reaches the Mac and can be meas
       minute and closes, and `vellmark-perf-report.txt` appears on the Desktop
 - [ ] Send the report file back
 
+## Phase S01: the Look Gate
+
+Five minutes in the yard. It passes when you would put a screenshot of it on a store page.
+
+Keys: W A S D and the mouse to move and look. Hold **R** to read. **F5** lights the lantern and puts it out. In the console (the grave-accent key), `hour 12`, `hour 17.7`, and `hour 23` set noon, dusk, and night, and `hour run` lets the clock go.
+
+1. **Stand far.** You start four metres inside the gap in the south wall. Walk backwards about ten metres.
+   - [ ] From across the yard it looks like a real place, and nothing gives the letters away
+2. **Walk in.** Walk slowly up to the north wall, to the right of the door.
+   - [ ] The letters arrive without a pop or a crawl
+   - [ ] At about two metres you can read the wall's ledger around the door
+   - [ ] At arm's length the small letters are sharp, and heavier where the larger letters' strokes pass
+3. **Read the bench.** Crouch is not built: stand over the bench by the east wall and look down at its seat.
+   - [ ] It can be read, and it is worth reading
+4. **Hold Read.** Stand back in the middle of the yard and hold R. Let go. Do it at night as well.
+   - [ ] Close reading made you say something out loud
+5. **Dusk and the lantern.** `hour 17.7`, then `hour 23`. Press F5 twice.
+   - [ ] Dusk and lantern light are beautiful
+6. **Smoothness.** Press F1 for the profiler and walk around.
+   - [ ] It is smooth, and the frame line stays under 16.7 ms
+7. **Tune.** Press F4. Down picks a row, left and right change it.
+   - [ ] Write down the reveal and contrast values you like best: reveal ____ contrast ____
+8. **Measure.** Quit, then run `perf-run.command` and send back the report.
+
+If something is wrong, a sentence is enough: where you stood and what you saw.
+
 ## Standing items
 
 Added as each system is built.
@@ -32,3 +58,5 @@ Added as each system is built.
 | What | Since | How to check |
 |---|---|---|
 | The performance targets in `docs/TECH.md` | S00 | `perf-run.command`, and send the report |
+| The opaque pass inside its 5.0 ms share | S01 | The `opaque` line of the report's `[gpu passes]` |
+| No shimmer or swimming letters in motion | S01 | Walk and strafe along the north wall at 6 m, 2 m, and 0.5 m. The cloud's shimmer check passes; only a real screen shows motion |

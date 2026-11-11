@@ -36,6 +36,12 @@ pub struct FrameInput<'a> {
     pub glyph_layer: bool,
     /// Close reading: 0 is the realistic frame, 1 is the text frame.
     pub close_reading: f32,
+    /// The dive through a letter, 0 to 1: levels finer than the finest print are drawn,
+    /// so that flying into a character finds more characters inside it.
+    pub dive: f32,
+    /// How brightly lamps and glowing things burn, 0 to 1. The simulation will drive
+    /// this once lanterns are lit by hand and by the hour.
+    pub lamps: f32,
     pub tuning: GlyphTuning,
     /// A tool's view: white where the fine print is drawn, black elsewhere.
     pub reveal_mask: bool,

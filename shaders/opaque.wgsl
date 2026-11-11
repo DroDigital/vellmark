@@ -152,7 +152,7 @@ fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>
             }
             // Inverse square, eased to nothing at the light's radius.
             let window = pow(clamp(1.0 - pow(distance / radius, 4.0), 0.0, 1.0), 2.0);
-            var radiance = light.colour_shadow.rgb * window / (distance * distance + 0.02);
+            var radiance = light.colour_shadow.rgb * view.effects.y * window / (distance * distance + 0.02);
             if light.colour_shadow.w > 0.5 {
                 radiance *= light_shadow_at(-offset, radius, flat_normal);
             }
@@ -162,19 +162,60 @@ fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>
     return total;
 }
 
+// All the light that reaches a surface: the sun or moon, the sky, every fire and
+// lantern, and its own glow.
+fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32) -> vec3<f32> {
+    let to_eye = normalize(view.eye_time.xyz - in.world);
+    let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
+    let shadow = sun_shadow(in.world, flat_normal, depth_in_view);
+    var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
+    colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb);
+    colour += shade_point_lights(surface, in.world, flat_normal, to_eye, in.position.xy - view.viewport_origin.xy, depth_in_view);
+    colour += surface.albedo * glow * view.effects.y;
+    return colour;
+}
+
+// The colours of the text frame: warm paper and brown-black ink, each taking a little
+// of the surface's own colour so that stone, timber, and cloth can still be told apart.
+fn paper_of(albedo: vec3<f32>) -> vec3<f32> {
+    let hue = albedo / max(max(albedo.r, max(albedo.g, albedo.b)), 1.0e-3);
+    return vec3<f32>(0.50, 0.46, 0.37) * mix(vec3<f32>(1.0), hue, 0.40);
+}
+
+fn ink_of(albedo: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(0.012, 0.010, 0.009) + albedo * 0.03;
+}
+
 @fragment
 fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let m = materials.entries[in.material];
     let uv = vec2<f32>(in.anchor.x, -in.anchor.y) / m.surface.x;
     let colour_texel = textureSample(material_colour, material_sampler, uv, in.material);
     let normal_texel = textureSample(material_normal, material_sampler, uv, in.material);
+    let footprint = AnchorFootprint(dpdx(in.anchor), dpdy(in.anchor));
+
+    let n = normalize(in.normal);
+    let t = normalize(in.tangent.xyz - n * dot(n, in.tangent.xyz));
+    let b = cross(n, t) * in.tangent.w;
+    let map_normal = vec2<f32>(normal_texel.x, normal_texel.y) * 2.0 - 1.0;
+    let reading = view.switches.y;
+
+    // In close reading the light is needed first, because it becomes the ink's weight.
+    var light = 0.0;
+    var plain_lit = vec3<f32>(0.0);
+    if reading > 0.0 {
+        let z0 = sqrt(max(1.0 - dot(map_normal, map_normal), 0.05));
+        let plain = Surface(colour_texel.rgb, normalize(t * map_normal.x + b * map_normal.y + n * z0), normal_texel.z, colour_texel.a);
+        plain_lit = light_surface(plain, in, n, m.surface.w);
+        let seen = plain_lit * view.viewport.z;
+        light = clamp(dot(seen / (seen + vec3<f32>(0.6)), vec3<f32>(0.2126, 0.7152, 0.0722)) * 1.6, 0.0, 1.0);
+    }
 
     // The fine print. Beyond the reveal distance this returns at once, having sampled
     // nothing, and the surface is exactly what it would be with the layer off.
-    let footprint = AnchorFootprint(dpdx(in.anchor), dpdy(in.anchor));
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     if view.switches.x > 0.5 {
-        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb);
+        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light);
     }
 
     if view.viewport.w > 0.5 {
@@ -183,23 +224,22 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         return vec4<f32>(vec3<f32>(glyphs.revealed * 100.0), 1.0);
     }
 
-    let n = normalize(in.normal);
-    let t = normalize(in.tangent.xyz - n * dot(n, in.tangent.xyz));
-    let b = cross(n, t) * in.tangent.w;
-    var tangent_normal = vec2<f32>(normal_texel.x, normal_texel.y) * 2.0 - 1.0;
-    tangent_normal += glyphs.relief;
-    let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
-    let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
-
-    let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
-    let to_eye = normalize(view.eye_time.xyz - in.world);
-    let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
-
-    let shadow = sun_shadow(in.world, n, depth_in_view);
-    var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
-    colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb);
-    colour += shade_point_lights(surface, in.world, n, to_eye, in.position.xy - view.viewport_origin.xy, depth_in_view);
-    colour += surface.albedo * m.surface.w;
+    var colour: vec3<f32>;
+    if reading >= 1.0 {
+        colour = plain_lit;
+    } else {
+        let tangent_normal = map_normal + glyphs.relief;
+        let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
+        let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
+        let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
+        colour = light_surface(surface, in, n, m.surface.w);
+    }
+    if reading > 0.0 {
+        // The text frame: colour drains to paper and ink, and light is only weight.
+        // Divided by exposure so that paper is the same paper at noon and at night.
+        let text = mix(paper_of(colour_texel.rgb), ink_of(colour_texel.rgb), glyphs.ink) / view.viewport.z;
+        colour = mix(colour, text, reading);
+    }
     // Alpha carries where the letters are, so that the edge filter leaves them crisp.
     return vec4<f32>(colour, glyphs.revealed);
 }
@@ -228,5 +268,11 @@ fn fs_sky(in: SkyVaryings) -> @location(0) vec4<f32> {
     if view.viewport.w > 0.5 {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    return vec4<f32>(sky_colour(dir, view), 0.0);
+    var colour = sky_colour(dir, view);
+    if view.switches.y > 0.0 {
+        // In close reading the sky is bare paper, a little darker towards the zenith.
+        let paper = vec3<f32>(0.50, 0.46, 0.37) * (1.0 - 0.25 * clamp(dir.y, 0.0, 1.0)) / view.viewport.z;
+        colour = mix(colour, paper, view.switches.y);
+    }
+    return vec4<f32>(colour, 0.0);
 }

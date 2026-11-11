@@ -28,6 +28,9 @@ struct ViewUniform {
     indices: vec4<u32>,
     // xy: the top left of the view on the target, in pixels.
     viewport_origin: vec4<f32>,
+    // x: the dive, 0 to 1: levels finer than the finest print are drawn.
+    // y: how brightly lamps and glowing things burn, 0 to 1.
+    effects: vec4<f32>,
 }
 
 // The colour of the sky in a direction.

@@ -12,6 +12,12 @@ pub enum Command {
     /// Fix the hour of the day, or let the clock run again.
     Hour(Option<f32>),
     GlyphLayer(bool),
+    /// Light the lamps or put them out.
+    Lamps(bool),
+    /// Scale the reveal distance.
+    Reveal(f32),
+    /// Scale the letter contrast.
+    Contrast(f32),
     Quit,
 }
 
@@ -43,6 +49,9 @@ fn budget_ms(pass: &str) -> Option<f32> {
 pub struct Overlay {
     pub profiler: bool,
     pub console: bool,
+    /// The tuning panel: the reveal distance and the letter contrast.
+    pub tuning: bool,
+    tuning_row: usize,
     line: String,
     history: Vec<String>,
     commands: Vec<Command>,
@@ -56,6 +65,8 @@ impl Overlay {
         Self {
             profiler: false,
             console: false,
+            tuning: false,
+            tuning_row: 0,
             line: String::new(),
             history: vec!["type `help` and press Enter".into()],
             commands: Vec::new(),
@@ -112,8 +123,11 @@ impl Overlay {
                     "hour <0-24>    fix the time of day",
                     "hour run       let the clock run",
                     "glyph on|off   switch the glyph layer",
+                    "lamps on|off   light the lamps or put them out",
+                    "reveal <n>     scale the reveal distance (1 is the brief's)",
+                    "contrast <n>   scale the letter contrast",
                     "quit           leave",
-                    "F1 profiler   F2 free camera   F3 glyph layer",
+                    "F1 profiler  F2 free camera  F3 glyphs  F4 tuning  F5 lamps",
                 ] {
                     self.say(text);
                 }
@@ -125,8 +139,35 @@ impl Overlay {
             },
             (Some("glyph"), Some("on")) => self.commands.push(Command::GlyphLayer(true)),
             (Some("glyph"), Some("off")) => self.commands.push(Command::GlyphLayer(false)),
+            (Some("lamps"), Some("on")) => self.commands.push(Command::Lamps(true)),
+            (Some("lamps"), Some("off")) => self.commands.push(Command::Lamps(false)),
+            (Some("reveal"), Some(v)) => match v.parse::<f32>() {
+                Ok(n) if (0.1..=8.0).contains(&n) => self.commands.push(Command::Reveal(n)),
+                _ => self.say("reveal takes a number from 0.1 to 8"),
+            },
+            (Some("contrast"), Some(v)) => match v.parse::<f32>() {
+                Ok(n) if (0.0..=4.0).contains(&n) => self.commands.push(Command::Contrast(n)),
+                _ => self.say("contrast takes a number from 0 to 4"),
+            },
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),
+        }
+    }
+
+    /// The tuning panel's keys: down picks a row, left and right change its value.
+    pub fn tune(&mut self, tuning: &mut vellmark_render::GlyphTuning, next: bool, less: bool, more: bool) {
+        if !self.tuning {
+            return;
+        }
+        if next {
+            self.tuning_row = (self.tuning_row + 1) % 2;
+        }
+        let step = if more { 1.0 } else if less { -1.0 } else { 0.0 };
+        if step != 0.0 {
+            // Steps of a twentieth, so that a value can be read back and written down.
+            let value = if self.tuning_row == 0 { &mut tuning.reveal } else { &mut tuning.contrast };
+            *value = ((*value + step * 0.05) * 20.0).round() / 20.0;
+            *value = value.clamp(0.1, 8.0);
         }
     }
 
@@ -145,6 +186,7 @@ impl Overlay {
         passes: &[PassTiming],
         registry: &PipelineRegistry,
         last_reload_ms: Option<f32>,
+        tuning: &vellmark_render::GlyphTuning,
     ) {
         let ms = frame_time.as_secs_f32() * 1000.0;
         self.smoothed_ms += (ms - self.smoothed_ms) * 0.05;
@@ -191,6 +233,24 @@ impl Overlay {
             }
         }
 
+        if self.tuning {
+            let width = style.size * 26.0;
+            let x = target.0 as f32 - width - pad;
+            canvas.rect([x, pad, width, line * 4.0 + pad * 2.0], PANEL);
+            let rows = [
+                ("TUNING   down: next   left, right: change".to_owned(), GOLD),
+                // 6 m is where the first trace of letters shows at the brief's setting.
+                (format!("{} reveal    {:4.2}  first trace {:4.1} m", if self.tuning_row == 0 { '>' } else { ' ' }, tuning.reveal, 6.0 * tuning.reveal), WHITE),
+                (format!("{} contrast  {:4.2}", if self.tuning_row == 1 { '>' } else { ' ' }, tuning.contrast), WHITE),
+                ("write the values down for the Look Gate".to_owned(), DIM),
+            ];
+            let mut y = pad * 2.0 + line * 0.75;
+            for (text, colour) in rows {
+                canvas.text(atlas, x + pad, y, &TextStyle { colour, ..style }, &dev_text(&text));
+                y += line;
+            }
+        }
+
         if self.console {
             let rows = self.history.len() as f32 + 1.0;
             let height = rows * line + pad * 2.0;
@@ -230,6 +290,18 @@ mod tests {
         assert_eq!(
             overlay.take_commands(),
             vec![Command::Hour(Some(18.5)), Command::GlyphLayer(false), Command::Hour(None)]
+        );
+        typed(&mut overlay, "reveal 1.5");
+        typed(&mut overlay, "contrast 9");
+        assert_eq!(overlay.take_commands(), vec![Command::Reveal(1.5)]);
+        let mut tuning = vellmark_render::GlyphTuning::default();
+        overlay.tune(&mut tuning, false, false, true);
+        assert_eq!(tuning.reveal, 1.0, "the panel does nothing while it is closed");
+        overlay.tuning = true;
+        overlay.tune(&mut tuning, false, false, true);
+        overlay.tune(&mut tuning, true, false, false);
+        overlay.tune(&mut tuning, false, true, false);
+        assert_eq!((tuning.reveal, tuning.contrast), (1.05, 0.95)
         );
         assert!(overlay.history.iter().any(|l| l.contains("unknown command")));
     }

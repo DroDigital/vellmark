@@ -74,6 +74,20 @@ impl DevTools {
         }
     }
 
+    /// The tuning panel: F4 opens it, and the arrow keys change the reveal distance
+    /// and the letter contrast while it is open.
+    pub fn tune(&mut self, tuning: &mut vellmark_render::GlyphTuning, actions: &ActionState) {
+        if actions.pressed(Action::DevTuning) {
+            self.overlay.tuning = !self.overlay.tuning;
+        }
+        self.overlay.tune(
+            tuning,
+            actions.pressed(Action::DevNext),
+            actions.pressed(Action::DevLess),
+            actions.pressed(Action::DevMore),
+        );
+    }
+
     /// Lets the console take the keyboard while it is open.
     pub fn console_input(&mut self, raw: &mut Vec<RawInput>) {
         self.overlay.console_input(raw);
@@ -99,8 +113,9 @@ impl DevTools {
         frame_time: std::time::Duration,
         passes: &[vellmark_gpu::PassTiming],
         registry: &PipelineRegistry,
+        tuning: &vellmark_render::GlyphTuning,
     ) {
-        self.overlay.draw(canvas, atlas, target, density, frame_time, passes, registry, self.last_reload_ms);
+        self.overlay.draw(canvas, atlas, target, density, frame_time, passes, registry, self.last_reload_ms, tuning);
     }
 
     /// True once after text or data sheets changed on disk, with when it was seen.

@@ -693,6 +693,8 @@ impl ScenePass {
                     let (x, y, _, _) = view.viewport.pixels(target_size);
                     (x, y)
                 },
+                frame.dive,
+                frame.lamps,
                 &cascades,
             );
             gpu.queue.write_buffer(&self.view_buffer, i as u64 * self.view_stride, bytemuck::bytes_of(&uniform));

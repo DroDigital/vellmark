@@ -12,6 +12,28 @@ pub struct PassTiming {
     pub milliseconds: f32,
 }
 
+impl PassTiming {
+    /// Adds up passes that share a line of the frame budget in `docs/TECH.md`: every
+    /// cascade is "shadows", every step of the bloom chain is part of "post". A pass's
+    /// name up to its first digit, or up to " down" or " up", names its group.
+    pub fn grouped(passes: &[PassTiming]) -> Vec<PassTiming> {
+        let mut out: Vec<PassTiming> = Vec::new();
+        for pass in passes {
+            let name = match pass.name {
+                n if n.starts_with("shadows") => "shadows",
+                n if n.starts_with("light shadow") => "light shadows",
+                n if n.starts_with("bloom") => "post",
+                n => n,
+            };
+            match out.iter_mut().find(|p| p.name == name) {
+                Some(group) => group.milliseconds += pass.milliseconds,
+                None => out.push(PassTiming { name, milliseconds: pass.milliseconds }),
+            }
+        }
+        out
+    }
+}
+
 struct Readback {
     buffer: wgpu::Buffer,
     names: Vec<&'static str>,
@@ -168,5 +190,24 @@ impl PassTimers {
     /// The most recent complete set of timings, in the order the passes ran.
     pub fn latest(&self) -> &[PassTiming] {
         &self.latest
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn passes_are_grouped_by_budget_line() {
+        let t = |name, milliseconds| PassTiming { name, milliseconds };
+        let grouped = PassTiming::grouped(&[
+            t("shadows", 1.0),
+            t("shadows 2", 0.5),
+            t("light shadow 3", 0.25),
+            t("opaque", 4.0),
+            t("bloom down 2", 0.1),
+            t("post", 0.3),
+        ]);
+        assert_eq!(grouped, vec![t("shadows", 1.5), t("light shadows", 0.25), t("opaque", 4.0), t("post", 0.4)]);
     }
 }

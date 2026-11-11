@@ -24,6 +24,7 @@ pub struct ViewUniform {
     pub shadow: [[[f32; 4]; 4]; 3],
     pub indices: [u32; 4],
     pub viewport_origin: [f32; 4],
+    pub effects: [f32; 4],
 }
 
 /// The most views drawn in one frame. Two is all the full game will ever ask for; four
@@ -146,6 +147,8 @@ pub fn view_uniform(
     reveal_mask: bool,
     index: u32,
     origin: (f32, f32),
+    dive: f32,
+    lamps: f32,
     cascades: &[Mat4; CASCADES],
 ) -> ViewUniform {
     let view_matrix = view.camera.view_matrix();
@@ -180,6 +183,7 @@ pub fn view_uniform(
         ],
         indices: [index, 0, 0, 0],
         viewport_origin: [origin.0, origin.1, 0.0, 0.0],
+        effects: [dive, lamps, 0.0, 0.0],
     }
 }
 

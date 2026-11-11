@@ -57,12 +57,12 @@ const ATLAS_CELL: f32 = 128.0;
 const ATLAS_RANGE: f32 = 16.0;
 const TONE_STEPS: f32 = 16.0;
 
-fn hash_cell(cell: vec2<i32>, level: u32, material: u32) -> u32 {
+fn hash_cell(cell: vec2<i32>, level: i32, material: u32) -> u32 {
     var h = u32(cell.x) * 0x9e3779b1u;
     h = (h ^ (h >> 15u)) * 0x85ebca77u;
     h ^= u32(cell.y) * 0xc2b2ae3du;
     h = (h ^ (h >> 13u)) * 0x27d4eb2fu;
-    h ^= (level * 0x165667b1u) ^ (material * 0x9e3779b9u);
+    h ^= (u32(level + 16) * 0x165667b1u) ^ (material * 0x9e3779b9u);
     h = (h ^ (h >> 16u)) * 0x7feb352du;
     return h ^ (h >> 15u);
 }
@@ -119,10 +119,10 @@ fn family_character(material: u32, pick: u32) -> u32 {
 // this level and the page has a character for this cell, that is the character. A
 // space on a page is a blank cell. Elsewhere the surface shows its material's grain.
 // Either way the answer depends only on where the cell is.
-fn cell_character(cell: vec2<i32>, level: u32, material: u32, page: u32) -> u32 {
+fn cell_character(cell: vec2<i32>, level: i32, material: u32, page: u32) -> u32 {
     if page != 0u {
         let entry = pages.entries[page - 1u];
-        if entry.sheet_level.z == level {
+        if i32(entry.sheet_level.z) == level {
             let column = cell.x - entry.place.x;
             let row = entry.place.y - cell.y;
             if column >= 0 && row >= 0 && column < entry.place.z && row < entry.place.w {
@@ -176,7 +176,14 @@ fn cell_glyph(layer_small: u32, uv: vec2<f32>, du: vec2<f32>, dv: vec2<f32>, h: 
     return out;
 }
 
-fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, page: u32, albedo: vec3<f32>) -> GlyphResult {
+// The highest level drawn in normal play, in close reading, and the lowest in a dive.
+const TOP_LEVEL: i32 = 1;
+const TOP_LEVEL_READING: i32 = 5;
+const BOTTOM_LEVEL_DIVE: i32 = -4;
+
+// `light` is how brightly the surface is lit, 0 to 1. It is used only in close
+// reading, where light is kept as the weight of the ink and nothing else.
+fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, page: u32, albedo: vec3<f32>, light: f32) -> GlyphResult {
     var result = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     let m = materials.entries[material];
 
@@ -187,81 +194,110 @@ fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, p
     if squeeze <= 0.0 {
         return result;
     }
-    let reveal = view.switches.w;
-    let h0 = CELL_0 / squeeze * reveal;
-    let h1 = h0 * 4.0;
+    let reading = view.switches.y;
+    let dive = view.effects.x;
+    let h0 = CELL_0 / squeeze * view.switches.w;
 
-    // The early exit. When even the larger fine level is under three pixels, nothing
-    // is sampled and nothing changes.
-    if h1 < 3.0 {
+    // Which levels can show. A level shows while its cells are between about 3 and 160
+    // pixels tall; each level is four times the last.
+    let top_allowed = select(TOP_LEVEL, TOP_LEVEL_READING, reading > 0.0);
+    let bottom_allowed = select(0, BOTTOM_LEVEL_DIVE, dive > 0.0);
+    let top = min(top_allowed, i32(floor(log2(160.0 / h0) * 0.5)));
+    let bottom = max(bottom_allowed, i32(ceil(log2(3.0 / h0) * 0.5)));
+
+    // The early exit. Beyond the reveal distance no level is large enough to show:
+    // nothing is sampled and nothing changes.
+    if max(top, bottom_allowed) < bottom {
         return result;
     }
+    // Level 0 never fades as it grows, so in normal play it is drawn however large.
+    let first = max(top, bottom_allowed);
+    let last = max(bottom, first - 3);
 
     // The surface's own tone decides how heavy its letters are: darker patches are
     // written in heavier strokes. Only the low frequencies of the colour are used, so
     // this is a property of the place, never of the light.
     let luminance = dot(albedo, vec3<f32>(0.2126, 0.7152, 0.0722));
-    let base_cover = clamp(0.30 - (luminance - 0.18) * 0.5, 0.16, 0.42);
+    let own_cover = clamp(0.30 - (luminance - 0.18) * 0.5, 0.16, 0.42);
+    // In close reading the light itself becomes ink: shadow is written heavy.
+    let lit_cover = clamp(0.48 - light * 0.30, 0.14, 0.48);
+    let base_cover = mix(own_cover, lit_cover, reading);
     let contrast = m.surface.y * view.switches.z;
 
-    // Level 1: 2.56 cm cells.
-    let w1 = influence_rise(h1) * influence_fall(h1);
-    let p1 = anchor / (CELL_0 * 4.0);
-    let cell1 = vec2<i32>(floor(p1));
-    let f1 = fract(p1);
-    let uv1 = vec2<f32>(f1.x, 1.0 - f1.y);
-    let scale1 = 1.0 / (CELL_0 * 4.0);
-    let char1 = cell_character(cell1, 1u, material, page);
-    let layer1 = char1 - 32u;
-    let g1 = cell_glyph(layer1, uv1, footprint.dx * vec2<f32>(scale1, -scale1), footprint.dy * vec2<f32>(scale1, -scale1), h1, base_cover);
-
-    var modulation = w1 * nearness(h1) * (g1.mean - g1.cover);
+    var modulation = 0.0;
+    var ink = 0.0;
     var relief = vec2<f32>(0.0);
-    var ink = w1 * g1.cover;
+    // What the level above drew, for letters made of letters.
+    var parent_layer = 0u;
+    var parent_threshold = 0.5;
+    var parent_mean = 0.0;
+    var parent_cell = vec2<i32>(0);
+    var parent_built = 0.0;
 
-    // Level 0: 0.64 cm cells, the finest print. It never fades as it grows.
-    let w0 = influence_rise(h0);
-    if w0 > 0.0 {
-        let p0 = anchor / CELL_0;
-        let cell0 = vec2<i32>(floor(p0));
-        let f0 = fract(p0);
-        let uv0 = vec2<f32>(f0.x, 1.0 - f0.y);
-        let scale0 = 1.0 / CELL_0;
+    for (var level = first; level >= last; level--) {
+        let size = CELL_0 * pow(4.0, f32(level));
+        let h = h0 * pow(4.0, f32(level));
+
+        // How strongly this level shows. The fine print of normal play is levels 0 and
+        // 1. Coarser levels belong to close reading, finer ones to a dive.
+        var w = influence_rise(h);
+        if level >= 2 {
+            w *= influence_fall(h) * reading;
+        } else if level == 1 {
+            w *= influence_fall(h);
+        } else if level == 0 {
+            w *= mix(1.0, influence_fall(h), dive);
+        } else {
+            w *= influence_fall(h) * dive;
+        }
+
+        let p = anchor / size;
+        let cell = vec2<i32>(floor(p));
+        let f = fract(p);
+        let uv = vec2<f32>(f.x, 1.0 - f.y);
+        let du = footprint.dx * vec2<f32>(1.0 / size, -1.0 / size);
+        let dv = footprint.dy * vec2<f32>(1.0 / size, -1.0 / size);
 
         // Letters made of letters. The parent's coverage at the middle of this cell
         // decides how heavy this cell's letter is, so the larger character is built
         // from the weight of the smaller ones inside its strokes.
-        let centre_in_parent = (vec2<f32>(cell0) + 0.5) / 4.0 - vec2<f32>(cell1);
-        let parent_uv = vec2<f32>(centre_in_parent.x, 1.0 - centre_in_parent.y);
-        let parent = textureSampleLevel(glyph_atlas, glyph_sampler, parent_uv, layer1, 2.0).a;
-        let parent_cover = clamp((parent - g1.threshold) * 4.0 + 0.5, 0.0, 1.0);
-        let built = influence_rise(h1);
-        let target0 = base_cover + built * 0.40 * (parent_cover - g1.mean) * base_cover / max(g1.mean, 0.05);
+        var wanted = base_cover;
+        if parent_built > 0.0 {
+            let centre = (vec2<f32>(cell) + 0.5) / 4.0 - vec2<f32>(parent_cell);
+            let parent_uv = vec2<f32>(centre.x, 1.0 - centre.y);
+            let distance = textureSampleLevel(glyph_atlas, glyph_sampler, parent_uv, parent_layer, 2.0).a;
+            let parent_cover = clamp((distance - parent_threshold) * 4.0 + 0.5, 0.0, 1.0);
+            wanted += parent_built * 0.40 * (parent_cover - parent_mean) * base_cover / max(parent_mean, 0.05);
+        }
 
-        let char0 = cell_character(cell0, 0u, material, page);
-        let layer0 = char0 - 32u;
-        let du = footprint.dx * vec2<f32>(scale0, -scale0);
-        let dv = footprint.dy * vec2<f32>(scale0, -scale0);
-        let g0 = cell_glyph(layer0, uv0, du, dv, h0, target0);
-        modulation += w0 * nearness(h0) * (g0.mean - g0.cover);
-        ink = mix(ink, g0.cover, w0);
+        let character = cell_character(cell, level, material, page);
+        let layer = character - 32u;
+        let g = cell_glyph(layer, uv, du, dv, h, wanted);
+        modulation += w * nearness(h) * (g.mean - g.cover);
+        ink = mix(ink, g.cover, w);
 
         // Relief, once a letter is large enough to catch the light: the slope of the
         // glyph's edge tilts the normal, cutting letters into hard materials and
-        // raising them on soft ones.
-        let carve = smoothstep(10.0, 24.0, h0) * w0;
-        if carve > 0.0 {
-            let layer = layer0 + select(0u, GLYPHS_PER_FACE, h0 > 10.75);
+        // raising them on soft ones. Only the finest level drawn is carved.
+        let carve = smoothstep(10.0, 24.0, h) * w;
+        if level == last && carve > 0.0 {
+            let carved = layer + select(0u, GLYPHS_PER_FACE, h > 10.75);
             let step = 1.5 / ATLAS_CELL;
-            let here = textureSampleLevel(glyph_atlas, glyph_sampler, uv0, layer, 0.0).a;
-            let right = textureSampleLevel(glyph_atlas, glyph_sampler, uv0 + vec2<f32>(step, 0.0), layer, 0.0).a;
-            let below = textureSampleLevel(glyph_atlas, glyph_sampler, uv0 + vec2<f32>(0.0, step), layer, 0.0).a;
+            let here = textureSampleLevel(glyph_atlas, glyph_sampler, uv, carved, 0.0).a;
+            let right = textureSampleLevel(glyph_atlas, glyph_sampler, uv + vec2<f32>(step, 0.0), carved, 0.0).a;
+            let below = textureSampleLevel(glyph_atlas, glyph_sampler, uv + vec2<f32>(0.0, step), carved, 0.0).a;
             // Only the bevel at the glyph's edge slopes; the face and the ground are flat.
-            let bevel = 1.0 - smoothstep(0.0, 0.14, abs(here - g0.threshold));
+            let bevel = 1.0 - smoothstep(0.0, 0.14, abs(here - g.threshold));
             // v runs down the page and the tangent frame's second axis runs up it.
             let slope = vec2<f32>(right - here, here - below) * (ATLAS_RANGE / 1.5);
             relief = -slope * bevel * m.surface.z * 0.55 * carve;
         }
+
+        parent_layer = layer + select(0u, GLYPHS_PER_FACE, h > 10.75);
+        parent_threshold = g.threshold;
+        parent_mean = g.mean;
+        parent_cell = cell;
+        parent_built = influence_rise(h);
     }
 
     result.tone = max(1.0 + contrast * modulation, 0.05);

@@ -1,0 +1,6 @@
+capture `s01_text` on llvmpipe (LLVM 20.1.2, 256 bits) (vulkan, Cpu)
+  ledger_2m: 1 frame(s), beyond reveal: mean 0.00004 max 0.004; lettered 97% of frame, tone -0.11%
+  ledger_1m: 1 frame(s), beyond reveal: mean 0.00000 max 0.000; lettered 100% of frame, tone -0.79%
+  ledger_door: 1 frame(s), beyond reveal: mean 0.00002 max 0.004; lettered 91% of frame, tone -0.06%
+  bench_30cm: 1 frame(s), beyond reveal: mean 0.00000 max 0.000; lettered 100% of frame, tone -0.46%
+  passed

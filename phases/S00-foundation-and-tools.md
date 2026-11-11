@@ -35,7 +35,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S00-T10** [Render] Build the capture tool: scripted camera paths on a fixed clock, single images, contact sheets, the glyph-on and glyph-off pair, and the shimmer check
 - [x] **S00-T11** [Render] Add software-rendered captures in the cloud at low resolution, the reference image set, and the comparison that fails on an unaccepted change
 - [x] **S00-T12** [Shell] Build the performance run and `perf-run.command` for the owner's Mac, writing every number in the Targets table of `docs/TECH.md` to one report file
-- [ ] **S00-T13** [Shell] Create CI for Windows, macOS, and Linux: fast tests on every push, and a macOS app the owner can download from every push to `main`
+- [x] **S00-T13** [Shell] Create CI for Windows, macOS, and Linux: fast tests on every push, and a macOS app the owner can download from every push to `main`
 - [x] **S00-T14** [Content] Implement `third_party/manifest.ron` validation, and write `third_party/DOWNLOADS.md` for the assets Phases S01 and S02 need
 - [x] **S00-T15** [Shell] Add developer tools: console, free camera, and the profiler view, excluded from shipping builds
 - [ ] **S00-T16** [Shell] Run the exit gate and save the evidence

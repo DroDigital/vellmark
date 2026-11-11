@@ -56,6 +56,15 @@ pub struct Shot {
     /// Close reading, from 0, the realistic frame, to 1, the text frame.
     #[serde(default)]
     pub close_reading: f32,
+    /// Put the lamps out for this shot.
+    #[serde(default)]
+    pub lamps_out: bool,
+    /// The dive through a letter, 0 or 1.
+    #[serde(default)]
+    pub dive: f32,
+    /// The nearest distance drawn, in metres. A dive needs less than the usual 5 cm.
+    #[serde(default)]
+    pub near: Option<f32>,
     /// Also save this part of the first frame at full size: left, top, width, height.
     /// For judging letters pixel for pixel in a frame too large to look at whole.
     #[serde(default)]
@@ -290,13 +299,19 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 Some(to) => shot.from.lerp(to, t),
                 None => shot.from,
             };
-            let views = [View::full(pose.camera())];
+            let mut camera = pose.camera();
+            if let Some(near) = shot.near {
+                camera.near = near;
+            }
+            let views = [View::full(camera)];
             let input = FrameInput {
                 views: &views,
                 time_of_day: shot.hour,
                 seconds: i as f32 * vellmark_sim::STEP_SECONDS,
                 glyph_layer: true,
                 close_reading: shot.close_reading,
+                dive: shot.dive,
+                lamps: if shot.lamps_out { 0.0 } else { 1.0 },
                 tuning: GlyphTuning::default(),
                 reveal_mask: false,
                 ui: None,

@@ -77,9 +77,14 @@ pub enum Action {
     DevFreeCamera,
     DevProfiler,
     DevGlyphLayer,
+    DevTuning,
+    DevLess,
+    DevMore,
+    DevNext,
+    DevLamps,
 }
 
-const ACTION_COUNT: usize = Action::DevGlyphLayer as usize + 1;
+const ACTION_COUNT: usize = Action::DevLamps as usize + 1;
 
 /// The device a player last touched. Button prompts follow it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -128,6 +133,11 @@ impl Default for Bindings {
                 (Key::F1, DevProfiler),
                 (Key::F2, DevFreeCamera),
                 (Key::F3, DevGlyphLayer),
+                (Key::F4, DevTuning),
+                (Key::Left, DevLess),
+                (Key::Right, DevMore),
+                (Key::Down, DevNext),
+                (Key::F5, DevLamps),
             ],
             mouse: vec![(MouseButton::Left, MainHand), (MouseButton::Right, OffHand)],
             pad: vec![

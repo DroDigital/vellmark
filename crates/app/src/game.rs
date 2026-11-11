@@ -210,6 +210,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
     let mut world_hour_override: Option<f32> = None;
     let mut canvas = Canvas::new();
+    let mut close_reading = 0.0f32;
+    let mut lamps_lit = true;
+    let mut lamps = 1.0f32;
+    #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
+    let mut tuning = vellmark_render::GlyphTuning::default();
     let started = Instant::now();
 
     'frames: loop {
@@ -263,6 +268,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 match command {
                     Command::Hour(h) => world_hour_override = h,
                     Command::GlyphLayer(on) => glyph_layer = on,
+                    Command::Lamps(on) => lamps_lit = on,
+                    Command::Reveal(v) => tuning.reveal = v,
+                    Command::Contrast(v) => tuning.contrast = v,
                     Command::Quit => break 'frames,
                 }
             }
@@ -283,6 +291,19 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
 
+        #[cfg(feature = "dev")]
+        dev_tools.tune(&mut tuning, &actions);
+        // Holding Read eases from the realistic frame into the text frame, and back.
+        let wanted = if actions.held(Action::Read) { 1.0 } else { 0.0 };
+        let ease = (frame_time.as_secs_f32() / 0.35).min(1.0);
+        close_reading += (wanted - close_reading).clamp(-ease, ease);
+        if cfg!(feature = "dev") && actions.pressed(Action::DevLamps) {
+            lamps_lit = !lamps_lit;
+        }
+        // A lamp takes a moment to catch and a moment to die.
+        let lamp_ease = (frame_time.as_secs_f32() / 0.6).min(1.0);
+        lamps += (if lamps_lit { 1.0 } else { 0.0 } - lamps).clamp(-lamp_ease, lamp_ease);
+
         // Simulation: whole fixed steps, then draw between the last two snapshots.
         let plan = clock.advance(frame_time.as_nanos() as u64);
         for step in 0..plan.steps {
@@ -298,10 +319,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
         #[cfg(feature = "dev")]
-        dev_tools.draw(&mut canvas, &assets.glyphs, screen.size(), window.pixel_density(), frame_time, timers.latest(), &registry);
+        dev_tools.draw(&mut canvas, &assets.glyphs, screen.size(), window.pixel_density(), frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), &registry, &tuning);
 
         if let Some(run) = perf.as_mut() {
-            match run.frame(frame_time, timers.latest(), 1.0) {
+            match run.frame(frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), 1.0) {
                 PerfStep::Camera { eye, yaw, pitch, hour: h } => {
                     camera = Camera::looking(eye.into(), yaw, pitch);
                     hour = h;
@@ -328,8 +349,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 time_of_day: hour,
                 seconds: started.elapsed().as_secs_f32(),
                 glyph_layer,
-                close_reading: 0.0,
-                tuning: Default::default(),
+                close_reading: close_reading * close_reading * (3.0 - 2.0 * close_reading),
+                dive: 0.0,
+                lamps,
+                tuning,
                 reveal_mask: false,
                 ui: Some(&canvas),
             };
