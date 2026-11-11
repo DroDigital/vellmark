@@ -23,6 +23,7 @@
     (key: "brick", name: "brick", elements: ["Al2Si2O5(OH)4", "SiO2", "Fe2O3"], hot: ["HOT", "BAKING", "GLOWING"], cold: ["COLD", "FROSTED"]),
     (key: "earth", name: "earth", elements: ["SiO2", "Al2Si2O5(OH)4", "C"], hot: ["HOT", "BAKING"], cold: ["COLD", "FROZEN"]),
     (key: "mud", name: "mud", elements: ["H2O", "SiO2", "Al2Si2O5(OH)4"], hot: ["DRYING", "CRACKING", "BAKING"], cold: ["COLD", "FROZEN"]),
+    (key: "gravel", name: "gravel", elements: ["SiO2", "CaCO3", "Fe2O3"], hot: ["HOT", "CRACKING"], cold: ["COLD", "FROSTED"]),
     (key: "sand", name: "sand", elements: ["SiO2", "CaCO3", "Fe2O3"], hot: ["HOT", "FUSING", "MELTING"], cold: ["COLD"]),
     (key: "peat", name: "peat", elements: ["C", "C6H10O5", "C10H12O3"], hot: ["SMOKING", "SMOULDERING", "BURNING"], cold: ["COLD", "FROZEN"]),
     (key: "snow", name: "snow", elements: ["H2O"], hot: ["THAWING", "MELTING"], cold: ["FREEZING", "FROZEN"]),

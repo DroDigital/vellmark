@@ -13,7 +13,7 @@
 
 ## Lane: Render
 
-Nothing yet.
+**Task:** S02-T02, terrain shading. Plan: (1) ground materials, generated until textures are approved: done; (2) a terrain pass in `crates/render/src/terrain.rs` and `fs_terrain` in `shaders/opaque.wgsl`: tiles as shared-grid meshes, a height and ground texture per tile, ground blended by class, slope (rock), and height, letters projected per 1 m cell by the cell's dominant axis, coarse rings cut where a finer ring draws, shadows; (3) `scene.valley` with the terrain and a spawn on Tithe Hill, `--scene`, and captures.
 
 ## Lane: Sim
 

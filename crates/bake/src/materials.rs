@@ -19,6 +19,13 @@ enum Generator {
     Iron,
     Earth,
     Glass,
+    Grass,
+    Straw,
+    Gravel,
+    Mud,
+    Moss,
+    Rock,
+    Paper,
 }
 
 #[derive(Deserialize)]
@@ -293,6 +300,107 @@ fn glass(u: f32, v: f32) -> Texel {
     }
 }
 
+/// Turf seen from a step back: green blades in clumps over soil, with dry tips.
+fn grass(u: f32, v: f32) -> Texel {
+    let clump = fbm(u, v, 6, 6, 4, 131);
+    let blade = fbm(u, v, 96, 24, 3, 137);
+    let dry = step(0.55, 0.85, fbm(u, v, 4, 4, 3, 139));
+    let green = mix3([0.10, 0.17, 0.05], [0.20, 0.30, 0.09], clump);
+    let colour = mix3(green, [0.32, 0.30, 0.14], dry * 0.6);
+    let gap = step(0.25, 0.45, blade);
+    Texel {
+        colour: mix3(scale3([0.16, 0.12, 0.08], 0.9), scale3(colour, 0.8 + blade * 0.45), gap),
+        height: 0.3 + clump * 0.3 + blade * 0.3,
+        roughness: 0.9,
+        metal: 0.0,
+    }
+}
+
+/// Barley stubble and straw on dry earth, in rows.
+fn straw(u: f32, v: f32) -> Texel {
+    let row = ((v * 40.0).fract() - 0.5).abs() * 2.0;
+    let stalk = fbm(u, v, 128, 12, 3, 149);
+    let broad = fbm(u, v, 5, 5, 3, 151);
+    let gold = mix3([0.46, 0.38, 0.18], [0.62, 0.52, 0.27], broad);
+    let ground = [0.24, 0.19, 0.12];
+    let on = 1.0 - step(0.45, 0.8, row);
+    Texel {
+        colour: mix3(ground, scale3(gold, 0.8 + stalk * 0.4), on * (0.6 + stalk * 0.4)),
+        height: 0.3 + on * 0.4 + stalk * 0.2,
+        roughness: 0.85,
+        metal: 0.0,
+    }
+}
+
+/// A beaten road: packed earth and small stones, ruts along it.
+fn gravel(u: f32, v: f32) -> Texel {
+    let (d, id) = cellular(u, v, 64, 157);
+    let fine = fbm(u, v, 40, 40, 3, 163);
+    let broad = fbm(u, v, 4, 4, 3, 167);
+    let size = 0.25 + id * 0.25;
+    let stone = 1.0 - step(size * 0.5, size, d);
+    let packed = mix3([0.30, 0.26, 0.20], [0.42, 0.37, 0.29], broad);
+    let pebble = mix3([0.36, 0.34, 0.30], [0.52, 0.49, 0.44], id);
+    Texel {
+        colour: scale3(mix3(packed, pebble, stone * 0.8), 0.85 + fine * 0.3),
+        height: 0.3 + stone * 0.45 + fine * 0.1,
+        roughness: 0.9 - stone * 0.15,
+        metal: 0.0,
+    }
+}
+
+/// Wet mud at the water's edge, darker and shinier where it is wettest.
+fn mud(u: f32, v: f32) -> Texel {
+    let broad = fbm(u, v, 5, 5, 4, 173);
+    let fine = fbm(u, v, 48, 48, 3, 179);
+    let wet = step(0.45, 0.75, fbm(u, v, 3, 3, 3, 181));
+    let colour = mix3([0.20, 0.16, 0.11], [0.11, 0.09, 0.07], wet);
+    Texel {
+        colour: scale3(colour, 0.85 + broad * 0.25 + fine * 0.1),
+        height: 0.4 + broad * 0.2 - wet * 0.15 + fine * 0.08,
+        roughness: 0.9 - wet * 0.55,
+        metal: 0.0,
+    }
+}
+
+/// The floor of a wood: moss and fallen leaves.
+fn moss(u: f32, v: f32) -> Texel {
+    let broad = fbm(u, v, 6, 6, 4, 191);
+    let (d, id) = cellular(u, v, 40, 193);
+    let leaf = (1.0 - step(0.15, 0.35, d)) * if hash((id * 4096.0) as u32) % 3 == 0 { 1.0 } else { 0.0 };
+    let green = mix3([0.07, 0.11, 0.04], [0.14, 0.20, 0.06], broad);
+    let brown = mix3([0.28, 0.16, 0.07], [0.40, 0.26, 0.10], id);
+    Texel {
+        colour: mix3(green, brown, leaf),
+        height: 0.35 + broad * 0.3 + leaf * 0.15,
+        roughness: 0.95,
+        metal: 0.0,
+    }
+}
+
+/// Bare rock where the ground is too steep to hold soil: layered, cracked, lichened.
+fn rock(u: f32, v: f32) -> Texel {
+    let broad = fbm(u, v, 4, 4, 5, 197);
+    let layer = ((v * 14.0 + broad * 3.0).fract() - 0.5).abs() * 2.0;
+    let (d, _) = cellular(u, v, 10, 199);
+    let crack = 1.0 - step(0.0, 0.06, d);
+    let lichen = step(0.62, 0.8, fbm(u, v, 12, 12, 3, 211));
+    let stone = mix3([0.30, 0.29, 0.27], [0.46, 0.44, 0.41], broad);
+    let colour = mix3(scale3(stone, 0.9 + layer * 0.15), [0.38, 0.40, 0.24], lichen * 0.5);
+    Texel {
+        colour: scale3(colour, 1.0 - crack * 0.5),
+        height: 0.5 + broad * 0.3 - crack * 0.3 + layer * 0.06,
+        roughness: 0.85,
+        metal: 0.0,
+    }
+}
+
+/// The Erasure: bare paper, very faintly fibrous.
+fn paper(u: f32, v: f32) -> Texel {
+    let fibre = fbm(u, v, 64, 64, 3, 223);
+    Texel { colour: scale3([0.86, 0.85, 0.81], 0.97 + fibre * 0.05), height: 0.5 + fibre * 0.05, roughness: 0.95, metal: 0.0 }
+}
+
 fn to_srgb(v: f32) -> u8 {
     let v = v.clamp(0.0, 1.0);
     let s = if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 };
@@ -319,6 +427,13 @@ fn relief_depth(generator: Generator) -> f32 {
         Generator::Iron => 0.002,
         Generator::Earth => 0.015,
         Generator::Glass => 0.001,
+        Generator::Grass => 0.02,
+        Generator::Straw => 0.015,
+        Generator::Gravel => 0.01,
+        Generator::Mud => 0.008,
+        Generator::Moss => 0.015,
+        Generator::Rock => 0.03,
+        Generator::Paper => 0.0005,
     }
 }
 
@@ -336,6 +451,13 @@ fn generate(generator: Generator, size: u32, tile_metres: f32) -> Maps {
                 Generator::Iron => iron(u, v),
                 Generator::Earth => earth(u, v),
                 Generator::Glass => glass(u, v),
+                Generator::Grass => grass(u, v),
+                Generator::Straw => straw(u, v),
+                Generator::Gravel => gravel(u, v),
+                Generator::Mud => mud(u, v),
+                Generator::Moss => moss(u, v),
+                Generator::Rock => rock(u, v),
+                Generator::Paper => paper(u, v),
             }
         })
         .collect();

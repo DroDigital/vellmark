@@ -71,6 +71,7 @@ Within the lattice and the fine print, a material often spells its own name and,
 | brick | `brick` | `Al2Si2O5(OH)4`, `SiO2`, `Fe2O3` | `HOT`, `BAKING`, `GLOWING` | `COLD`, `FROSTED` |
 | earth | `earth` | `SiO2`, `Al2Si2O5(OH)4`, `C` | `HOT`, `BAKING` | `COLD`, `FROZEN` |
 | mud | `mud` | `H2O`, `SiO2`, `Al2Si2O5(OH)4` | `DRYING`, `CRACKING`, `BAKING` | `COLD`, `FROZEN` |
+| gravel | `gravel` | `SiO2`, `CaCO3`, `Fe2O3` | `HOT`, `CRACKING` | `COLD`, `FROSTED` |
 | sand | `sand` | `SiO2`, `CaCO3`, `Fe2O3` | `HOT`, `FUSING`, `MELTING` | `COLD` |
 | peat | `peat` | `C`, `C6H10O5`, `C10H12O3` | `SMOKING`, `SMOULDERING`, `BURNING` | `COLD`, `FROZEN` |
 | snow | `snow` | `H2O` | `THAWING`, `MELTING` | `FREEZING`, `FROZEN` |

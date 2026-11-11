@@ -16,5 +16,13 @@
         (key: "iron", generator: Iron, tile_metres: 1.0, family: "=+TY", contrast: 0.40, relief: -0.4),
         (key: "earth", generator: Earth, tile_metres: 3.0, family: ",.;:o", contrast: 0.30, relief: -0.3),
         (key: "glass", generator: Glass, tile_metres: 0.5, family: ".*+", contrast: 0.20, relief: 0.2, emissive: 18.0),
+        // The ground of the valley (S02-T02). Generated until real textures are approved.
+        (key: "grass", generator: Grass, tile_metres: 3.0, family: "/\\|,\"'", contrast: 0.30, relief: -0.3),
+        (key: "straw", generator: Straw, tile_metres: 2.0, family: "|!/\\", contrast: 0.30, relief: -0.3),
+        (key: "gravel", generator: Gravel, tile_metres: 2.0, family: ",.;:o", contrast: 0.32, relief: -0.4),
+        (key: "mud", generator: Mud, tile_metres: 3.0, family: "~-=_", contrast: 0.28, relief: -0.3),
+        (key: "moss", generator: Moss, tile_metres: 3.0, family: "/\\|,\"'", contrast: 0.30, relief: -0.3),
+        (key: "rock", generator: Rock, tile_metres: 4.0, family: "#%&@8", contrast: 0.36, relief: -0.6),
+        (key: "erasure", generator: Paper, tile_metres: 4.0, family: ".,'", contrast: 0.12, relief: -0.1),
     ],
 )
