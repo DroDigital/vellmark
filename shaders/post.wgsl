@@ -2,8 +2,14 @@
 // filter.
 
 struct PostUniform {
-    // x: exposure. y: bloom strength. z: edge filter strength. w: unused.
+    // x: exposure. y: bloom strength. z: edge filter strength. w: 1 for a tool's mask,
+    // which must reach the screen exactly as drawn: no grade.
     settings: vec4<f32>,
+    // The colour grade of the place and the hour. rgb: lift, the shadows' tint.
+    // w: saturation.
+    lift_saturation: vec4<f32>,
+    gamma: vec4<f32>,
+    gain: vec4<f32>,
 }
 
 @group(0) @binding(0) var scene: texture_2d<f32>;
@@ -36,10 +42,22 @@ fn filmic(x: vec3<f32>) -> vec3<f32> {
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+// The colour grade, applied to the displayed picture: shadows lifted towards a tint,
+// highlights scaled, middle tones bent, and colour strengthened or greyed.
+fn grade(c: vec3<f32>) -> vec3<f32> {
+    if post.settings.w > 0.5 {
+        return c;
+    }
+    let lifted = c * post.gain.rgb + post.lift_saturation.rgb * (1.0 - c);
+    let bent = pow(clamp(lifted, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0 / max(post.gamma.rgb, vec3<f32>(0.01)));
+    let grey = dot(bent, vec3<f32>(0.2126, 0.7152, 0.0722));
+    return clamp(mix(vec3<f32>(grey), bent, post.lift_saturation.w), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 // The scene at a point, as it will be displayed.
 fn shown(uv: vec2<f32>, glow: vec3<f32>) -> vec3<f32> {
     let hdr = textureSampleLevel(scene, scene_sampler, uv, 0.0).rgb;
-    return filmic((hdr + glow) * post.settings.x);
+    return grade(filmic((hdr + glow) * post.settings.x));
 }
 
 fn luma(c: vec3<f32>) -> f32 {
@@ -51,7 +69,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let texel = 1.0 / vec2<f32>(textureDimensions(scene));
     let glow = textureSampleLevel(bloom, scene_sampler, in.uv, 0.0).rgb * post.settings.y;
     let centre = textureSampleLevel(scene, scene_sampler, in.uv, 0.0);
-    let middle = filmic((centre.rgb + glow) * post.settings.x);
+    let middle = grade(filmic((centre.rgb + glow) * post.settings.x));
 
     // The edge filter: where the picture steps sharply, blend a little along the edge.
     // Multisampling has already smoothed the outlines of things; this catches what it

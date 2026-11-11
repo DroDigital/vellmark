@@ -83,6 +83,7 @@ pub struct ScenePass {
     cascade_stride: u64,
     cascade_bind_group: wgpu::BindGroup,
     post_buffer: wgpu::Buffer,
+    grade: vellmark_content::Grade,
     post_sampler: wgpu::Sampler,
     shadow_sampler: wgpu::Sampler,
     shadow_layers: Vec<wgpu::TextureView>,
@@ -118,6 +119,7 @@ impl ScenePass {
         shaders: &ShaderLibrary,
         surface: &SurfaceResources,
         target_format: wgpu::TextureFormat,
+        grade: vellmark_content::Grade,
     ) -> Result<Self, String> {
         let device = &gpu.device;
         let align = device.limits().min_uniform_buffer_offset_alignment as u64;
@@ -218,7 +220,7 @@ impl ScenePass {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
-                uniform_entry(2, wgpu::ShaderStages::FRAGMENT, false, 16),
+                uniform_entry(2, wgpu::ShaderStages::FRAGMENT, false, 64),
                 wgpu::BindGroupLayoutEntry {
                     binding: 3,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -243,7 +245,7 @@ impl ScenePass {
         let view_buffer = buffer("views", view_stride * MAX_VIEWS as u64);
         let object_buffer = buffer("objects", object_stride * MAX_OBJECTS as u64);
         let cascade_buffer = buffer("cascades", cascade_stride * (CASCADES * SHADOWED_VIEWS + CUBE_FACES) as u64);
-        let post_buffer = buffer("post", 16);
+        let post_buffer = buffer("post", 64);
 
         let one = |label, layout: &wgpu::BindGroupLayout, buffer: &wgpu::Buffer, size| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -349,6 +351,7 @@ impl ScenePass {
             cascade_stride,
             cascade_bind_group,
             post_buffer,
+            grade,
             post_sampler,
             shadow_sampler,
             shadow_layers,
@@ -898,7 +901,14 @@ impl ScenePass {
         }
         // In the reveal mask nothing may bleed from one pixel to the next.
         let (bloom, edge) = if frame.reveal_mask { (0.0, 0.0) } else { (0.045, 1.0) };
-        gpu.queue.write_buffer(&self.post_buffer, 0, bytemuck::cast_slice(&[atmosphere.exposure, bloom, edge, 0.0]));
+        let g = self.grade.at(frame.time_of_day);
+        let post: [f32; 16] = [
+            atmosphere.exposure, bloom, edge, if frame.reveal_mask { 1.0 } else { 0.0 },
+            g.lift[0], g.lift[1], g.lift[2], g.saturation,
+            g.gamma[0], g.gamma[1], g.gamma[2], 0.0,
+            g.gain[0], g.gain[1], g.gain[2], 0.0,
+        ];
+        gpu.queue.write_buffer(&self.post_buffer, 0, bytemuck::cast_slice(&post));
 
         let aspects: Vec<f32> = views
             .iter()

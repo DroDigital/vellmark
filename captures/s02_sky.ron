@@ -1,0 +1,17 @@
+// Phase S02, the sky: the valley from Tithe Hill through a day, and the night sky.
+#![enable(implicit_some)]
+(
+    name: "s02_sky",
+    scene: "scene.valley",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "dawn", from: (eye: (-104.0, 1.7, 112.0), yaw: 60.0, pitch: 4.0), hour: 6.4, above_ground: true, pair: true),
+        (name: "morning", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: 2.0), hour: 9.0, above_ground: true, pair: true),
+        (name: "noon", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: 12.0), hour: 13.0, above_ground: true, pair: true),
+        (name: "dusk", from: (eye: (-104.0, 1.7, 112.0), yaw: -70.0, pitch: 3.0), hour: 18.4, above_ground: true, pair: true),
+        (name: "moonrise", from: (eye: (-104.0, 1.7, 112.0), yaw: 150.0, pitch: 10.0), hour: 21.0, above_ground: true, pair: true),
+        (name: "moon", from: (eye: (-104.0, 1.7, 112.0), yaw: 158.8, pitch: 47.6), hour: 21.0, above_ground: true, fov: 3.0),
+        (name: "night", from: (eye: (-104.0, 1.7, 112.0), yaw: 10.0, pitch: 30.0), hour: 1.0, above_ground: true, pair: true),
+    ],
+)

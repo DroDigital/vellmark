@@ -2,6 +2,42 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-11: the sky (S02-T03)
+
+**One atmosphere, twice.** Single scattering by air (Rayleigh), haze (Mie, g 0.8), and
+ozone, on a round earth: in `crates/render/src/sky.rs` for the sun's and moon's colour
+where they reach the valley and the sky's light on surfaces, and in `shaders/frame.wgsl`
+per sky pixel. The same constants in both, so the light on a wall at dusk is the light
+of the sky above it. Per pixel it is 12 steps along the view and 6 towards the light:
+about 72 samples on sky pixels only. If that is over budget on the owner's Mac, the
+answer is a sky-view table drawn once a frame at low resolution (the usual fix).
+
+**Units.** The sun is 6.4 of the renderer's light at the top of the air; the full moon a
+twentieth of that, far above the real one-in-400,000, because the game must be playable
+at night; starlight and airglow are a fixed faint blue. Exposure moves from night (1.8)
+to day (0.62) over the sun's last few degrees, so dawn is not seen with night's eyes.
+
+**The moon** keeps ten hours behind the sun, so it is a waxing gibbous moon up in the
+evening; its phase is lit from the sun's true direction. Its seas are the `@` of the
+printed face, read from the glyph atlas at a coarse level and only a fifth as dark as the
+rest, so they suggest the letter and do not spell it. It is drawn the right way round.
+
+**Stars** are one candidate in each cell of a 900-row grid on the sphere, a few in a
+hundred lit, turning about a pole 52 degrees up in the north, faded as the sky brightens
+and dimmed near the horizon by the air.
+
+**Clouds** are two flat layers, broken cumulus at 1.8 km and a thin veil at 8.5 km,
+drifting, self-shadowed towards the light, and fading into the horizon's haze. Cover is
+0.38 until the weather (S02-T10) drives it. They cast no shadow on the ground yet.
+
+**The colour grade** is data, `assets/grades/vale.ron`, keys by the hour blended round
+the clock: lift, gamma, gain, saturation, after the filmic curve. Shadows lean
+slate-blue as the canon's palette asks. A tool's mask skips the grade: graded, black is
+no longer black, and the glyph-off comparison would have had nothing to compare.
+
+**The yard's reference images were accepted again,** because every pixel's light changed.
+The glyph-off comparison and the shimmer check pass as before.
+
 ## 2026-11-11: drawing the terrain (S02-T02)
 
 **One shared grid, heights in a texture.** Every tile is drawn from one index buffer of

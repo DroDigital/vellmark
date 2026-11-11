@@ -372,7 +372,37 @@ fn fs_sky(in: SkyVaryings) -> @location(0) vec4<f32> {
     if view.viewport.w > 0.5 {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    var colour = sky_colour(dir, view);
+    // How far apart two pixels are, in radians, for sharp stars and discs.
+    let pixel = length(dpdx(dir)) + length(dpdy(dir)) * 0.0;
+    var colour = sky_colour_sized(dir, view, max(pixel, 1.0e-5));
+    // The moon: a lit sphere, its phase from where the sun is, and on its face the dark
+    // seas faintly in the shape of an `@`, as the brief asks.
+    let moon = view.moon_dir.xyz;
+    let moon_radius = 0.0095;
+    let on_moon = dot(dir, moon);
+    if on_moon > cos(moon_radius * 1.2) && moon.y > -0.02 {
+        // The moon's own right and up as the eye sees them, so that the `@` reads the
+        // right way round: no letter is ever seen mirrored.
+        let right = normalize(cross(moon, vec3<f32>(0.0, 1.0, 0.0)));
+        let up = cross(right, moon);
+        let q = vec2<f32>(dot(dir, right), dot(dir, up)) / moon_radius;
+        let r2 = dot(q, q);
+        if r2 < 1.0 {
+            let z = sqrt(1.0 - r2);
+            let surface = right * q.x + up * q.y - moon * z;
+            let lit = smoothstep(-0.04, 0.12, dot(surface, view.sun_dir.xyz));
+            let face = vec2<f32>(q.x, -q.y) * 0.5 + 0.5;
+            let at = textureSampleLevel(glyph_atlas, glyph_sampler, face, 64u - 32u + GLYPHS_PER_FACE, 3.0).a;
+            let sea = smoothstep(0.40, 0.60, at) * 0.2;
+            let craters = sky_noise(face * 24.0) * 0.12 + sky_noise(face * 7.0) * 0.1;
+            let albedo = vec3<f32>(0.92, 0.90, 0.86) * (1.0 - sea - craters);
+            let shine = albedo * (lit * SUN * 0.11 + 0.0025) * sky_transmittance(SKY_EYE, max(moon.y, 0.0));
+            let edge = 1.0 - smoothstep(0.96, 1.0, r2);
+            // The moon is behind the cloud, as the sun is.
+            let cloud = cloud_layer(dir, view, 1800.0, 2600.0, view.sky.x, vec2<f32>(0.004, 0.0015), 1.0).w;
+            colour = mix(colour, colour * 0.2 + shine, edge * (1.0 - cloud));
+        }
+    }
     if view.switches.y > 0.0 {
         // In close reading the sky is bare paper, a little darker towards the zenith.
         let paper = vec3<f32>(0.50, 0.46, 0.37) * (1.0 - 0.25 * clamp(dir.y, 0.0, 1.0)) / view.viewport.z;

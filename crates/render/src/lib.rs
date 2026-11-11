@@ -8,6 +8,7 @@ mod frame;
 mod lights;
 mod scene_pass;
 mod shaders;
+pub mod sky;
 mod terrain;
 mod ui_pass;
 mod world_gpu;
@@ -63,12 +64,15 @@ pub struct FrameInput<'a> {
 pub struct RenderAssets<'a> {
     pub glyphs: &'a GlyphAtlas,
     pub materials: &'a MaterialSet,
+    /// The place's colour grade through the day. Neutral if the pack has none.
+    pub grade: &'a vellmark_content::Grade,
 }
 
 /// The renderer's assets as read from a pack.
 pub struct LoadedAssets {
     pub glyphs: GlyphAtlas,
     pub materials: MaterialSet,
+    pub grade: vellmark_content::Grade,
 }
 
 impl LoadedAssets {
@@ -83,11 +87,17 @@ impl LoadedAssets {
         Ok(Self {
             glyphs: GlyphAtlas::from_bytes(glyphs)?,
             materials: MaterialSet::from_bytes(materials)?,
+            // The Vale's grade: the Showcase has one place. The full game blends a grade
+            // for each Quire as the player travels.
+            grade: match pack.get(AssetKind::Table, AssetId::from_key("grade.vale")) {
+                Some(bytes) => vellmark_content::Grade::from_bytes(bytes)?,
+                None => vellmark_content::Grade::default(),
+            },
         })
     }
 
     pub fn borrow(&self) -> RenderAssets<'_> {
-        RenderAssets { glyphs: &self.glyphs, materials: &self.materials }
+        RenderAssets { glyphs: &self.glyphs, materials: &self.materials, grade: &self.grade }
     }
 }
 
@@ -156,7 +166,7 @@ impl Renderer {
         let atlas = AtlasGpu::new(gpu, assets.glyphs);
         let surface = SurfaceResources::new(gpu, assets.materials, assets.glyphs, &atlas)?;
         Ok(Self {
-            world: ScenePass::new(gpu, registry, shaders, &surface, target_format)?,
+            world: ScenePass::new(gpu, registry, shaders, &surface, target_format, assets.grade.clone())?,
             ui: UiPass::new(gpu, registry, shaders, &atlas, target_format)?,
             surface,
             atlas,

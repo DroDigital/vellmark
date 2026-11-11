@@ -96,6 +96,9 @@ pub struct Shot {
     /// it gets.
     #[serde(default)]
     pub heat: Option<(String, f32)>,
+    /// The vertical field of view in degrees, if not the usual.
+    #[serde(default)]
+    pub fov: Option<f32>,
     /// The eye's heights are above the ground rather than above sea level.
     #[serde(default)]
     pub above_ground: bool,
@@ -381,6 +384,9 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
             let mut camera = pose.camera();
             if let Some(near) = shot.near {
                 camera.near = near;
+            }
+            if let Some(fov) = shot.fov {
+                camera.fov_y = fov.to_radians();
             }
             let views = [View::full(camera)];
             let input = FrameInput {

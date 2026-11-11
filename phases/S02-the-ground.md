@@ -24,7 +24,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 
 - [x] **S02-T01** [Content] Build the terrain for the Showcase area as tiles in the full game's format: the hill, the road, the green, the river, and the far bank, with the far ring and the white band as distant forms
 - [x] **S02-T02** [Render] Add terrain shading with materials blended by slope and height, and per-cell projection for its letters
-- [ ] **S02-T03** [Render] Build the physically based sky, the sun and moon, the star field, layered clouds, and time of day with the Vale's colour grade
+- [x] **S02-T03** [Render] Build the physically based sky, the sun and moon, the star field, layered clouds, and time of day with the Vale's colour grade
 - [ ] **S02-T04** [Render] Add froxel fog, god rays, and aerial perspective
 - [ ] **S02-T05** [Content] Bake sky visibility for every surface, and use it for ambient light with contact occlusion at half resolution
 - [ ] **S02-T06** [Render] Add GPU culling and instancing through one instance buffer, with the depth pyramid from the last frame

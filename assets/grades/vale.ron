@@ -1,0 +1,18 @@
+// The colour grade of Scrivenhold Vale through the day. The canon's palette for the Vale
+// is warm parchment, oak-brown ink, slate-blue shadow, and a brick-red accent: shadows
+// lean slate-blue, highlights warm towards parchment, and dusk carries the brick red.
+// Keys by the hour, blended between. Tuned by eye at the Look Gate.
+//
+// lift        added to the shadows, their tint
+// gamma       bends the middle tones; above 1 lightens them
+// gain        multiplies the highlights
+// saturation  1 leaves colour as it is
+[
+    (hour: 1.0, lift: (0.004, 0.008, 0.022), gamma: (0.96, 0.98, 1.06), gain: (0.92, 0.96, 1.08), saturation: 0.72),
+    (hour: 6.2, lift: (0.008, 0.008, 0.016), gamma: (1.0, 1.0, 1.0), gain: (0.98, 0.98, 0.98), saturation: 0.78),
+    (hour: 9.0, lift: (0.006, 0.008, 0.016), gamma: (1.02, 1.01, 1.00), gain: (1.03, 1.01, 0.96), saturation: 0.94),
+    (hour: 13.0, lift: (0.004, 0.007, 0.014), gamma: (1.03, 1.02, 1.00), gain: (1.02, 1.00, 0.95), saturation: 0.92),
+    (hour: 17.5, lift: (0.008, 0.008, 0.016), gamma: (1.04, 1.01, 0.97), gain: (1.06, 1.00, 0.90), saturation: 0.96),
+    (hour: 18.6, lift: (0.008, 0.005, 0.012), gamma: (1.02, 1.0, 1.0), gain: (1.05, 0.98, 0.94), saturation: 0.94),
+    (hour: 20.0, lift: (0.004, 0.006, 0.016), gamma: (0.98, 0.98, 1.04), gain: (0.96, 0.96, 1.04), saturation: 0.8),
+]
