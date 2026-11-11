@@ -2,6 +2,35 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-11: the terrain (S02-T01)
+
+**Three nested grids, each one level of the tile layout.** The playable 512 m at a
+metre (level 0), the far ring to 2 km at 8 m (level 3), and the horizon to 8 km at 32 m
+(level 5), each 513 samples square and cut into 8 × 8 tiles of 65. Format `VLMKTER1`:
+heights, the water's surface (NaN where dry), and a ground class for each sample.
+
+**One function shapes the land at every level,** with as many octaves of noise as the
+grid can carry, so the levels agree. Then erosion (droplets, then slumping), then the
+landmarks from `assets/terrain/valley.ron`. A finer grid eases into the coarser one over
+28 of its samples at its border, so that along the border it lies exactly on the coarser
+ground, and is then written into the coarser grid wherever both have a sample.
+
+**Water finds its own level** from the land: a running minimum down the river, a little
+below the ground, so it never runs uphill and moving a river never floods a field. A
+bank holds the level of the river a little upstream, so a bend cannot let water out.
+
+**Where the water check is not held.** Each region is checked on its own grid, except in
+each grid's outer seam band, where a river is carved at two widths as one grid eases into
+the next. In the playable area that band is the last 28 m, beyond the steep edges; the
+largest spill found there is 8 cm, where the river leaves through its gorge.
+
+**Roads have a steepest grade.** Where the land is steeper the road is cut in or banked
+up. Where the road meets the brook it dips to the water, and the footbridge (S06) spans it.
+
+**Generated, not hand-modelled, and cached.** The bake takes about five seconds with
+optimisation, so the bake crate is always built optimised, and the tiles are cached by
+the hash of the file and the generator's version.
+
 ## 2026-11-11: loose letters
 
 **Letters in flight against the world and the heaps; heaps as a height map.** Contact

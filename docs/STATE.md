@@ -21,7 +21,7 @@ Nothing yet.
 
 ## Lane: Content
 
-**Task:** S02-T01, the terrain as tiles. Plan: a deterministic terrain bake (`crates/bake/src/terrain.rs`) shaped by `assets/terrain/valley.ron`, with hydraulic and thermal erosion, written as `VLMKTER1` tiles: the 512 m area at level 0 (1 m), a far ring at level 3 (8 m) out to 2 km, and the horizon at level 5 (32 m) with the white band to the north.
+**Done:** S02-T01, the terrain as tiles (192 tiles in three levels). Maps in `docs/evidence/S02/`.
 
 ## Lane: Shell
 

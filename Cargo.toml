@@ -40,6 +40,10 @@ debug = "line-tables-only"
 opt-level = 3
 debug = false
 
+# The bake erodes terrain and builds atlases: slow unoptimised, even in tests.
+[profile.dev.package.vellmark-bake]
+opt-level = 3
+
 [profile.release]
 opt-level = 3
 debug = "line-tables-only"

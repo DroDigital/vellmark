@@ -11,6 +11,7 @@ pub mod paths;
 pub mod scene;
 pub mod sha256;
 pub mod strings;
+pub mod terrain;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -114,6 +115,12 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     }
     base.add(AssetKind::MaterialSet, AssetId::from_key(materials::MATERIAL_SET_KEY), set.to_bytes())
         .map_err(|e| BakeError(e.to_string()))?;
+
+    let tiles = terrain::bake_tiles(&inputs.assets.join("terrain/valley.ron"), inputs.cache.as_deref())?;
+    report.push(format!("terrain.valley: {} tiles", tiles.len()));
+    for (id, bytes) in tiles {
+        base.add(AssetKind::Tile, id, bytes).map_err(|e| BakeError(e.to_string()))?;
+    }
 
     for (key, bytes) in paths::bake_all(&inputs.assets.join("paths"))? {
         report.push(format!("{key}: {} bytes", bytes.len()));

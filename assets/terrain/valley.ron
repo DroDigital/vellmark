@@ -1,0 +1,71 @@
+// The Showcase's ground: Tithe Hill to the south-west, the road down through the barley
+// to Little Penance, the River Quill across the north of the area, the mill pond, and
+// the far bank rising beyond it. Outside the 512 m area the same land runs on as the
+// far ring: rolling country and woods, the highlands to the north, and the white band
+// of the Erasure along the northern horizon.
+//
+// Metres. X runs east, Z runs south: north is -Z. Every feature has a key that is never
+// renamed. Rivers and ponds find their own water levels from the ground, so moving one
+// never floods a field.
+#![enable(implicit_some)]
+(
+    seed: 4112,
+    shape: (
+        // The valley floor, and how it rises away from the river.
+        floor: 4.0,
+        from_river: 0.055,
+        from_river_most: 16.0,
+        relief: 2.6,
+        wavelength: 240.0,
+        rolling: (height: 46.0, wavelength: 1100.0, beyond: 560.0),
+        highlands: (from: 1300.0, to: 4600.0, height: 330.0, wavelength: 700.0),
+        forest: (beyond: 300.0, cover: 0.46, wavelength: 420.0),
+        erasure: (from: 3500.0, ragged: 420.0),
+    ),
+    // Steep ground closes the area: nothing invisible stops the player.
+    edges: (start: 226.0, width: 16.0, north: 9.0, south: 16.0, east: 14.0, west: 15.0),
+    hills: [
+        (key: "tithe_hill", centre: (-112.0, 128.0), radius: 150.0, height: 33.0),
+        (key: "tithe_hill_shoulder", centre: (-190.0, 60.0), radius: 90.0, height: 12.0),
+        (key: "far_bank_rise", centre: (150.0, -235.0), radius: 140.0, height: 7.0),
+    ],
+    flats: [
+        // The hilltop where the Stone and the graves are.
+        (key: "tithe_hill_top", centre: (-112.0, 128.0), radius: 16.0, blend: 22.0),
+        (key: "wicks_rest_yard", centre: (-72.0, 110.0), radius: 9.0, blend: 12.0, ground: Earth),
+        (key: "penance_green", centre: (42.0, -38.0), radius: 30.0, blend: 34.0),
+        (key: "penance_green_trodden", centre: (42.0, -38.0), radius: 7.0, blend: 6.0, ground: Earth),
+        (key: "mill_yard", centre: (82.0, -84.0), radius: 12.0, blend: 14.0, ground: Earth),
+        (key: "quiet_orchard", centre: (150.0, -178.0), radius: 26.0, blend: 22.0),
+    ],
+    roads: [
+        (key: "hill_path", width: 2.4, points: [(-112.0, 112.0), (-100.0, 118.0), (-86.0, 112.0), (-74.0, 100.0), (-80.0, 86.0), (-92.0, 72.0)]),
+        (key: "penance_road", width: 4.2, grade: 0.12, points: [(-92.0, 72.0), (-74.0, 50.0), (-48.0, 26.0), (-20.0, 8.0), (6.0, -8.0), (24.0, -22.0)]),
+        (key: "mill_lane", width: 3.4, grade: 0.12, points: [(58.0, -54.0), (70.0, -68.0), (80.0, -80.0)]),
+        (key: "bridge_road", width: 3.6, grade: 0.12, points: [(68.0, -50.0), (98.0, -70.0), (122.0, -92.0), (130.0, -100.0)]),
+        (key: "far_bank_track", width: 3.0, points: [(134.0, -126.0), (140.0, -146.0), (146.0, -164.0)]),
+    ],
+    rivers: [
+        // Upstream first.
+        (key: "river_quill", width: 14.0, depth: 1.9, bank: 5.0, points: [
+            (-7000.0, -420.0), (-3000.0, -240.0), (-1200.0, -60.0), (-500.0, -150.0), (-256.0, -96.0),
+            (-170.0, -124.0), (-80.0, -104.0), (0.0, -118.0), (72.0, -106.0), (130.0, -114.0),
+            (200.0, -98.0), (256.0, -120.0), (520.0, -70.0), (1400.0, -190.0), (3200.0, 40.0), (7000.0, 160.0),
+        ]),
+        // The brook off the hill that the road crosses by the footbridge.
+        (key: "tithe_brook", width: 2.2, depth: 0.6, bank: 1.6, points: [
+            (-40.0, 96.0), (-30.0, 60.0), (-34.0, 30.0), (-22.0, 2.0), (-10.0, -40.0), (-18.0, -80.0), (-12.0, -112.0),
+        ]),
+    ],
+    ponds: [
+        (key: "mill_pond", centre: (100.0, -70.0), radius: 15.0, depth: 1.6, bank: 3.0),
+    ],
+    fields: [
+        (key: "barley_west", points: [(-86.0, 50.0), (-52.0, 18.0), (-24.0, 0.0), (-2.0, -16.0), (-14.0, -64.0), (-60.0, -70.0), (-104.0, 6.0)]),
+        (key: "barley_east", points: [(-70.0, 76.0), (-40.0, 36.0), (-14.0, 18.0), (14.0, 0.0), (30.0, 22.0), (-8.0, 64.0), (-46.0, 88.0)]),
+    ],
+    woods: [
+        (key: "north_edge_wood", points: [(-256.0, -170.0), (-120.0, -186.0), (-20.0, -214.0), (40.0, -256.0), (-256.0, -256.0)]),
+        (key: "east_edge_wood", points: [(206.0, 40.0), (256.0, 20.0), (256.0, 210.0), (190.0, 230.0)]),
+    ],
+)

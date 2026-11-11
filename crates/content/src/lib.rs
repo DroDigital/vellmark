@@ -9,6 +9,7 @@ pub mod id;
 pub mod pack;
 pub mod scene;
 pub mod strings;
+pub mod terrain;
 pub mod tile;
 
 pub use camera_path::{CameraPath, Keyframe};
@@ -17,4 +18,5 @@ pub use id::{fnv1a64, AssetId, AssetKind, StringId};
 pub use scene::{Breakable, Light, Material, MaterialSet, Mesh, Object, PageEntry, Scene, SolidBox, TextPages, Vertex};
 pub use pack::{Pack, PackError, PackWriter, PACK_VERSION};
 pub use strings::{StringTable, StringTableBuilder};
+pub use terrain::{Ground, TerrainTile, TERRAIN_LAYER, TILE_SAMPLES};
 pub use tile::{TileCoord, TILE_METRES};

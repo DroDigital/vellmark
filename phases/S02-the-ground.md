@@ -22,7 +22,7 @@ The 500 m area as terrain with its far ring, the sky and time of day, fog, grass
 
 Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes run side by side as `docs/CLOUD.md` sets out. A task marked **after** waits for the task it names.
 
-- [ ] **S02-T01** [Content] Build the terrain for the Showcase area as tiles in the full game's format: the hill, the road, the green, the river, and the far bank, with the far ring and the white band as distant forms
+- [x] **S02-T01** [Content] Build the terrain for the Showcase area as tiles in the full game's format: the hill, the road, the green, the river, and the far bank, with the far ring and the white band as distant forms
 - [ ] **S02-T02** [Render] Add terrain shading with materials blended by slope and height, and per-cell projection for its letters
 - [ ] **S02-T03** [Render] Build the physically based sky, the sun and moon, the star field, layered clouds, and time of day with the Vale's colour grade
 - [ ] **S02-T04** [Render] Add froxel fog, god rays, and aerial perspective
