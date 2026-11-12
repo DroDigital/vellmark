@@ -65,3 +65,5 @@ Added as each system is built.
 | No shimmer or swimming letters in motion | S01 | Walk and strafe along the north wall at 6 m, 2 m, and 0.5 m. The cloud's shimmer check passes; only a real screen shows motion |
 | Grass and foliage inside 2.0 ms | S02-T07 | Run `valley.command`, stand on Tithe Hill, and read the `opaque` and `depth` lines with grass in view. The grass's density is 160 blades a square metre within 8 m; say if it should change |
 | Grass that moves well | S02-T07 | In the valley, walk through the pasture and the barley: the blades part around you and spring back, and the wind travels across the field in gusts. With the free camera (F2, Left Ctrl to go down), bring your eye to a blade: it is a line of words, `grass C6H12O6` |
+| Water inside 0.9 ms | S02-T09 | Stand on the river's north bank (about 0, -100) facing south and read the `water` line of the report |
+| Water that looks like water | S02-T09 | The river and the mill pond at noon and at dusk: does it read as a northern river, dark and mirroring? Kneel at the edge (F2, Left Ctrl): the foam is `.` and `,`, and letters gather on the ripples |

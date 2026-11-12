@@ -30,7 +30,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S02-T06** [Render] Add GPU culling and instancing through one instance buffer, with the depth pyramid from the last frame
 - [x] **S02-T07** [Render] Add grass as instanced blades that sway and bend around a moving point, with each blade a line of characters up close
 - [ ] **S02-T08** [Content] Generate trees with bark that carries text and leaf cards, with levels of detail and far forms that crossfade
-- [ ] **S02-T09** [Render] Add water for the river and pond: flow, reflection, refraction, foam, and ripples that resolve into characters at the edge
+- [x] **S02-T09** [Render] Add water for the river and pond: flow, reflection, refraction, foam, and ripples that resolve into characters at the edge
 - [ ] **S02-T10** [Render] Add rain with its close-up characters, wet surfaces, and the wind that reads, from a pool of six sentences
 - [ ] **S02-T11** [Render] Cache the far shadow cascades and ration shadowed lights
 - [ ] **S02-T12** [Render] Build the governor and the Low, Medium, and High presets

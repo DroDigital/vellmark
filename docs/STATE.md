@@ -20,13 +20,16 @@
 **Done:** S02-T06, GPU culling and instancing: one mesh pool and instance buffer, culled per view against the frustum and last frame's depth pyramid, drawn by indirect batches. Test: `crates/harness/tests/culling.rs`.
 **Done:** S02-T07, grass: patches in the one instance buffer, culled per view, four levels without popping; blades bent by the wind and by whoever walks through; each blade a line of its lexicon's words, and at arm's length nothing but them. Evidence: `docs/evidence/S02/grass.jpg`, `captures/s02_grass.ron`. Test: `crates/harness/tests/grass.rs`.
 **Not yet:** grass casts no shadows (S02-T11's rota); the wind wanders on its own until the weather drives it (S02-T10); density and cost to be judged on the Mac.
-**Current task:** S02-T09, water. Plan: the terrain's water levels on the GPU; a water pass after the opaque pass that reads a copy of the lit scene and its depth, for refraction, absorption by depth, screen-space reflection with the sky behind it, sun glints, flow from the surface's slope, and foam where it is shallow or fast; the water's own fine print, `~ - =` and its words drifting with the flow, and foam written as `.` and `,`.
+**Done:** S02-T09, water: refraction through peaty water by depth, screen-space reflection with the sky behind it, sun glints, flow down the surface, foam at the edge and in fast water written as `.` and `,`, and the water's own letters on its ripple crests. Evidence: `docs/evidence/S02/water.jpg`, `captures/s02_water.ron`.
+**Next:** S02-T10, rain and the wind that reads.
 
 ## Lane: Sim
 
 Nothing yet.
 
 ## Lane: Content
+
+**Asked by Render:** the brook's mouth into the River Quill (about x -12, z -106) is carved as a steep, pale gully that reads as a block from the north bank. Soften it.
 
 **Done:** S02-T01, the terrain as tiles (192 tiles in three levels). Maps in `docs/evidence/S02/`.
 

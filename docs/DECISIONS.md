@@ -2,6 +2,40 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-12: water (S02-T09)
+
+**A pass of its own, after the opaque pass.** Water is drawn into the resolved scene,
+reading a copy of it and its depth (one sample of the multisampled depth), so it can
+see what lies beneath and behind it. It tests depth itself and needs no depth target.
+It uses the terrain's grid: a tile with any water is drawn at the water's level, a dry
+sample beside water takes its neighbours' level so the surface runs on into the bank
+and the bank cuts it, and wherever no sample is wet the surface is not drawn. Dry is
+stored as a level of minus a million rather than NaN, so the shader never tests NaN.
+
+**The surface.** Ripples in three octaves, each fading before it is finer than a pixel,
+carried by the flow in two layers that take turns, and drifted by the wind. The flow
+runs down the water's own surface, faster where it is steeper; the pond is still.
+
+**Light.** Fresnel between what lies beneath and what it mirrors. Beneath: the scene,
+bent by the ripples (and not bent onto anything in front of the water), through peaty
+water that takes red first and gives back a dark green-brown. Mirrored: a screen-space
+march through the depth, 28 steps growing by a sixth each, and the sky where it finds
+nothing or leaves the view. The sun's glint, in its shadow. The water thins to nothing
+over the last three centimetres at the bank.
+
+**Foam** where it is shallow at the edge and where it runs fast, broken by noise and
+carried with the flow. Up close foam is written: `.` and `,`, and nothing between.
+
+**Its letters.** Water has its own material, `water`, with the family `~ - = _` and its
+lexicon (`water`, `H2O`). Its page drifts with the flow in the same two layers as the
+ripples. The letters are written on the ripples, gathering on the crests and most of
+all at the edge, so they never form a grid over open water. In the living look the eye
+sees down into it.
+
+**Not yet.** Rain rings (S02-T10); ripples where the player wades, and swimming (S03 on);
+the brook's mouth into the river is carved as a steep dry-looking gully by the terrain
+bake, which is the Content lane's to soften.
+
 ## 2026-11-12: grass (S02-T07)
 
 **Patches as instances.** The ground near each view is cut into 4 m patches, and every

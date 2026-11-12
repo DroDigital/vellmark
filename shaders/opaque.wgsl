@@ -1249,8 +1249,11 @@ fn fs_water(in: WaterVaryings) -> @location(0) vec4<f32> {
     let foam_light = view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * shadow * 0.8 + view.sky_zenith.rgb * 0.9;
     colour = mix(colour, vec3<f32>(0.85, 0.87, 0.86) * foam_light, clamp(foam, 0.0, 1.0));
 
-    // The water's fine print, `~ - =` and its words, drifting with it.
-    colour *= glyphs.tone;
+    // The water's fine print, `~ - =` and its words, drifting with it. It is written on
+    // the ripples, not ruled over the water: letters gather on the crests, most of all
+    // at the edge, and the troughs between are clear.
+    let crest = smoothstep(0.03, 0.09, length(mix(s0, s1, second))) * mix(0.45, 1.0, 1.0 - smoothstep(0.2, 1.2, deep));
+    colour *= mix(1.0, glyphs.tone, crest);
     let look = u32(view.effects.z + 0.5);
     if look > 0u && glyphs.revealed > 0.0 {
         // Up close the eye sees down into it: characters float in the water.
