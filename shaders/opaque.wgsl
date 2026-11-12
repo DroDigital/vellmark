@@ -4,11 +4,21 @@
 #import shading
 #import glyph
 
-struct ObjectUniform {
+struct Instance {
     model: mat4x4<f32>,
-    // x: how hot or cold the thing is, -1 (frozen) to 1 (as hot as it gets).
+    // x: heat, -1 (frozen) to 1 (as hot as it gets). y: 1 if it is not drawn (broken).
     state: vec4<f32>,
+    // The sphere that holds it, in the world.
+    bounds: vec4<f32>,
+    // x: its batch. y: the batch's first instance.
+    group: vec4<u32>,
 }
+
+struct Batch {
+    // x: where this batch starts in the list being drawn.
+    base: vec4<u32>,
+}
+
 
 @group(0) @binding(0) var<uniform> view: ViewUniform;
 @group(0) @binding(1) var shadow_map: texture_depth_2d_array;
@@ -74,7 +84,18 @@ const CUBE_NEAR: f32 = 0.04;
 @group(1) @binding(7) var<uniform> pages: PageTable;
 @group(1) @binding(8) var page_sheet: texture_2d<u32>;
 
-@group(2) @binding(0) var<uniform> object: ObjectUniform;
+// Every placed thing; the lists of which to draw; and where this batch starts in its list.
+@group(2) @binding(0) var<storage, read> instances: array<Instance>;
+@group(2) @binding(1) var<storage, read> visible: array<u32>;
+@group(2) @binding(2) var<uniform> batch: Batch;
+
+// Which instance this draw is, in the list being drawn.
+fn instance_of(index: u32) -> u32 {
+    return visible[batch.base.x + index];
+}
+
+// A position that every clip test throws away: the triangle is not drawn.
+const NOWHERE: vec4<f32> = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -85,6 +106,7 @@ struct VertexInput {
     @location(5) page: u32,
     @location(6) thickness: f32,
     @location(7) sky: f32,
+    @builtin(instance_index) instance: u32,
 }
 
 struct Varyings {
@@ -97,19 +119,30 @@ struct Varyings {
     @location(5) @interpolate(flat) page: u32,
     @location(6) @interpolate(flat) thickness: f32,
     @location(7) sky: f32,
+    @location(8) @interpolate(flat) instance: u32,
 }
 
 @vertex
 fn vs_depth(in: VertexInput) -> @builtin(position) @invariant vec4<f32> {
+    let object = instances[instance_of(in.instance)];
+    if object.state.y > 0.5 {
+        return NOWHERE;
+    }
     let world = object.model * vec4<f32>(in.position, 1.0);
     return view.view_proj * world;
 }
 
 @vertex
 fn vs(in: VertexInput) -> Varyings {
+    let id = instance_of(in.instance);
+    let object = instances[id];
     let world = object.model * vec4<f32>(in.position, 1.0);
     var out: Varyings;
     out.position = view.view_proj * world;
+    if object.state.y > 0.5 {
+        out.position = NOWHERE;
+    }
+    out.instance = id;
     out.world = world.xyz;
     out.normal = (object.model * vec4<f32>(in.normal, 0.0)).xyz;
     out.tangent = vec4<f32>((object.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz, in.tangent.w);
@@ -263,7 +296,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     // nothing, and the surface is exactly what it would be with the layer off.
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     if view.switches.x > 0.5 {
-        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light, object.state.x);
+        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light, instances[in.instance].state.x);
     }
 
     if view.viewport.w > 0.5 {
@@ -284,7 +317,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         // Heat. A thing hot enough glows, as hot iron does, at any distance: that is the
         // world, not its letters. Up close, the strokes of the letters saying so glow
         // first, as embers in the grain.
-        let hot = max(object.state.x, 0.0);
+        let hot = max(instances[in.instance].state.x, 0.0);
         if hot > 0.0 {
             let flicker = 0.75 + 0.25 * sin(view.eye_time.w * 7.3 + dot(in.world, vec3<f32>(9.1, 7.7, 8.3)));
             let ember = vec3<f32>(1.0, 0.34, 0.06) * flicker / view.viewport.z;
@@ -297,7 +330,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
             let to_eye = normalize(view.eye_time.xyz - in.world);
             let in_frame = vec3<f32>(dot(to_eye, t), dot(to_eye, b), dot(to_eye, n));
             let albedo = max(colour_texel.rgb * glyphs.tone, vec3<f32>(0.03));
-            let win = Window(in.anchor, t, b, colour / albedo, object.state.x);
+            let win = Window(in.anchor, t, b, colour / albedo, instances[in.instance].state.x);
             colour = glyph_depth(colour, in.anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), in.material, in.page, in.thickness, glyphs.ink, look, win);
         }
     }
@@ -386,7 +419,7 @@ fn fs_letter(in: LetterVaryings) -> @location(0) vec4<f32> {
         n = -n;
     }
     let surface = Surface(colour_texel.rgb * colour_texel.rgb * 0.55, n, normal_texel.z, colour_texel.a);
-    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0, 0u);
     let colour = through_air(light_surface(surface, as_surface, n, 0.0, 1.0), in.world, in.position.xy - view.viewport_origin.xy);
     return vec4<f32>(colour, cover);
 }
@@ -631,7 +664,7 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
     let normal = normalize(tangent * tangent_normal.x + bitangent * tangent_normal.y + n * z);
     let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
-    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, material, 0u, 1.2, 1.0);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, material, 0u, 1.2, 1.0, 0u);
     // The share of the sky this place sees, baked, between its four samples.
     let s00 = textureLoad(terrain_sky, base + 1, layer, 0).r;
     let s10 = textureLoad(terrain_sky, base + vec2<i32>(2, 1), layer, 0).r;

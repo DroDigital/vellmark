@@ -5,7 +5,7 @@ use crate::frame::{
     cascade_matrix, view_uniform, Atmosphere, ViewUniform, CASCADES, CASCADE_FAR, MAX_VIEWS, SHADOW_SIZE,
 };
 use crate::lights::{cube_face_matrix, Lights};
-use crate::world_gpu::{vertex_layout, SceneGpu, SurfaceResources, MAX_OBJECTS};
+use crate::world_gpu::{vertex_layout, InstanceGpu, SceneGpu, SurfaceResources, MAX_GROUPS, MAX_INSTANCES};
 use crate::{FrameInput, ShaderLibrary};
 use glam::Mat4;
 use vellmark_gpu::{wgpu, Gpu, PassTimers, PipelineRegistry};
@@ -21,8 +21,6 @@ const BLOOM_LEVELS: usize = 5;
 const CUBE_FACES: usize = 6;
 /// The size of one cascade or cube-face uniform: a matrix and a row of flags.
 const CASCADE_UNIFORM: u64 = 80;
-/// The size of one object's uniform: its transform, and its state (x: heat, -1 to 1).
-const OBJECT_UNIFORM: u64 = 80;
 
 /// One loose letter as the GPU is given it. Matches `LetterInput` in `opaque.wgsl`.
 #[repr(C)]
@@ -77,7 +75,9 @@ pub struct ScenePass {
     lights: Lights,
     view_buffer: wgpu::Buffer,
     view_stride: u64,
-    object_buffer: wgpu::Buffer,
+    instance_buffer: wgpu::Buffer,
+    visible_buffer: wgpu::Buffer,
+    draw_buffer: wgpu::Buffer,
     object_stride: u64,
     object_bind_group: wgpu::BindGroup,
     cascade_buffer: wgpu::Buffer,
@@ -129,7 +129,7 @@ impl ScenePass {
         let align = device.limits().min_uniform_buffer_offset_alignment as u64;
         let view_size = std::mem::size_of::<ViewUniform>() as u64;
         let view_stride = aligned(view_size, align);
-        let object_stride = aligned(OBJECT_UNIFORM, align);
+        let object_stride = aligned(16, align);
         let cascade_stride = aligned(CASCADE_UNIFORM, align);
 
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -225,9 +225,21 @@ impl ScenePass {
                 },
             ],
         });
+        // The instances: every placed thing, the lists of which to draw, and where in a
+        // list one batch starts.
+        let storage = |binding, visibility| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility,
+            ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+            count: None,
+        };
         let object_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("object"),
-            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT, true, OBJECT_UNIFORM)],
+            label: Some("instances"),
+            entries: &[
+                storage(0, wgpu::ShaderStages::VERTEX_FRAGMENT),
+                storage(1, wgpu::ShaderStages::VERTEX),
+                uniform_entry(2, wgpu::ShaderStages::VERTEX, true, 16),
+            ],
         });
         let cascade_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cascade"),
@@ -275,7 +287,20 @@ impl ScenePass {
             })
         };
         let view_buffer = buffer("views", view_stride * MAX_VIEWS as u64);
-        let object_buffer = buffer("objects", object_stride * MAX_OBJECTS as u64);
+        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("instances"),
+            size: (MAX_INSTANCES * std::mem::size_of::<InstanceGpu>()) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        // One list of every instance for the shadows, then one for each view of what it sees.
+        let visible_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("visible instances"),
+            size: (MAX_INSTANCES * (1 + MAX_VIEWS) * 4) as u64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let draw_buffer = buffer("draw batches", object_stride * ((1 + MAX_VIEWS) * MAX_GROUPS) as u64);
         let cascade_buffer = buffer("cascades", cascade_stride * (CASCADES * SHADOWED_VIEWS + CUBE_FACES) as u64);
         let post_buffer = buffer("post", 64);
 
@@ -289,7 +314,18 @@ impl ScenePass {
                 }],
             })
         };
-        let object_bind_group = one("object", &object_layout, &object_buffer, OBJECT_UNIFORM);
+        let object_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("instances"),
+            layout: &object_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: instance_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: visible_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &draw_buffer, offset: 0, size: wgpu::BufferSize::new(16) }),
+                },
+            ],
+        });
         let cascade_bind_group = one("cascade", &cascade_layout, &cascade_buffer, CASCADE_UNIFORM);
 
         // Shadow maps: three cascades for each shadowed view, in one array. Each view's
@@ -388,7 +424,9 @@ impl ScenePass {
             lights,
             view_buffer,
             view_stride,
-            object_buffer,
+            instance_buffer,
+            visible_buffer,
+            draw_buffer,
             object_stride,
             object_bind_group,
             cascade_buffer,
@@ -837,16 +875,24 @@ impl ScenePass {
         gpu.queue.write_buffer(&self.cascade_buffer, slot as u64 * self.cascade_stride, &bytes);
     }
 
-    fn draw_scene(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, broken: &[u64], object_group: u32) {
-        for (i, drawable) in scene.drawables.iter().enumerate() {
-            // A broken thing is its letters now.
-            if broken.contains(&drawable.key.0) {
+    /// Where batch `group` of list `list` starts, as a dynamic offset into the batches.
+    /// List 0 is every instance; list 1 + v is what view v sees.
+    fn batch_offset(&self, list: usize, group: usize) -> u32 {
+        ((list * MAX_GROUPS + group) as u64 * self.object_stride) as u32
+    }
+
+    /// Every mesh of the scene, one batch each, from list `list`.
+    fn draw_scene(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, list: usize, object_group: u32) {
+        let (Some(vertices), Some(indices)) = (&scene.vertices, &scene.indices) else { return };
+        pass.set_vertex_buffer(0, vertices.slice(..));
+        pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+        for (g, group) in scene.groups.iter().enumerate() {
+            let mesh = &scene.meshes[group.mesh];
+            if group.count == 0 || mesh.index_count == 0 {
                 continue;
             }
-            pass.set_bind_group(object_group, &self.object_bind_group, &[(i as u64 * self.object_stride) as u32]);
-            pass.set_vertex_buffer(0, drawable.mesh.vertices.slice(..));
-            pass.set_index_buffer(drawable.mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-            pass.draw_indexed(0..drawable.mesh.index_count, 0, 0..1);
+            pass.set_bind_group(object_group, &self.object_bind_group, &[self.batch_offset(list, g)]);
+            pass.draw_indexed(mesh.first_index..mesh.first_index + mesh.index_count, mesh.base_vertex, 0..group.count);
         }
     }
 
@@ -908,13 +954,21 @@ impl ScenePass {
             self.letters_sent = Some((frame.letters_step, letter_count));
         }
 
-        // Uniforms: every object's transform, every view, every cascade.
-        for (i, drawable) in scene.drawables.iter().enumerate() {
-            let heat = frame.heat.iter().find(|(id, _)| *id == drawable.key.0).map_or(0.0, |(_, h)| *h);
-            let mut uniform = [0.0f32; 20];
-            uniform[..16].copy_from_slice(&drawable.transform.to_cols_array());
-            uniform[16] = heat;
-            gpu.queue.write_buffer(&self.object_buffer, i as u64 * self.object_stride, bytemuck::cast_slice(&uniform));
+        // The instances, with this frame's heat and breakage; the list of every one; and
+        // where each batch starts in each list.
+        let instances = scene.instances(frame.heat, frame.broken);
+        if !instances.is_empty() {
+            gpu.queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
+            let every: Vec<u32> = (0..instances.len() as u32).collect();
+            for list in 0..=views.len().min(MAX_VIEWS) {
+                gpu.queue.write_buffer(&self.visible_buffer, (list * MAX_INSTANCES * 4) as u64, bytemuck::cast_slice(&every));
+            }
+            for list in 0..=views.len().min(MAX_VIEWS) {
+                for (g, group) in scene.groups.iter().enumerate() {
+                    let base = [(list * MAX_INSTANCES) as u32 + group.first_instance, 0, 0, 0];
+                    gpu.queue.write_buffer(&self.draw_buffer, self.batch_offset(list, g) as u64, bytemuck::cast_slice(&base));
+                }
+            }
         }
         for (i, view) in views.iter().enumerate() {
             let (_, _, w, h) = view.viewport.pixels(target_size);
@@ -993,7 +1047,7 @@ impl ScenePass {
             });
             pass.set_pipeline(&self.pipelines.shadow);
             pass.set_bind_group(0, &self.cascade_bind_group, &[(layer as u64 * self.cascade_stride) as u32]);
-            self.draw_scene(&mut pass, scene, frame.broken, 1);
+            self.draw_scene(&mut pass, scene, 0, 1);
             self.draw_letter_shadows(&mut pass, letter_count);
             if terrain.is_some() {
                 pass.set_pipeline(&self.pipelines.terrain_shadow);
@@ -1018,7 +1072,7 @@ impl ScenePass {
             if self.lights.shadowed.is_some() {
                 pass.set_pipeline(&self.pipelines.shadow);
                 pass.set_bind_group(0, &self.cascade_bind_group, &[((CASCADES * SHADOWED_VIEWS + face) as u64 * self.cascade_stride) as u32]);
-                self.draw_scene(&mut pass, scene, frame.broken, 1);
+                self.draw_scene(&mut pass, scene, 0, 1);
                 self.draw_letter_shadows(&mut pass, letter_count);
             }
         }
@@ -1052,7 +1106,7 @@ impl ScenePass {
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
-                self.draw_scene(&mut pass, scene, frame.broken, 2);
+                self.draw_scene(&mut pass, scene, 1 + i, 2);
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain_depth);
                     self.draw_terrain(&mut pass, terrain, 2);
@@ -1093,7 +1147,7 @@ impl ScenePass {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
                 pass.set_pipeline(&self.pipelines.opaque);
-                self.draw_scene(&mut pass, scene, frame.broken, 2);
+                self.draw_scene(&mut pass, scene, 1 + i, 2);
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain);
                     self.draw_terrain(&mut pass, terrain, 2);

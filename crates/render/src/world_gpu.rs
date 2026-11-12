@@ -5,7 +5,9 @@ use glam::Mat4;
 use vellmark_content::{AssetId, GlyphAtlas, MaterialSet, Mesh, Scene, TextPages, Vertex, GLYPHS_PER_FACE, TONE_STEPS};
 use vellmark_gpu::{wgpu, Gpu};
 
-pub const MAX_OBJECTS: usize = 256;
+/// The most placed things in a scene, and the most distinct meshes they are drawn from.
+pub const MAX_INSTANCES: usize = 4096;
+pub const MAX_GROUPS: usize = 256;
 pub const MAX_MATERIALS: usize = 32;
 
 pub const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 8] =
@@ -19,14 +21,128 @@ pub fn vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-pub struct MeshGpu {
-    pub vertices: wgpu::Buffer,
-    pub indices: wgpu::Buffer,
-    pub index_count: u32,
+/// One instance as the GPU reads it. Matches `Instance` in `opaque.wgsl`, `shadow.wgsl`,
+/// and `cull.wgsl`.
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub struct InstanceGpu {
+    pub model: [f32; 16],
+    /// x: heat, -1 to 1. y: 1 if the thing is not drawn (broken).
+    pub state: [f32; 4],
+    /// The sphere that holds it, in the world: centre and radius.
+    pub bounds: [f32; 4],
+    /// x: its group, the mesh it is drawn from. y: the group's first instance.
+    pub group: [u32; 4],
 }
 
-impl MeshGpu {
-    pub fn new(gpu: &Gpu, mesh: &Mesh) -> Self {
+/// The part of the pool one mesh takes.
+#[derive(Clone, Copy, Debug)]
+pub struct MeshRange {
+    pub first_index: u32,
+    pub index_count: u32,
+    pub base_vertex: i32,
+    /// The sphere that holds the mesh in its own space.
+    pub centre: glam::Vec3,
+    pub radius: f32,
+}
+
+/// Every instance of one mesh, which are kept together in the instance buffer.
+#[derive(Clone, Copy, Debug)]
+pub struct Group {
+    pub mesh: usize,
+    pub first_instance: u32,
+    pub count: u32,
+}
+
+/// One placed thing: what it is and where.
+#[derive(Clone, Copy, Debug)]
+pub struct Placed {
+    pub key: AssetId,
+    pub group: usize,
+    pub transform: Mat4,
+}
+
+/// The scene on the GPU: every mesh in one pool of vertices and indices, and every placed
+/// thing as an instance, kept together by mesh so that each mesh is one batch.
+#[derive(Default)]
+pub struct SceneGpu {
+    pub vertices: Option<wgpu::Buffer>,
+    pub indices: Option<wgpu::Buffer>,
+    pub meshes: Vec<MeshRange>,
+    pub groups: Vec<Group>,
+    /// In the order of the instance buffer.
+    pub placed: Vec<Placed>,
+    pub lights: Vec<vellmark_content::Light>,
+    /// The scene's authored text. The renderer uploads it when the scene is set.
+    pub pages: TextPages,
+}
+
+fn bounds_of(mesh: &Mesh) -> (glam::Vec3, f32) {
+    if mesh.vertices.is_empty() {
+        return (glam::Vec3::ZERO, 0.0);
+    }
+    let (mut lo, mut hi) = (glam::Vec3::splat(f32::MAX), glam::Vec3::splat(f32::MIN));
+    for v in &mesh.vertices {
+        let p = glam::Vec3::from(v.position);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    let centre = (lo + hi) * 0.5;
+    let radius = mesh.vertices.iter().map(|v| glam::Vec3::from(v.position).distance(centre)).fold(0.0, f32::max);
+    (centre, radius)
+}
+
+impl SceneGpu {
+    /// `mesh_of` returns a mesh by its ID, from the pack.
+    pub fn new(gpu: &Gpu, scene: &Scene, pages: TextPages, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
+        // Every distinct mesh once, in the pool.
+        let mut ids: Vec<AssetId> = vec![scene.static_mesh];
+        for object in &scene.objects {
+            if !ids.contains(&object.mesh) {
+                ids.push(object.mesh);
+            }
+        }
+        let mut vertices: Vec<Vertex> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+        let mut meshes = Vec::new();
+        for id in &ids {
+            let mesh = mesh_of(*id).ok_or("a mesh of the scene is missing from the pack")?;
+            let (centre, radius) = bounds_of(&mesh);
+            meshes.push(MeshRange {
+                first_index: indices.len() as u32,
+                index_count: mesh.indices.len() as u32,
+                base_vertex: vertices.len() as i32,
+                centre,
+                radius,
+            });
+            vertices.extend_from_slice(&mesh.vertices);
+            indices.extend_from_slice(&mesh.indices);
+        }
+        if meshes.len() > MAX_GROUPS {
+            return Err(format!("the scene has {} meshes; the limit is {MAX_GROUPS}", meshes.len()));
+        }
+        // Every placed thing, kept together by mesh.
+        let mut by_mesh: Vec<Vec<(AssetId, Mat4)>> = vec![Vec::new(); meshes.len()];
+        by_mesh[0].push((scene.static_mesh, Mat4::IDENTITY));
+        for object in &scene.objects {
+            let t = object.transform;
+            let transform = Mat4::from_cols_array(&[
+                t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7], t[11], 1.0,
+            ]);
+            let m = ids.iter().position(|id| *id == object.mesh).unwrap();
+            by_mesh[m].push((object.key, transform));
+        }
+        let mut groups = Vec::new();
+        let mut placed = Vec::new();
+        for (m, list) in by_mesh.into_iter().enumerate() {
+            groups.push(Group { mesh: m, first_instance: placed.len() as u32, count: list.len() as u32 });
+            for (key, transform) in list {
+                placed.push(Placed { key, group: m, transform });
+            }
+        }
+        if placed.len() > MAX_INSTANCES {
+            return Err(format!("the scene has {} placed things; the limit is {MAX_INSTANCES}", placed.len()));
+        }
         let make = |label, bytes: &[u8], usage| {
             let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -37,54 +153,42 @@ impl MeshGpu {
             gpu.queue.write_buffer(&buffer, 0, bytes);
             buffer
         };
-        Self {
-            vertices: make("mesh vertices", bytemuck::cast_slice(&mesh.vertices), wgpu::BufferUsages::VERTEX),
-            indices: make("mesh indices", bytemuck::cast_slice(&mesh.indices), wgpu::BufferUsages::INDEX),
-            index_count: mesh.indices.len() as u32,
-        }
-    }
-}
-
-/// One thing to draw: a mesh and where it stands. Slot 0 is everything that never moves.
-pub struct Drawable {
-    pub key: AssetId,
-    pub mesh: MeshGpu,
-    pub transform: Mat4,
-}
-
-#[derive(Default)]
-pub struct SceneGpu {
-    pub drawables: Vec<Drawable>,
-    pub lights: Vec<vellmark_content::Light>,
-    /// The scene's authored text. The renderer uploads it when the scene is set.
-    pub pages: TextPages,
-}
-
-impl SceneGpu {
-    /// `mesh_of` returns a mesh by its ID, from the pack.
-    pub fn new(gpu: &Gpu, scene: &Scene, pages: TextPages, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
-        let mut drawables = Vec::new();
-        let static_mesh = mesh_of(scene.static_mesh).ok_or("the scene's static mesh is missing")?;
-        drawables.push(Drawable { key: scene.static_mesh, mesh: MeshGpu::new(gpu, &static_mesh), transform: Mat4::IDENTITY });
-        for object in &scene.objects {
-            let mesh = mesh_of(object.mesh).ok_or("an object's mesh is missing")?;
-            let t = object.transform;
-            let transform = Mat4::from_cols_array(&[
-                t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7], t[11], 1.0,
-            ]);
-            drawables.push(Drawable { key: object.key, mesh: MeshGpu::new(gpu, &mesh), transform });
-        }
-        if drawables.len() > MAX_OBJECTS {
-            return Err(format!("the scene has {} objects; the limit is {MAX_OBJECTS}", drawables.len()));
-        }
-        Ok(Self { drawables, lights: scene.lights.clone(), pages })
+        Ok(Self {
+            vertices: Some(make("mesh pool vertices", bytemuck::cast_slice(&vertices), wgpu::BufferUsages::VERTEX)),
+            indices: Some(make("mesh pool indices", bytemuck::cast_slice(&indices), wgpu::BufferUsages::INDEX)),
+            meshes,
+            groups,
+            placed,
+            lights: scene.lights.clone(),
+            pages,
+        })
     }
 
-    /// Moves an object. The simulation's snapshot will drive this once doors open.
+    /// Moves a placed thing. The simulation's snapshot will drive this once doors open.
     pub fn set_transform(&mut self, key: AssetId, transform: Mat4) {
-        if let Some(d) = self.drawables.iter_mut().find(|d| d.key == key) {
-            d.transform = transform;
+        if let Some(p) = self.placed.iter_mut().find(|p| p.key == key) {
+            p.transform = transform;
         }
+    }
+
+    /// Every instance as the GPU reads it, with this frame's heat and breakage.
+    pub fn instances(&self, heat: &[(u64, f32)], broken: &[u64]) -> Vec<InstanceGpu> {
+        self.placed
+            .iter()
+            .map(|p| {
+                let mesh = &self.meshes[p.group];
+                let centre = p.transform.transform_point3(mesh.centre);
+                let scale = p.transform.x_axis.truncate().length().max(p.transform.y_axis.truncate().length()).max(p.transform.z_axis.truncate().length());
+                let heat = heat.iter().find(|(id, _)| *id == p.key.0).map_or(0.0, |(_, h)| *h);
+                let hidden = if broken.contains(&p.key.0) { 1.0 } else { 0.0 };
+                InstanceGpu {
+                    model: p.transform.to_cols_array(),
+                    state: [heat, hidden, 0.0, 0.0],
+                    bounds: [centre.x, centre.y, centre.z, mesh.radius * scale],
+                    group: [p.group as u32, self.groups[p.group].first_instance, 0, 0],
+                }
+            })
+            .collect()
     }
 }
 
