@@ -4,6 +4,7 @@
 //! file system lists them in and whatever the clock says.
 
 pub mod glyphs;
+pub mod grades;
 pub mod manifest;
 pub mod materials;
 pub mod pages;
@@ -120,6 +121,11 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     report.push(format!("terrain.valley: {} tiles", tiles.len()));
     for (id, bytes) in tiles {
         base.add(AssetKind::Tile, id, bytes).map_err(|e| BakeError(e.to_string()))?;
+    }
+
+    for (key, bytes) in grades::bake_all(&inputs.assets.join("grades"))? {
+        report.push(format!("{key}: {} bytes", bytes.len()));
+        base.add(AssetKind::Table, AssetId::from_key(&key), bytes).map_err(|e| BakeError(e.to_string()))?;
     }
 
     for (key, bytes) in paths::bake_all(&inputs.assets.join("paths"))? {

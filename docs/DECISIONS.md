@@ -2,6 +2,120 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-12: culling and instancing (S02-T06)
+
+**One pool, one instance buffer.** Every mesh of a scene is in one vertex and one index
+buffer; every placed thing is an instance in a storage buffer (transform, state, the
+sphere that holds it, its batch), kept together by mesh so that each mesh is one batch.
+Vertex shaders read their instance through a list, so the same draw serves every list.
+Limits: 4,096 instances and 256 meshes a scene. Grass, trees, and creatures will join it.
+
+**Lists.** List 0 is every instance, in order, for the shadow maps, which are not culled
+yet (their far cascade's rota is S02-T11). List 1 + v is what view v can see, written by
+the culling pass each frame, with an indirect draw per batch whose count it adds up.
+
+**Culling** is a compute pass before the depth pre-pass: each instance's sphere against
+the view's frustum (four sides and the near plane; the far plane is at infinity), then
+the box around it against last frame's depth pyramid at the level where it covers two
+texels or fewer. Depth is reversed, so a thing is hidden when its nearest depth is less
+than the least depth drawn over its box.
+
+**The pyramid** is built right after the depth pre-pass, from one sample of the
+multisampled depth, at half resolution, each level the least of the four beneath it
+(three where a level is odd, so nothing at an edge is lost). It is read next frame.
+
+**Never trusted after a cut.** If the eye has moved a metre or turned more than about
+14 degrees since the last frame, or the targets were made anew, a view culls by its
+frustum alone that frame. So something that comes into sight is never a frame late.
+
+**Proof.** The reference images, the shimmer shots, and every capture are unchanged with
+culling on; a test with its own scene shows a crate behind a wall culled once the pyramid
+holds the wall, the crate beside it never culled, everything behind the eye culled, and
+the hidden crate drawn the moment a cut brings it into sight.
+
+## 2026-11-12: the sky each place sees (S02-T05)
+
+**Terrain:** the bake finds the horizon in eight directions from every sample, out to
+about 120 samples in growing steps, and stores the cosine-weighted share of the sky seen
+(`1 - sin²` of each horizon's angle, averaged) as a byte per sample (`VLMKTER2`).
+
+**Meshes:** box faces are divided into cells of half a metre, so the value can change
+across a face, and each vertex casts 48 rays spread by the cosine over its hemisphere, to
+25 m, against every box of the scene, still and moving (as the box that bounds each
+where it stands). The share that escapes is stored per vertex (`VLMKMSH2`, 64 bytes).
+
+**Use.** The sky's light on a surface is scaled by its share. The sunlit ground's bounce
+is not: a place that sees less sky sees more ground. The bounce was weak; it is now a
+tenth of the sun's light on the ground, about what a pale floor returns.
+
+**Contact occlusion** is a compute pass after the depth pre-pass, at half resolution,
+reading one sample of the multisampled depth: eight neighbours on a spiral about 35 cm
+across, counting what rises in front of the surface within half a metre. It darkens only
+the sky's light and the bounce. Its texture is sized for half of 4K and each view writes
+its own part, so the frame's bind group never needs remaking. The shimmer check passes.
+
+**Not used yet:** the sky share for fog's colour, rain, and snow, as `docs/TECH.md` plans.
+
+## 2026-11-11: the air (S02-T04)
+
+**A froxel volume per view:** 160 × 90 × 64 cells, slices spaced exponentially from
+0.5 m to 400 m. A compute pass lights each cell's mist (sun through the shadow maps with
+a forward-scattering phase of g 0.55, and the sky's light) and a second sums each column
+front to back, energy-conserving within each cell. Surfaces and the sky read the sum with
+one filtered sample. Its strength by the hour is in the place's grade (`VLMKGRD2`): thick
+in the river's hollow at dawn, nearly gone at noon.
+
+**God rays** are the shadow maps inside the mist. The last cascade now reaches 260 m, so
+that the hills shadow it across the valley. Their shafts are faint on bare hills; trees
+(S02-T08) and buildings (S06) will cut sharper ones. Nothing more is needed in the fog.
+
+**Aerial perspective** beyond the mist is the atmosphere's own extinction over the
+distance at the path's mean height, with the horizon's light filling in: far hills go
+blue and pale.
+
+**Shade.** Single scattering leaves out most of the light in shade, so the sky's light on
+surfaces is raised by half (`MULTIPLE`), and the sunlit ground sends a little back.
+The yard's reference images were accepted again for these and for the mist.
+
+**The fog's shaders are made at startup only:** a changed `fog.wgsl` needs a restart, not
+a hot reload.
+
+## 2026-11-11: the sky (S02-T03)
+
+**One atmosphere, twice.** Single scattering by air (Rayleigh), haze (Mie, g 0.8), and
+ozone, on a round earth: in `crates/render/src/sky.rs` for the sun's and moon's colour
+where they reach the valley and the sky's light on surfaces, and in `shaders/frame.wgsl`
+per sky pixel. The same constants in both, so the light on a wall at dusk is the light
+of the sky above it. Per pixel it is 12 steps along the view and 6 towards the light:
+about 72 samples on sky pixels only. If that is over budget on the owner's Mac, the
+answer is a sky-view table drawn once a frame at low resolution (the usual fix).
+
+**Units.** The sun is 6.4 of the renderer's light at the top of the air; the full moon a
+twentieth of that, far above the real one-in-400,000, because the game must be playable
+at night; starlight and airglow are a fixed faint blue. Exposure moves from night (1.8)
+to day (0.62) over the sun's last few degrees, so dawn is not seen with night's eyes.
+
+**The moon** keeps ten hours behind the sun, so it is a waxing gibbous moon up in the
+evening; its phase is lit from the sun's true direction. Its seas are the `@` of the
+printed face, read from the glyph atlas at a coarse level and only a fifth as dark as the
+rest, so they suggest the letter and do not spell it. It is drawn the right way round.
+
+**Stars** are one candidate in each cell of a 900-row grid on the sphere, a few in a
+hundred lit, turning about a pole 52 degrees up in the north, faded as the sky brightens
+and dimmed near the horizon by the air.
+
+**Clouds** are two flat layers, broken cumulus at 1.8 km and a thin veil at 8.5 km,
+drifting, self-shadowed towards the light, and fading into the horizon's haze. Cover is
+0.38 until the weather (S02-T10) drives it. They cast no shadow on the ground yet.
+
+**The colour grade** is data, `assets/grades/vale.ron`, keys by the hour blended round
+the clock: lift, gamma, gain, saturation, after the filmic curve. Shadows lean
+slate-blue as the canon's palette asks. A tool's mask skips the grade: graded, black is
+no longer black, and the glyph-off comparison would have had nothing to compare.
+
+**The yard's reference images were accepted again,** because every pixel's light changed.
+The glyph-off comparison and the shimmer check pass as before.
+
 ## 2026-11-11: drawing the terrain (S02-T02)
 
 **One shared grid, heights in a texture.** Every tile is drawn from one index buffer of

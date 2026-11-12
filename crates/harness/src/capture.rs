@@ -96,6 +96,9 @@ pub struct Shot {
     /// it gets.
     #[serde(default)]
     pub heat: Option<(String, f32)>,
+    /// The vertical field of view in degrees, if not the usual.
+    #[serde(default)]
+    pub fov: Option<f32>,
     /// The eye's heights are above the ground rather than above sea level.
     #[serde(default)]
     pub above_ground: bool,
@@ -275,9 +278,20 @@ impl Offscreen {
         height: u32,
         scene: Option<&str>,
     ) -> Result<Self, String> {
+        Self::with_pack(gpu_options, shaders, width, height, baked_base_pack()?, scene)
+    }
+
+    /// As `new`, drawing from a given pack: for tests with scenes of their own.
+    pub fn with_pack(
+        gpu_options: &GpuOptions,
+        shaders: &ShaderLibrary,
+        width: u32,
+        height: u32,
+        pack: Pack,
+        scene: Option<&str>,
+    ) -> Result<Self, String> {
         let gpu = Gpu::headless(gpu_options).map_err(|e| e.to_string())?;
         let mut registry = PipelineRegistry::new();
-        let pack = baked_base_pack()?;
         let assets = LoadedAssets::from_pack(&pack)?;
         let mut renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &assets.borrow())?;
         let mut loaded = None;
@@ -381,6 +395,9 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
             let mut camera = pose.camera();
             if let Some(near) = shot.near {
                 camera.near = near;
+            }
+            if let Some(fov) = shot.fov {
+                camera.fov_y = fov.to_radians();
             }
             let views = [View::full(camera)];
             let input = FrameInput {

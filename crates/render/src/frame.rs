@@ -25,6 +25,8 @@ pub struct ViewUniform {
     pub indices: [u32; 4],
     pub viewport_origin: [f32; 4],
     pub effects: [f32; 4],
+    pub moon_dir: [f32; 4],
+    pub sky: [f32; 4],
 }
 
 /// The most views drawn in one frame. Two is all the full game will ever ask for; four
@@ -42,6 +44,13 @@ fn smoothstep(a: f32, b: f32, x: f32) -> f32 {
 #[derive(Clone, Copy, Debug)]
 pub struct Atmosphere {
     pub sun_dir: Vec3,
+    pub moon_dir: Vec3,
+    /// How much of the moon's face is lit, 0 to 1.
+    pub moon_lit: f32,
+    /// How much of the sky is cloud, 0 to 1. The weather (S02-T10) will drive this.
+    pub cloud_cover: f32,
+    /// The mist: density per metre at its floor, the floor's height, and its falloff.
+    pub fog: [f32; 3],
     /// Towards whichever of the sun and the moon is casting shadows.
     pub light_dir: Vec3,
     pub light_colour: Vec3,
@@ -53,33 +62,30 @@ pub struct Atmosphere {
 impl Atmosphere {
     pub fn at(hour: f32) -> Self {
         let sun_dir = sun_direction(hour);
-        let height = sun_dir.y;
-        let day = smoothstep(-0.12, 0.18, height);
-
-        // The sun reddens and weakens as it nears the horizon.
-        let low = smoothstep(0.0, 0.38, height);
-        let sun_colour = Vec3::new(1.0, 0.50, 0.22).lerp(Vec3::new(1.0, 0.95, 0.88), low)
-            * 5.6
-            * smoothstep(-0.02, 0.14, height);
-        // The moon stands opposite the sun and is far weaker and bluer.
-        let moon_dir = Vec3::new(-sun_dir.x, (-sun_dir.y).max(0.25), -sun_dir.z).normalize();
-        let moon_colour = Vec3::new(0.26, 0.34, 0.52) * 0.34 * smoothstep(0.02, -0.10, height);
-        let (light_dir, light_colour) =
-            if height > 0.0 { (sun_dir, sun_colour) } else { (moon_dir, moon_colour) };
-
-        let dusk = smoothstep(0.30, 0.02, height) * day;
-        let zenith = Vec3::new(0.012, 0.020, 0.046).lerp(Vec3::new(0.24, 0.38, 0.72), day)
-            .lerp(Vec3::new(0.16, 0.22, 0.50), dusk * 0.6);
-        let horizon = Vec3::new(0.016, 0.022, 0.040).lerp(Vec3::new(0.58, 0.68, 0.82), day)
-            .lerp(Vec3::new(0.95, 0.52, 0.30), dusk * 0.75);
-
+        // The moon keeps about ten hours behind the sun: a waxing gibbous moon that is
+        // up through the evening and the first half of the night.
+        let moon_dir = sun_direction(hour - 10.0);
+        let sky = crate::sky::sky_light(sun_dir, moon_dir);
+        // Shadows are cast by the sun while it is up, then by the moon.
+        let (light_dir, light_colour) = if sun_dir.y > 0.0 || moon_dir.y <= 0.0 {
+            (sun_dir, sky.sun)
+        } else {
+            (moon_dir, sky.moon * Vec3::new(0.62, 0.76, 1.0))
+        };
+        // The eye adapts: from night to day over the minutes around sunrise and sunset,
+        // so that the low sun of dawn is not seen with night's eyes.
+        let day = smoothstep(-0.12, 0.08, sun_dir.y);
         Self {
             sun_dir,
+            moon_dir,
+            moon_lit: sky.moon_lit,
+            cloud_cover: 0.38,
+            fog: [0.0, 0.0, 10.0],
             light_dir,
             light_colour,
-            sky_zenith: zenith,
-            sky_horizon: horizon,
-            exposure: 2.6 + (0.62 - 2.6) * day,
+            sky_zenith: sky.zenith,
+            sky_horizon: sky.horizon,
+            exposure: 1.8 + (0.62 - 1.8) * day,
         }
     }
 }
@@ -106,7 +112,9 @@ impl Default for GlyphTuning {
 }
 
 /// The far edge of each cascade, in metres in front of the eye.
-pub const CASCADE_FAR: [f32; CASCADES] = [7.0, 26.0, 90.0];
+/// The last reaches across the valley, so that hills cast their shadows into the mist:
+/// that is what god rays are.
+pub const CASCADE_FAR: [f32; CASCADES] = [7.0, 26.0, 260.0];
 
 /// The view-projection of one shadow cascade: an orthographic box around the part of
 /// the view between `near` and `far`, seen from the light, moved in whole texels so
@@ -189,6 +197,8 @@ pub fn view_uniform(
         indices: [index, 0, 0, 0],
         viewport_origin: [origin.0, origin.1, 0.0, 0.0],
         effects: [dive, lamps, tuning.look as f32, 0.0],
+        moon_dir: atmosphere.moon_dir.extend(atmosphere.moon_lit).to_array(),
+        sky: [atmosphere.cloud_cover, atmosphere.fog[0], atmosphere.fog[1], atmosphere.fog[2]],
     }
 }
 

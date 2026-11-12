@@ -5,6 +5,7 @@
 
 pub mod camera_path;
 pub mod glyph_atlas;
+pub mod grade;
 pub mod id;
 pub mod pack;
 pub mod scene;
@@ -13,6 +14,7 @@ pub mod terrain;
 pub mod tile;
 
 pub use camera_path::{CameraPath, Keyframe};
+pub use grade::{Grade, GradeKey};
 pub use glyph_atlas::{glyph_index, Face, FaceInfo, GlyphAtlas, GlyphInfo, FACES, GLYPHS_PER_FACE, TONE_STEPS};
 pub use id::{fnv1a64, AssetId, AssetKind, StringId};
 pub use scene::{Breakable, Lexicon, Light, Material, MaterialSet, Mesh, Object, PageEntry, Scene, SolidBox, TextPages, Vertex};

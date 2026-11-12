@@ -4,11 +4,21 @@
 #import shading
 #import glyph
 
-struct ObjectUniform {
+struct Instance {
     model: mat4x4<f32>,
-    // x: how hot or cold the thing is, -1 (frozen) to 1 (as hot as it gets).
+    // x: heat, -1 (frozen) to 1 (as hot as it gets). y: 1 if it is not drawn (broken).
     state: vec4<f32>,
+    // The sphere that holds it, in the world.
+    bounds: vec4<f32>,
+    // x: its batch. y: the batch's first instance.
+    group: vec4<u32>,
 }
+
+struct Batch {
+    // x: where this batch starts in the list being drawn.
+    base: vec4<u32>,
+}
+
 
 @group(0) @binding(0) var<uniform> view: ViewUniform;
 @group(0) @binding(1) var shadow_map: texture_depth_2d_array;
@@ -16,6 +26,37 @@ struct ObjectUniform {
 @group(0) @binding(3) var<uniform> lights: Lights;
 @group(0) @binding(4) var light_clusters: texture_2d_array<u32>;
 @group(0) @binding(5) var light_shadow: texture_depth_cube;
+@group(0) @binding(6) var fog_volume: texture_3d<f32>;
+@group(0) @binding(7) var fog_sampler: sampler;
+@group(0) @binding(8) var contact_occlusion: texture_2d<f32>;
+
+const FOG_NEAR: f32 = 0.5;
+const FOG_FAR: f32 = 400.0;
+
+// The mist between the eye and a place, from the fog volume: how much of the place's
+// light gets through, and the mist's own light. `depth_in_view` is the distance in front
+// of the eye; `pixel` is the place on the view, in pixels.
+fn mist_between(depth_in_view: f32, pixel: vec2<f32>) -> vec4<f32> {
+    let uv = clamp(pixel / view.viewport.xy, vec2<f32>(0.0), vec2<f32>(1.0));
+    let slice = log(max(depth_in_view, FOG_NEAR) / FOG_NEAR) / log(FOG_FAR / FOG_NEAR);
+    return textureSampleLevel(fog_volume, fog_sampler, vec3<f32>(uv, clamp(slice - 0.5 / 64.0, 0.0, 1.0)), 0.0);
+}
+
+// A surface's light as it reaches the eye: through the mist, then through the air, which
+// takes blue light out and puts the sky's in, so that the far hills go blue.
+fn through_air(colour: vec3<f32>, world: vec3<f32>, pixel: vec2<f32>) -> vec3<f32> {
+    let to = world - view.eye_time.xyz;
+    let distance = max(length(to), 1.0e-3);
+    let depth_in_view = -(view.view * vec4<f32>(world, 1.0)).z;
+    let mist = mist_between(depth_in_view, pixel);
+    let misted = colour * mist.a + mist.rgb;
+    let dir = to / distance;
+    let height = max((world.y + view.eye_time.y) * 0.5, 0.0);
+    let extinction = RAYLEIGH * exp(-height / 8000.0) + vec3<f32>(MIE_EXTINCTION * exp(-height / 1200.0));
+    let through = exp(-extinction * distance);
+    let glow = view.light_colour.rgb * 0.03 * pow(max(dot(dir, view.light_dir_hour.xyz), 0.0), 6.0);
+    return misted * through + (view.sky_horizon.rgb + glow) * (1.0 - through);
+}
 
 struct PointLight {
     position_radius: vec4<f32>,
@@ -43,7 +84,18 @@ const CUBE_NEAR: f32 = 0.04;
 @group(1) @binding(7) var<uniform> pages: PageTable;
 @group(1) @binding(8) var page_sheet: texture_2d<u32>;
 
-@group(2) @binding(0) var<uniform> object: ObjectUniform;
+// Every placed thing; the lists of which to draw; and where this batch starts in its list.
+@group(2) @binding(0) var<storage, read> instances: array<Instance>;
+@group(2) @binding(1) var<storage, read> visible: array<u32>;
+@group(2) @binding(2) var<uniform> batch: Batch;
+
+// Which instance this draw is, in the list being drawn.
+fn instance_of(index: u32) -> u32 {
+    return visible[batch.base.x + index];
+}
+
+// A position that every clip test throws away: the triangle is not drawn.
+const NOWHERE: vec4<f32> = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -53,6 +105,8 @@ struct VertexInput {
     @location(4) material: u32,
     @location(5) page: u32,
     @location(6) thickness: f32,
+    @location(7) sky: f32,
+    @builtin(instance_index) instance: u32,
 }
 
 struct Varyings {
@@ -64,19 +118,31 @@ struct Varyings {
     @location(4) @interpolate(flat) material: u32,
     @location(5) @interpolate(flat) page: u32,
     @location(6) @interpolate(flat) thickness: f32,
+    @location(7) sky: f32,
+    @location(8) @interpolate(flat) instance: u32,
 }
 
 @vertex
 fn vs_depth(in: VertexInput) -> @builtin(position) @invariant vec4<f32> {
+    let object = instances[instance_of(in.instance)];
+    if object.state.y > 0.5 {
+        return NOWHERE;
+    }
     let world = object.model * vec4<f32>(in.position, 1.0);
     return view.view_proj * world;
 }
 
 @vertex
 fn vs(in: VertexInput) -> Varyings {
+    let id = instance_of(in.instance);
+    let object = instances[id];
     let world = object.model * vec4<f32>(in.position, 1.0);
     var out: Varyings;
     out.position = view.view_proj * world;
+    if object.state.y > 0.5 {
+        out.position = NOWHERE;
+    }
+    out.instance = id;
     out.world = world.xyz;
     out.normal = (object.model * vec4<f32>(in.normal, 0.0)).xyz;
     out.tangent = vec4<f32>((object.model * vec4<f32>(in.tangent.xyz, 0.0)).xyz, in.tangent.w);
@@ -84,6 +150,7 @@ fn vs(in: VertexInput) -> Varyings {
     out.material = in.material;
     out.page = in.page;
     out.thickness = in.thickness;
+    out.sky = in.sky;
     return out;
 }
 
@@ -169,12 +236,20 @@ fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>
 
 // All the light that reaches a surface: the sun or moon, the sky, every fire and
 // lantern, and its own glow.
-fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32) -> vec3<f32> {
+// `seen` is the share of the sky the place can see, baked: it scales the sky's light.
+fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32, seen: f32) -> vec3<f32> {
     let to_eye = normalize(view.eye_time.xyz - in.world);
     let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
     let shadow = sun_shadow(in.world, flat_normal, depth_in_view);
     var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
-    colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb);
+    // Contact occlusion: the fine darkening where things meet, at half resolution.
+    let contact = textureSampleLevel(contact_occlusion, fog_sampler, in.position.xy * 0.5 / vec2<f32>(textureDimensions(contact_occlusion)), 0.0).r;
+    // The sky's light, as much of it as this place can see.
+    colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb, view.sky_horizon.rgb * 0.35) * seen * contact;
+    // And what the sunlit ground sends back, from below and the sides. A place that sees
+    // less sky sees more ground, so this is not scaled by `seen`.
+    let bounce = view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * 0.1;
+    colour += surface.albedo * (1.0 - surface.metal) * bounce * (0.5 - surface.normal.y * 0.5) * contact;
     colour += shade_point_lights(surface, in.world, flat_normal, to_eye, in.position.xy - view.viewport_origin.xy, depth_in_view);
     colour += surface.albedo * glow * view.effects.y;
     return colour;
@@ -212,7 +287,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     if reading > 0.0 {
         let z0 = sqrt(max(1.0 - dot(map_normal, map_normal), 0.05));
         let plain = Surface(colour_texel.rgb, normalize(t * map_normal.x + b * map_normal.y + n * z0), normal_texel.z, colour_texel.a);
-        plain_lit = light_surface(plain, in, n, m.surface.w);
+        plain_lit = light_surface(plain, in, n, m.surface.w, in.sky);
         let seen = plain_lit * view.viewport.z;
         light = clamp(dot(seen / (seen + vec3<f32>(0.6)), vec3<f32>(0.2126, 0.7152, 0.0722)) * 1.6, 0.0, 1.0);
     }
@@ -221,7 +296,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     // nothing, and the surface is exactly what it would be with the layer off.
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     if view.switches.x > 0.5 {
-        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light, object.state.x);
+        glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light, instances[in.instance].state.x);
     }
 
     if view.viewport.w > 0.5 {
@@ -238,11 +313,11 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
         let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
         let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
-        colour = light_surface(surface, in, n, m.surface.w);
+        colour = light_surface(surface, in, n, m.surface.w, in.sky);
         // Heat. A thing hot enough glows, as hot iron does, at any distance: that is the
         // world, not its letters. Up close, the strokes of the letters saying so glow
         // first, as embers in the grain.
-        let hot = max(object.state.x, 0.0);
+        let hot = max(instances[in.instance].state.x, 0.0);
         if hot > 0.0 {
             let flicker = 0.75 + 0.25 * sin(view.eye_time.w * 7.3 + dot(in.world, vec3<f32>(9.1, 7.7, 8.3)));
             let ember = vec3<f32>(1.0, 0.34, 0.06) * flicker / view.viewport.z;
@@ -255,10 +330,11 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
             let to_eye = normalize(view.eye_time.xyz - in.world);
             let in_frame = vec3<f32>(dot(to_eye, t), dot(to_eye, b), dot(to_eye, n));
             let albedo = max(colour_texel.rgb * glyphs.tone, vec3<f32>(0.03));
-            let win = Window(in.anchor, t, b, colour / albedo, object.state.x);
+            let win = Window(in.anchor, t, b, colour / albedo, instances[in.instance].state.x);
             colour = glyph_depth(colour, in.anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), in.material, in.page, in.thickness, glyphs.ink, look, win);
         }
     }
+    colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
     if reading > 0.0 {
         // The text frame: colour drains to paper and ink, and light is only weight.
         // Divided by exposure so that paper is the same paper at noon and at night.
@@ -343,8 +419,8 @@ fn fs_letter(in: LetterVaryings) -> @location(0) vec4<f32> {
         n = -n;
     }
     let surface = Surface(colour_texel.rgb * colour_texel.rgb * 0.55, n, normal_texel.z, colour_texel.a);
-    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0);
-    let colour = light_surface(surface, as_surface, n, 0.0);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0, 0u);
+    let colour = through_air(light_surface(surface, as_surface, n, 0.0, 1.0), in.world, in.position.xy - view.viewport_origin.xy);
     return vec4<f32>(colour, cover);
 }
 
@@ -372,7 +448,40 @@ fn fs_sky(in: SkyVaryings) -> @location(0) vec4<f32> {
     if view.viewport.w > 0.5 {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
-    var colour = sky_colour(dir, view);
+    // How far apart two pixels are, in radians, for sharp stars and discs.
+    let pixel = length(dpdx(dir)) + length(dpdy(dir)) * 0.0;
+    var colour = sky_colour_sized(dir, view, max(pixel, 1.0e-5));
+    // The moon: a lit sphere, its phase from where the sun is, and on its face the dark
+    // seas faintly in the shape of an `@`, as the brief asks.
+    let moon = view.moon_dir.xyz;
+    let moon_radius = 0.0095;
+    let on_moon = dot(dir, moon);
+    if on_moon > cos(moon_radius * 1.2) && moon.y > -0.02 {
+        // The moon's own right and up as the eye sees them, so that the `@` reads the
+        // right way round: no letter is ever seen mirrored.
+        let right = normalize(cross(moon, vec3<f32>(0.0, 1.0, 0.0)));
+        let up = cross(right, moon);
+        let q = vec2<f32>(dot(dir, right), dot(dir, up)) / moon_radius;
+        let r2 = dot(q, q);
+        if r2 < 1.0 {
+            let z = sqrt(1.0 - r2);
+            let surface = right * q.x + up * q.y - moon * z;
+            let lit = smoothstep(-0.04, 0.12, dot(surface, view.sun_dir.xyz));
+            let face = vec2<f32>(q.x, -q.y) * 0.5 + 0.5;
+            let at = textureSampleLevel(glyph_atlas, glyph_sampler, face, 64u - 32u + GLYPHS_PER_FACE, 3.0).a;
+            let sea = smoothstep(0.40, 0.60, at) * 0.2;
+            let craters = sky_noise(face * 24.0) * 0.12 + sky_noise(face * 7.0) * 0.1;
+            let albedo = vec3<f32>(0.92, 0.90, 0.86) * (1.0 - sea - craters);
+            let shine = albedo * (lit * SUN * 0.11 + 0.0025) * sky_transmittance(SKY_EYE, max(moon.y, 0.0));
+            let edge = 1.0 - smoothstep(0.96, 1.0, r2);
+            // The moon is behind the cloud, as the sun is.
+            let cloud = cloud_layer(dir, view, 1800.0, 2600.0, view.sky.x, vec2<f32>(0.004, 0.0015), 1.0).w;
+            colour = mix(colour, colour * 0.2 + shine, edge * (1.0 - cloud));
+        }
+    }
+    // The mist in front of the sky: the god rays of a low sun are seen against it.
+    let mist = mist_between(FOG_FAR, in.position.xy - view.viewport_origin.xy);
+    colour = colour * mist.a + mist.rgb;
     if view.switches.y > 0.0 {
         // In close reading the sky is bare paper, a little darker towards the zenith.
         let paper = vec3<f32>(0.50, 0.46, 0.37) * (1.0 - 0.25 * clamp(dir.y, 0.0, 1.0)) / view.viewport.z;
@@ -394,6 +503,7 @@ struct TerrainTable {
 @group(3) @binding(0) var<uniform> terrain: TerrainTable;
 @group(3) @binding(1) var terrain_height: texture_2d_array<f32>;
 @group(3) @binding(2) var terrain_ground: texture_2d_array<u32>;
+@group(3) @binding(3) var terrain_sky: texture_2d_array<f32>;
 
 const TERRAIN_SAMPLES: u32 = 65u;
 
@@ -554,8 +664,14 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
     let normal = normalize(tangent * tangent_normal.x + bitangent * tangent_normal.y + n * z);
     let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
-    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, material, 0u, 1.2);
-    var colour = light_surface(surface, as_surface, n, 0.0);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, material, 0u, 1.2, 1.0, 0u);
+    // The share of the sky this place sees, baked, between its four samples.
+    let s00 = textureLoad(terrain_sky, base + 1, layer, 0).r;
+    let s10 = textureLoad(terrain_sky, base + vec2<i32>(2, 1), layer, 0).r;
+    let s01 = textureLoad(terrain_sky, base + vec2<i32>(1, 2), layer, 0).r;
+    let s11 = textureLoad(terrain_sky, base + 2, layer, 0).r;
+    let seen = mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+    var colour = light_surface(surface, as_surface, n, 0.0, seen);
     let look = u32(view.effects.z + 0.5);
     if look > 0u && glyphs.revealed > 0.0 {
         let to_eye = normalize(view.eye_time.xyz - in.world);
@@ -565,6 +681,7 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
         let win = Window(anchor, tangent, bitangent, colour / albedo, 0.0);
         colour = glyph_depth(colour, anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), material, 0u, 1.2, glyphs.ink, look, win);
     }
+    colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
     if view.switches.y > 0.0 {
         let text = mix(paper_of(colour_texel.rgb), ink_of(colour_texel.rgb), glyphs.ink) / view.viewport.z;
         colour = mix(colour, text, view.switches.y);

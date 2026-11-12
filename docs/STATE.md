@@ -13,8 +13,12 @@
 
 ## Lane: Render
 
-**Done:** S02-T02, the terrain drawn: blended ground, rock by slope and height, letters per cell, shadows, rings cut where finer ones draw. Run the game with `--scene valley` to stand on Tithe Hill. Evidence: `docs/evidence/S02/valley.jpg`, `captures/s02_valley.ron`. The river has no water until S02-T09, and the sky and air are S02-T03 and T04.
-**Next:** S02-T03, the sky.
+**Done:** S02-T02, the terrain drawn (`--scene valley`); S02-T03, the sky: a scattering atmosphere, sun, moon with its phase and faint `@`, stars, two cloud layers, and the Vale's grade by the hour. Evidence: `docs/evidence/S02/sky.jpg`, `captures/s02_sky.ron`.
+**Not yet:** stars as characters in close reading; cloud shadows on the ground; dawn on the placeholder textures reads golden-brown (judge on the Mac).
+**Done:** S02-T04, the air: froxel mist by the hour, god rays from the shadow maps (faint until there are trees), aerial perspective. Evidence: `docs/evidence/S02/air.jpg`.
+**Done:** S02-T05, the sky each place sees (terrain and meshes, baked) and contact occlusion at half resolution. Evidence: `docs/evidence/S02/sky_seen.jpg`.
+**Done:** S02-T06, GPU culling and instancing: one mesh pool and instance buffer, culled per view against the frustum and last frame's depth pyramid, drawn by indirect batches. Test: `crates/harness/tests/culling.rs`.
+**Next:** S02-T07, grass.
 
 ## Lane: Sim
 

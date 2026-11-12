@@ -55,6 +55,8 @@ pub struct Vertex {
     /// How thick the object is behind this surface, in metres. Up close the eye can
     /// see this far into it.
     pub thickness: f32,
+    /// The share of the sky this point can see, 0 to 1, baked: it scales the sky's light.
+    pub sky: f32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -64,10 +66,10 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    const MAGIC: &'static [u8; 8] = b"VLMKMSH1";
+    const MAGIC: &'static [u8; 8] = b"VLMKMSH2";
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(16 + self.vertices.len() * 60 + self.indices.len() * 4);
+        let mut out = Vec::with_capacity(16 + self.vertices.len() * 64 + self.indices.len() * 4);
         out.extend_from_slice(Self::MAGIC);
         out.extend_from_slice(&(self.vertices.len() as u32).to_le_bytes());
         out.extend_from_slice(&(self.indices.len() as u32).to_le_bytes());
@@ -82,7 +84,7 @@ impl Mesh {
             return Err("not a mesh");
         }
         let (vertex_count, index_count) = (r.u32()? as usize, r.u32()? as usize);
-        let vertices = bytemuck::pod_collect_to_vec(r.take(vertex_count * 60)?);
+        let vertices = bytemuck::pod_collect_to_vec(r.take(vertex_count * 64)?);
         let indices: Vec<u32> = bytemuck::pod_collect_to_vec(r.take(index_count * 4)?);
         if indices.iter().any(|&i| i as usize >= vertex_count) || index_count % 3 != 0 {
             return Err("mesh indices are out of range");
@@ -481,7 +483,7 @@ mod tests {
 
     #[test]
     fn mesh_round_trip() {
-        let v = |x: f32| Vertex { position: [x, 0.0, 0.0], normal: [0.0, 1.0, 0.0], tangent: [1.0, 0.0, 0.0, 1.0], anchor: [x, 0.0], material: 2, page: 0, thickness: 0.3 };
+        let v = |x: f32| Vertex { position: [x, 0.0, 0.0], normal: [0.0, 1.0, 0.0], tangent: [1.0, 0.0, 0.0, 1.0], anchor: [x, 0.0], material: 2, page: 0, thickness: 0.3, sky: 1.0 };
         let mesh = Mesh { vertices: vec![v(0.0), v(1.0), v(2.0)], indices: vec![0, 1, 2] };
         assert_eq!(Mesh::from_bytes(&mesh.to_bytes()).unwrap(), mesh);
         let bad = Mesh { indices: vec![0, 1, 7], ..mesh };

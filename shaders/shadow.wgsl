@@ -7,17 +7,33 @@ struct CascadeUniform {
     glowing: vec4<u32>,
 }
 
-struct ObjectUniform {
+struct Instance {
     model: mat4x4<f32>,
+    // x: heat, -1 (frozen) to 1 (as hot as it gets). y: 1 if it is not drawn (broken).
+    state: vec4<f32>,
+    // The sphere that holds it, in the world.
+    bounds: vec4<f32>,
+    // x: its batch. y: the batch's first instance.
+    group: vec4<u32>,
 }
 
+struct Batch {
+    // x: where this batch starts in the list being drawn.
+    base: vec4<u32>,
+}
+
+
 @group(0) @binding(0) var<uniform> cascade: CascadeUniform;
-@group(1) @binding(0) var<uniform> object: ObjectUniform;
+@group(1) @binding(0) var<storage, read> instances: array<Instance>;
+@group(1) @binding(1) var<storage, read> visible: array<u32>;
+@group(1) @binding(2) var<uniform> batch: Batch;
 
 @vertex
-fn vs(@location(0) position: vec3<f32>, @location(4) material: u32) -> @builtin(position) vec4<f32> {
-    if (cascade.glowing.x & (1u << material)) != 0u {
-        // Outside the clip volume: the triangle is thrown away.
+fn vs(@location(0) position: vec3<f32>, @location(4) material: u32, @builtin(instance_index) index: u32) -> @builtin(position) vec4<f32> {
+    let object = instances[visible[batch.base.x + index]];
+    if (cascade.glowing.x & (1u << material)) != 0u || object.state.y > 0.5 {
+        // Outside the clip volume: the triangle is thrown away. A lantern's glass casts no
+        // shadow, and nor does a broken thing.
         return vec4<f32>(2.0, 2.0, 2.0, 1.0);
     }
     return cascade.view_proj * (object.model * vec4<f32>(position, 1.0));

@@ -10,12 +10,15 @@
 //! samples u32 (65), spacing f32 (metres), lowest f32, highest f32,
 //! heights:  samples² f32, row by row from the tile's least x and z, x fastest
 //! water:    samples² f32, the height of the water's surface, NaN where it is dry
-//! ground:   samples² u8, a `Ground`, then zero bytes to a multiple of four
+//! ground:   samples² u8, a `Ground`
+//! sky:      samples² u8, the share of the sky seen from the sample, 0 to 255, cosine
+//!           weighted: 255 on open ground, less in a hollow or at the foot of a slope;
+//!           then zero bytes to a multiple of four
 //! ```
 
 use crate::tile::TileCoord;
 
-const MAGIC: &[u8; 8] = b"VLMKTER1";
+const MAGIC: &[u8; 8] = b"VLMKTER2";
 
 /// Samples along each side of every terrain tile.
 pub const TILE_SAMPLES: usize = 65;
@@ -64,6 +67,8 @@ pub struct TerrainTile {
     /// The water's surface at each sample, NaN where it is dry.
     pub water: Vec<f32>,
     pub ground: Vec<Ground>,
+    /// The share of the sky seen from each sample, 0 to 255.
+    pub sky: Vec<u8>,
 }
 
 impl TerrainTile {
@@ -75,6 +80,7 @@ impl TerrainTile {
             heights: vec![0.0; n],
             water: vec![f32::NAN; n],
             ground: vec![Ground::Grass; n],
+            sky: vec![255; n],
         }
     }
 
@@ -131,6 +137,7 @@ impl TerrainTile {
             out.extend_from_slice(&v.to_le_bytes());
         }
         out.extend(self.ground.iter().map(|g| *g as u8));
+        out.extend_from_slice(&self.sky);
         while out.len() % 4 != 0 {
             out.push(0);
         }
@@ -154,7 +161,7 @@ impl TerrainTile {
         }
         let n = TILE_SAMPLES * TILE_SAMPLES;
         let start = 32;
-        if bytes.len() < start + n * 9 {
+        if bytes.len() < start + n * 10 {
             return Err(bad("too short"));
         }
         let heights = (0..n).map(|k| f32_at(start + k * 4)).collect();
@@ -163,7 +170,8 @@ impl TerrainTile {
             .iter()
             .map(|&g| Ground::from_u8(g).ok_or_else(|| bad("unknown ground")))
             .collect::<Result<_, _>>()?;
-        Ok(Self { coord, spacing: f32_at(20), heights, water, ground })
+        let sky = bytes[start + n * 9..start + n * 10].to_vec();
+        Ok(Self { coord, spacing: f32_at(20), heights, water, ground, sky })
     }
 }
 
