@@ -39,6 +39,9 @@ pub struct TerrainGpu {
     pub index_count: u32,
     pub indices: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
+    /// The grass that grows on it, and its wind and pushers for the frame.
+    pub grass: crate::grass::GrassField,
+    pub grass_uniform: wgpu::Buffer,
 }
 
 pub fn layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
@@ -58,8 +61,14 @@ pub fn layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 count: None,
             },
             texture(1, wgpu::TextureSampleType::Float { filterable: false }, wgpu::ShaderStages::VERTEX_FRAGMENT),
-            texture(2, wgpu::TextureSampleType::Uint, wgpu::ShaderStages::FRAGMENT),
-            texture(3, wgpu::TextureSampleType::Float { filterable: false }, wgpu::ShaderStages::FRAGMENT),
+            texture(2, wgpu::TextureSampleType::Uint, wgpu::ShaderStages::VERTEX_FRAGMENT),
+            texture(3, wgpu::TextureSampleType::Float { filterable: false }, wgpu::ShaderStages::VERTEX_FRAGMENT),
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
+                count: None,
+            },
         ],
     })
 }
@@ -169,6 +178,14 @@ impl TerrainGpu {
             mapped_at_creation: false,
         });
         gpu.queue.write_buffer(&index_buffer, 0, bytemuck::cast_slice(&indices));
+        let grass = crate::grass::GrassField::new(gpu, tiles, crate::grass::GrassTuning::default());
+        let grass_uniform = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("grass"),
+            size: std::mem::size_of::<crate::grass::GrassUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        gpu.queue.write_buffer(&grass_uniform, 0, bytemuck::bytes_of(&grass.uniform(0.0, &[])));
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain"),
             layout,
@@ -177,9 +194,10 @@ impl TerrainGpu {
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&height_view) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&ground_view) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&sky_view) },
+                wgpu::BindGroupEntry { binding: 4, resource: grass_uniform.as_entire_binding() },
             ],
         });
-        Ok(Self { tile_count: tiles.len() as u32, index_count: indices.len() as u32, indices: index_buffer, bind_group })
+        Ok(Self { tile_count: tiles.len() as u32, index_count: indices.len() as u32, indices: index_buffer, bind_group, grass, grass_uniform })
     }
 }
 

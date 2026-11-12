@@ -63,3 +63,5 @@ Added as each system is built.
 | The performance targets in `docs/TECH.md` | S00 | `perf-run.command`, and send the report |
 | The opaque pass inside its 5.0 ms share | S01 | The `opaque` line of the report's `[gpu passes]` |
 | No shimmer or swimming letters in motion | S01 | Walk and strafe along the north wall at 6 m, 2 m, and 0.5 m. The cloud's shimmer check passes; only a real screen shows motion |
+| Grass and foliage inside 2.0 ms | S02-T07 | Run `valley.command`, stand on Tithe Hill, and read the `opaque` and `depth` lines with grass in view. The grass's density is 160 blades a square metre within 8 m; say if it should change |
+| Grass that moves well | S02-T07 | In the valley, walk through the pasture and the barley: the blades part around you and spring back, and the wind travels across the field in gusts. With the free camera (F2, Left Ctrl to go down), bring your eye to a blade: it is a line of words, `grass C6H12O6` |

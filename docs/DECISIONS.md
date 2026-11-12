@@ -2,13 +2,50 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-12: grass (S02-T07)
+
+**Patches as instances.** The ground near each view is cut into 4 m patches, and every
+patch with grass is an instance in the one instance buffer, culled per view by the same
+compute pass as everything else. A patch has no mesh: each blade is made in the vertex
+shader from its number, on the terrain's own heights and ground, so grass costs no
+memory beyond one shared list of indices. Grass grows on pasture and barley, a little on
+a wood's floor, and nowhere too steep. The instance limit is now 8,192.
+
+**Levels without popping.** Four levels of detail, each a quarter of the blades of the
+last, chosen by the patch's nearest point to the nearest eye. Blades are placed along a
+low-discrepancy sequence, so every level's blades are the first of the full set and are
+spread evenly. Each blade fades by its own number as its distance grows: within 8 m the
+grass is at 160 blades a square metre, beyond it the count falls with the square of the
+distance and each blade widens to keep the cover, so a blade is about the same width on
+screen at any distance and none is thinner than a pixel. Grass ends at 72 m, fading over
+the last fifth, where the terrain's grass colour carries it.
+
+**Bending.** Each blade is a curve from root to tip with its own lean, the wind's (gusts
+that travel across the field, and a flutter), and a push away from anything within its
+reach. Up to eight pushers; for now each view's eye, standing for the player. Barley
+stands taller and stiffer, with a swelling head. The wind wanders on its own until the
+weather drives it in S02-T10.
+
+**Shading.** Blade normals are half the blade's own and half the ground's, so a field is
+lit as the ground it covers and each blade still has its own light. Blades low in the
+sward are darker, tips are paler, and light comes through a blade lit from behind.
+Grass receives the sun's shadows but does not cast them yet; the shadow rota is S02-T11.
+
+**A line of characters.** Each blade is written from root to tip with its lexicon's
+words, a space between: `grass C6H12O6 grass C6H10O5`. Its cells are the blade's width,
+so the text follows the same reveal rule as every surface, by the cell's size on screen,
+and the glyph-off comparison holds. Every few seconds a blade moves on to its next word,
+and now and then a letter flickers. At arm's length, where a cell is over about twenty
+pixels, the blade between its letters thins away in the depth pass and the colour pass
+alike: the blade is nothing but its characters.
+
 ## 2026-11-12: culling and instancing (S02-T06)
 
 **One pool, one instance buffer.** Every mesh of a scene is in one vertex and one index
 buffer; every placed thing is an instance in a storage buffer (transform, state, the
 sphere that holds it, its batch), kept together by mesh so that each mesh is one batch.
 Vertex shaders read their instance through a list, so the same draw serves every list.
-Limits: 4,096 instances and 256 meshes a scene. Grass, trees, and creatures will join it.
+Limits: 4,096 instances (now 8,192, with grass) and 256 meshes a scene. Grass, trees, and creatures will join it.
 
 **Lists.** List 0 is every instance, in order, for the shadow maps, which are not culled
 yet (their far cascade's rota is S02-T11). List 1 + v is what view v can see, written by

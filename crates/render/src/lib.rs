@@ -12,6 +12,7 @@ mod lights;
 mod scene_pass;
 mod shaders;
 pub mod sky;
+mod grass;
 mod terrain;
 mod ui_pass;
 mod world_gpu;
@@ -192,6 +193,7 @@ impl Renderer {
     /// Replaces the terrain being drawn, or removes it. Buffers and textures only, so it
     /// is safe in play.
     pub fn set_terrain(&mut self, gpu: &Gpu, tiles: &[&vellmark_content::TerrainTile], materials: &MaterialSet) -> Result<(), String> {
+        self.world.forget_grass();
         self.terrain = if tiles.is_empty() { None } else { Some(terrain::TerrainGpu::new(gpu, self.world.terrain_layout(), tiles, materials)?) };
         Ok(())
     }
@@ -201,6 +203,12 @@ impl Renderer {
     #[cfg(feature = "dev")]
     pub fn drawn_last_frame(&self, gpu: &Gpu) -> Vec<(vellmark_content::AssetId, u32)> {
         self.world.drawn_last_frame(gpu, &self.scene)
+    }
+
+    /// For tests: how many grass patches view 0 drew last frame at each level of detail.
+    #[cfg(feature = "dev")]
+    pub fn grass_drawn_last_frame(&self, gpu: &Gpu) -> [u32; 4] {
+        self.world.grass_drawn_last_frame(gpu, &self.scene)
     }
 
     pub fn scene_mut(&mut self) -> &mut SceneGpu {

@@ -5,8 +5,9 @@ use glam::Mat4;
 use vellmark_content::{AssetId, GlyphAtlas, MaterialSet, Mesh, Scene, TextPages, Vertex, GLYPHS_PER_FACE, TONE_STEPS};
 use vellmark_gpu::{wgpu, Gpu};
 
-/// The most placed things in a scene, and the most distinct meshes they are drawn from.
-pub const MAX_INSTANCES: usize = 4096;
+/// The most instances in a frame, placed things and grass patches together, and the most
+/// batches they are drawn in.
+pub const MAX_INSTANCES: usize = 8192;
 pub const MAX_GROUPS: usize = 256;
 pub const MAX_MATERIALS: usize = 32;
 

@@ -690,3 +690,303 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     colour = select(colour, vec3<f32>(0.0), colour != colour);
     return vec4<f32>(colour, glyphs.revealed);
 }
+
+// ---- grass: blades made from their number, on the terrain they stand on ----
+
+struct GrassUniform {
+    // xy: the wind's direction over the ground. z: its strength, 0 to 1. w: how fast its
+    // gusts travel, in metres a second.
+    wind: vec4<f32>,
+    // x: within this distance the grass is at full density. y: blades per square metre
+    // there. z: the side of a patch. w: the farthest any blade is drawn.
+    shape: vec4<f32>,
+    // Each thing that pushes the grass aside: where it is, and how far it reaches.
+    pushers: array<vec4<f32>, 8>,
+    // x: how many pushers. y: the blades a patch holds at full density.
+    counts: vec4<u32>,
+}
+
+@group(3) @binding(4) var<uniform> grass: GrassUniform;
+
+struct GrassVaryings {
+    @builtin(position) @invariant position: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    // x: along the blade, in metres from the root. y: across it, in metres from its middle.
+    @location(2) page: vec2<f32>,
+    // How far up the blade: 0 at the root, 1 at the tip.
+    @location(3) up: f32,
+    @location(4) @interpolate(flat) seed: u32,
+    @location(5) @interpolate(flat) material: u32,
+    // x: the share of the sky the root sees. y: the side of the blade's character cells.
+    @location(6) @interpolate(flat) blade: vec2<f32>,
+}
+
+@vertex
+fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -> GrassVaryings {
+    var out: GrassVaryings;
+    out.position = NOWHERE;
+    out.world = vec3<f32>(0.0);
+    out.normal = vec3<f32>(0.0, 1.0, 0.0);
+    out.page = vec2<f32>(0.0);
+    out.up = 0.0;
+    out.seed = 0u;
+    out.material = 0u;
+    out.blade = vec2<f32>(0.0);
+
+    let object = instances[instance_of(index)];
+    let origin = object.model[3].xyz;
+    let tile = u32(object.state.z);
+    let blade = vertex / 7u;
+    let k = vertex % 7u;
+    let side_of_patch = grass.shape.z;
+    let cell = vec2<i32>(floor(origin.xz / side_of_patch + 0.5));
+    let seed = hash_cell(cell, i32(blade), 0x9e37u);
+    let shape_hash = hash_cell(cell, i32(blade), 0x61u);
+    let r1 = unit(shape_hash);
+    let r2 = unit(shape_hash >> 16u);
+    let r3 = unit(seed >> 16u);
+
+    // Where the blade stands. Any first run of this sequence is spread evenly over the
+    // patch, so each level of detail, which draws only the first blades, is even too.
+    let spread = fract(vec2<f32>(0.5) + f32(blade) * vec2<f32>(0.7548776662, 0.5698402910));
+    let jitter = vec2<f32>(unit(seed), unit(shape_hash >> 8u)) - 0.5;
+    let at = origin.xz + fract(spread + jitter * 0.6 / sqrt(f32(grass.counts.y))) * side_of_patch;
+
+    // The ground under it, exactly as the terrain is drawn there.
+    let t = terrain.tiles[tile * 2u];
+    let layer = i32(t.w);
+    let local = (at - t.xy) / t.z;
+    let base = clamp(vec2<i32>(floor(local)), vec2<i32>(0), vec2<i32>(63));
+    let f = clamp(local - vec2<f32>(base), vec2<f32>(0.0), vec2<f32>(1.0));
+    let h00 = terrain_sample(base.x, base.y, layer);
+    let h10 = terrain_sample(base.x + 1, base.y, layer);
+    let h01 = terrain_sample(base.x, base.y + 1, layer);
+    let h11 = terrain_sample(base.x + 1, base.y + 1, layer);
+    var height: f32;
+    if f.x >= f.y {
+        height = h00 + f.x * (h10 - h00) + f.y * (h11 - h10);
+    } else {
+        height = h00 + f.y * (h01 - h00) + f.x * (h11 - h01);
+    }
+    let slope = normalize(vec3<f32>(-(h10 - h00 + h11 - h01) * 0.5 / t.z, 1.0, -(h01 - h00 + h11 - h10) * 0.5 / t.z));
+    let nearest = clamp(vec2<i32>(round(local)), vec2<i32>(0), vec2<i32>(64));
+    let ground = textureLoad(terrain_ground, nearest + 1, layer, 0).r;
+    let barley = ground == 1u;
+    // Pasture and barley are full of it; a wood's floor has a little; nothing grows on
+    // roads, earth, banks, the bed of the water, or rock.
+    var grows = select(0.0, 1.0, ground == 0u || barley);
+    if ground == 6u {
+        grows = 0.2;
+    }
+    grows = select(0.0, 1.0, unit(seed >> 8u) < grows) * smoothstep(0.62, 0.8, slope.y);
+    let root = vec3<f32>(at.x, height, at.y);
+
+    // Fewer blades with distance, each fading out by its own number, so that none pops.
+    let eye = view.eye_time.xyz;
+    let dist = distance(eye, root);
+    let near = grass.shape.x;
+    let keep = min(1.0, (near * near) / max(dist * dist, 1.0e-3));
+    let wanted = f32(grass.counts.y) * keep;
+    var fade = clamp((wanted - f32(blade)) / max(wanted * 0.3, 1.0), 0.0, 1.0);
+    fade *= 1.0 - smoothstep(grass.shape.w * 0.7, grass.shape.w, dist);
+    fade *= grows;
+    if fade <= 0.0 {
+        return out;
+    }
+
+    // Its shape: meadows run tall and short in broad swathes, and in clumps within them.
+    let clump = sky_noise(at * 0.35);
+    let meadow = sky_noise(at * 0.06 + vec2<f32>(17.0, 3.0));
+    var tall: f32;
+    var wide: f32;
+    if barley {
+        tall = (0.85 + 0.25 * r1) * (0.9 + 0.2 * clump);
+        wide = 0.0065 + 0.002 * r2;
+    } else {
+        tall = (0.16 + 0.3 * r1) * (0.55 + 0.9 * meadow) * (0.8 + 0.4 * clump);
+        wide = 0.009 + 0.007 * r2;
+    }
+    let cell_side = wide;
+    tall *= mix(0.25, 1.0, fade);
+    // Beyond the near distance each blade stands for several, so it is wider: about the
+    // same width on screen at any distance, and the field keeps its cover.
+    wide *= max(1.0, dist / near) * fade;
+
+    // Its lean: its own, the wind's, and anything walking through it.
+    let yaw = unit(shape_hash >> 4u) * 6.2831853;
+    let across = vec3<f32>(cos(yaw), 0.0, sin(yaw));
+    let facing = vec3<f32>(-sin(yaw), 0.0, cos(yaw));
+    var lean = facing.xz * select(0.1 + 0.45 * r3, 0.04 + 0.08 * r3, barley);
+    let time = view.eye_time.w;
+    let wind = grass.wind.xy;
+    let gust_at = at * 0.045 - wind * time * grass.wind.w * 0.045;
+    let gust = sky_noise(gust_at) * 0.7 + sky_noise(gust_at * 2.3 + vec2<f32>(5.0, 9.0)) * 0.3;
+    let flutter = sin(time * (1.7 + 1.3 * r2) + r1 * 6.2831853);
+    lean += wind * grass.wind.z * ((0.1 + 1.1 * gust * gust) * select(1.0, 0.7, barley) + 0.07 * flutter);
+    for (var p = 0u; p < min(grass.counts.x, 8u); p++) {
+        let pusher = grass.pushers[p];
+        let away = at - pusher.xz;
+        let d = length(away);
+        if d < pusher.w && root.y > pusher.y - 2.4 && root.y < pusher.y + 0.3 {
+            let push = 1.0 - d / pusher.w;
+            lean += away / max(d, 1.0e-3) * push * (2.0 - push);
+        }
+    }
+    let amount = min(length(lean), 1.45);
+    let towards = vec3<f32>(lean.x, 0.0, lean.y) / max(length(lean), 1.0e-5);
+    let up = vec3<f32>(0.0, 1.0, 0.0);
+    let tip = root + (towards * sin(amount) + up * cos(amount)) * tall;
+    let knee = root + (towards * sin(amount * 0.5) + up * cos(amount * 0.5)) * tall * 0.5;
+
+    // Three pairs of vertices up the blade and one at the tip. Barley's head is the
+    // swelling near the top.
+    let level = min(k / 2u, 3u);
+    var ups = array<f32, 4>(0.0, 0.4, 0.75, 1.0);
+    var widths = array<f32, 4>(1.0, 0.72, 0.4, 0.0);
+    if barley {
+        ups = array<f32, 4>(0.0, 0.58, 0.8, 1.0);
+        widths = array<f32, 4>(0.6, 0.5, 1.7, 0.0);
+    }
+    let s = ups[level];
+    let along = mix(mix(root, knee, s), mix(knee, tip, s), s);
+    let tangent = normalize(mix(knee - root, tip - knee, s) + up * 1.0e-4);
+    let sign = select(select(-1.0, 1.0, (k & 1u) == 1u), 0.0, k == 6u);
+    let half = wide * widths[level] * 0.5;
+    out.world = along + across * sign * half;
+    // Rounded across its width, so it catches the light as a real blade does, and bent
+    // towards the sky, as the sward together faces it: a field is lit as the ground it
+    // covers, and each blade still has its own light.
+    let own = normalize(cross(across, tangent) + across * sign * 0.5);
+    out.normal = normalize(mix(own, slope, 0.55));
+    out.page = vec2<f32>(s * tall, sign * cell_side * widths[level] * 0.5);
+    out.up = s;
+    out.seed = seed;
+    out.material = terrain_material(select(0u, 1u, barley));
+    out.blade = vec2<f32>(textureLoad(terrain_sky, nearest + 1, layer, 0).r, cell_side);
+    out.position = view.view_proj * vec4<f32>(out.world, 1.0);
+    return out;
+}
+
+struct BladeLetters {
+    // Multiplies the blade's colour. Averages to 1 over a character.
+    tone: f32,
+    // How much of the pixel is ink.
+    ink: f32,
+    // 1 where the letters are drawn at all.
+    revealed: f32,
+    // Below one half, the pixel is not part of the blade: at arm's length the blade is
+    // nothing but its characters.
+    keep: f32,
+}
+
+// Each blade is a line of characters, running from its root to its tip: the words of its
+// lexicon, `grass` and what grass is made of. Beyond the reveal distance this returns at
+// once, having sampled nothing.
+fn blade_letters(in: GrassVaryings, front: bool) -> BladeLetters {
+    var out = BladeLetters(1.0, 0.0, 0.0, 1.0);
+    // Seen from the side the normal faces, the line would read mirrored; turned over.
+    let page = vec2<f32>(in.page.x, select(in.page.y, -in.page.y, front));
+    let dx = dpdx(page);
+    let dy = dpdy(page);
+    if view.switches.x < 0.5 {
+        return out;
+    }
+    let c = in.blade.y;
+    let squeeze = max(length(dx), length(dy));
+    if squeeze <= 0.0 || c <= 0.0 {
+        return out;
+    }
+    let h = c / squeeze * view.switches.w;
+    if h < 3.0 {
+        return out;
+    }
+    let i = i32(floor(page.x / c));
+    let uv = vec2<f32>(fract(page.x / c), 0.5 - page.y / c);
+    let du = dx * vec2<f32>(1.0 / c, -1.0 / c);
+    let dv = dy * vec2<f32>(1.0 / c, -1.0 / c);
+
+    // The line: the blade's words one after another, a space between: its name and what
+    // it is made of, `grass C6H12O6 grass C6H10O5`. Every few seconds a blade moves on to
+    // the next of its words, and now and then a letter flickers to another.
+    let m = materials.entries[in.material];
+    let words = 1u + m.info.y;
+    let epoch = u32(floor(view.eye_time.w / 7.0 + unit(in.seed >> 3u) * 7.0));
+    var slot = (in.seed >> 4u) + epoch;
+    var pos = i + i32((in.seed >> 12u) % 7u);
+    var character = 32u;
+    for (var n = 0; n < 16; n++) {
+        let s = slot % words;
+        let count = i32(word_length(in.material, s));
+        if pos <= count {
+            if pos < count {
+                character = word_char(in.material, s, u32(pos));
+            }
+            break;
+        }
+        pos -= count + 1;
+        slot += 1u;
+    }
+    let tick = hash_cell(vec2<i32>(i, i32(floor(view.eye_time.w * 8.0)) & 0xffff), 0, in.seed);
+    if character != 32u && unit(tick) < 0.015 {
+        character = 33u + (tick >> 16u) % 94u;
+    }
+    let g = cell_glyph(character - 32u, uv, du, dv, h, 0.42);
+    let w = influence_rise(h);
+    let contrast = m.surface.y * view.switches.z;
+    out.tone = max(1.0 + contrast * w * nearness(h) * (g.mean - g.cover), 0.05);
+    out.ink = g.cover * w;
+    out.revealed = 1.0;
+    let solid = smoothstep(14.0, 30.0, h);
+    let inside = smoothstep(g.threshold - 0.14, g.threshold - 0.05, g.distance);
+    out.keep = mix(1.0, inside, solid);
+    return out;
+}
+
+@fragment
+fn fs_grass_depth(in: GrassVaryings, @builtin(front_facing) front: bool) {
+    // In a tool's mask the whole blade is kept: what shows through its letters is seen
+    // only because they are drawn, so it counts as within the reveal distance.
+    if blade_letters(in, front).keep < 0.5 && view.viewport.w < 0.5 {
+        discard;
+    }
+}
+
+@fragment
+fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+    let letters = blade_letters(in, front);
+    if view.viewport.w > 0.5 {
+        return vec4<f32>(vec3<f32>(letters.revealed * 100.0), 1.0);
+    }
+    if letters.keep < 0.5 {
+        discard;
+    }
+    let to_eye = normalize(view.eye_time.xyz - in.world);
+    var n = normalize(in.normal);
+    if !front {
+        // The far side of the blade: its normal mirrored about the sky-facing part.
+        n = normalize(reflect(n, normalize(vec3<f32>(n.x, 0.0, n.z) + vec3<f32>(0.0, 1.0e-4, 0.0))));
+    }
+    // Low in the sward the blades shade one another.
+    let ao = mix(0.5, 1.0, smoothstep(0.0, 0.8, in.up));
+    let place = vec2<f32>(unit(in.seed), unit(in.seed >> 16u));
+    let texel = textureSampleLevel(material_colour, material_sampler, place, in.material, 5.0);
+    var albedo = texel.rgb * (0.8 + 0.4 * unit(in.seed >> 9u));
+    // Tips are drier and paler than the stem.
+    albedo = mix(albedo, albedo * vec3<f32>(1.25, 1.18, 0.85), in.up * in.up * 0.6) * ao;
+    let surface = Surface(albedo * letters.tone, n, 0.6, 0.0);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0, 0u);
+    var colour = light_surface(surface, as_surface, n, 0.0, in.blade.x);
+    // Light through the blade: a blade lit from behind glows.
+    let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
+    let l = view.light_dir_hour.xyz;
+    let through = max(dot(-n, l), 0.0) * 0.3 + pow(max(dot(-to_eye, l), 0.0), 6.0) * 0.8;
+    colour += albedo * letters.tone * view.light_colour.rgb * sun_shadow(in.world, n, depth_in_view) * through;
+    colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
+    if view.switches.y > 0.0 {
+        let text = mix(paper_of(texel.rgb), ink_of(texel.rgb), letters.ink) / view.viewport.z;
+        colour = mix(colour, text, view.switches.y);
+    }
+    colour = select(colour, vec3<f32>(0.0), colour != colour);
+    return vec4<f32>(colour, letters.revealed);
+}

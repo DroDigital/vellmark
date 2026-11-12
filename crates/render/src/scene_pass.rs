@@ -59,6 +59,8 @@ struct Pipelines {
     terrain_shadow: wgpu::RenderPipeline,
     terrain_depth: wgpu::RenderPipeline,
     terrain: wgpu::RenderPipeline,
+    grass_depth: wgpu::RenderPipeline,
+    grass: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     bloom_first: wgpu::RenderPipeline,
     bloom_down: wgpu::RenderPipeline,
@@ -99,6 +101,8 @@ pub struct ScenePass {
     /// One instance for each loose letter, and the step they were last sent at.
     letter_buffer: wgpu::Buffer,
     letters_sent: Option<(u64, usize)>,
+    /// The grass patches last sent, after how many placed things.
+    grass_sent: Option<(usize, Vec<crate::grass::Chosen>)>,
 }
 
 fn aligned(size: u64, align: u64) -> u64 {
@@ -456,6 +460,7 @@ impl ScenePass {
                 mapped_at_creation: false,
             }),
             letters_sent: None,
+            grass_sent: None,
         })
     }
 
@@ -687,6 +692,40 @@ impl ScenePass {
                 cache: None,
             },
         );
+        // Grass: blades made in the vertex stage, seen from both sides.
+        let grass_depth = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("grass depth"),
+                layout: Some(&terrain_world_layout),
+                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_grass"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState { module: &opaque_module, entry_point: Some("fs_grass_depth"), compilation_options: Default::default(), targets: &[] }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(depth_state(true, wgpu::CompareFunction::Greater)),
+                multisample,
+                multiview_mask: None,
+                cache: None,
+            },
+        );
+        let grass = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("grass"),
+                layout: Some(&terrain_world_layout),
+                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_grass"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_grass"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(HDR_FORMAT.into())],
+                }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Equal)),
+                multisample,
+                multiview_mask: None,
+                cache: None,
+            },
+        );
         let letters = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
@@ -776,7 +815,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -891,7 +930,26 @@ impl ScenePass {
     /// For tests: how many instances of each batch view 0 drew, read back from the draws.
     #[cfg(feature = "dev")]
     pub fn drawn_last_frame(&self, gpu: &Gpu, scene: &SceneGpu) -> Vec<(vellmark_content::AssetId, u32)> {
-        let size = (scene.groups.len() * 20) as u64;
+        let words = self.read_draws(gpu, scene.groups.len());
+        scene
+            .groups
+            .iter()
+            .enumerate()
+            .map(|(g, group)| (scene.placed[group.first_instance as usize].key, words[g * 5 + 1]))
+            .collect()
+    }
+
+    /// For tests: how many grass patches view 0 drew last frame at each level of detail.
+    #[cfg(feature = "dev")]
+    pub fn grass_drawn_last_frame(&self, gpu: &Gpu, scene: &SceneGpu) -> [u32; crate::grass::LEVELS] {
+        let first = scene.groups.len();
+        let words = self.read_draws(gpu, first + crate::grass::LEVELS);
+        std::array::from_fn(|l| words[(first + l) * 5 + 1])
+    }
+
+    #[cfg(feature = "dev")]
+    fn read_draws(&self, gpu: &Gpu, groups: usize) -> Vec<u32> {
+        let size = (groups * 20) as u64;
         if size == 0 {
             return Vec::new();
         }
@@ -908,12 +966,7 @@ impl ScenePass {
         slice.map_async(wgpu::MapMode::Read, |_| {});
         let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
         let words: Vec<u32> = bytemuck::cast_slice(&slice.get_mapped_range().expect("mapped")).to_vec();
-        scene
-            .groups
-            .iter()
-            .enumerate()
-            .map(|(g, group)| (scene.placed[group.first_instance as usize].key, words[g * 5 + 1]))
-            .collect()
+        words
     }
 
     /// Every mesh of the scene that view `v` can see, one indirect batch each, as the
@@ -946,6 +999,11 @@ impl ScenePass {
         }
     }
 
+    /// The terrain has been replaced: send its grass afresh.
+    pub fn forget_grass(&mut self) {
+        self.grass_sent = None;
+    }
+
     pub fn terrain_layout(&self) -> &wgpu::BindGroupLayout {
         &self.terrain_layout
     }
@@ -957,6 +1015,21 @@ impl ScenePass {
             pass.set_bind_group(object_group + 1, &t.bind_group, &[]);
             pass.set_index_buffer(t.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..t.index_count, 0, 0..t.tile_count);
+        }
+    }
+
+    /// The grass view `v` can see, each level of detail one indirect batch, with the
+    /// pipeline already set and the frame bound.
+    fn draw_grass(&self, pass: &mut wgpu::RenderPass<'_>, terrain: Option<&crate::terrain::TerrainGpu>, v: usize, first_group: usize, counts: &[u32; crate::grass::LEVELS]) {
+        let Some(t) = terrain else { return };
+        pass.set_bind_group(3, &t.bind_group, &[]);
+        pass.set_index_buffer(t.grass.indices.slice(..), wgpu::IndexFormat::Uint32);
+        for (l, count) in counts.iter().enumerate() {
+            if *count == 0 {
+                continue;
+            }
+            pass.set_bind_group(2, &self.object_bind_group, &[self.batch_offset(1 + v, first_group + l)]);
+            pass.draw_indexed_indirect(&self.culling.draws, crate::cull::Culling::draw_offset(v, first_group + l));
         }
     }
 
@@ -1009,7 +1082,7 @@ impl ScenePass {
         let instances = scene.instances(frame.heat, frame.broken);
         if !instances.is_empty() {
             gpu.queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
-            // The shadows draw every instance; each view's own list is written by culling.
+            // The shadows draw every placed thing; each view's own list is written by culling.
             let every: Vec<u32> = (0..instances.len() as u32).collect();
             gpu.queue.write_buffer(&self.visible_buffer, 0, bytemuck::cast_slice(&every));
             for list in 0..=views.len().min(MAX_VIEWS) {
@@ -1018,6 +1091,40 @@ impl ScenePass {
                     gpu.queue.write_buffer(&self.draw_buffer, self.batch_offset(list, g) as u64, bytemuck::cast_slice(&base));
                 }
             }
+        }
+        // The grass patches near any view, after the placed things, one batch for each
+        // level of detail. They are sent again only when the patches change.
+        let mut headers: Vec<[u32; 3]> = scene.groups.iter().map(|g| {
+            let mesh = &scene.meshes[g.mesh];
+            [mesh.index_count, mesh.first_index, mesh.base_vertex as u32]
+        }).collect();
+        let grass_group = scene.groups.len();
+        let mut grass_counts = [0u32; crate::grass::LEVELS];
+        let mut instance_count = instances.len();
+        if let Some(t) = terrain.filter(|_| grass_group + crate::grass::LEVELS <= MAX_GROUPS) {
+            let eyes: Vec<glam::Vec3> = views.iter().map(|v| v.camera.eye).collect();
+            let chosen = t.grass.choose(&eyes, MAX_INSTANCES - instances.len());
+            let (patches, counts) = t.grass.instances(&chosen, instances.len() as u32, grass_group as u32);
+            grass_counts = counts;
+            instance_count += patches.len();
+            headers.extend_from_slice(&t.grass.draw_headers());
+            let key = (instances.len(), chosen);
+            if self.grass_sent.as_ref() != Some(&key) {
+                if !patches.is_empty() {
+                    let offset = (instances.len() * std::mem::size_of::<crate::world_gpu::InstanceGpu>()) as u64;
+                    gpu.queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&patches));
+                }
+                self.grass_sent = Some(key);
+            }
+            let mut start = instances.len() as u32;
+            for (l, count) in counts.iter().enumerate() {
+                for list in 1..=views.len().min(MAX_VIEWS) {
+                    let base = [(list * MAX_INSTANCES) as u32 + start, 0, 0, 0];
+                    gpu.queue.write_buffer(&self.draw_buffer, self.batch_offset(list, grass_group + l) as u64, bytemuck::cast_slice(&base));
+                }
+                start += count;
+            }
+            gpu.queue.write_buffer(&t.grass_uniform, 0, bytemuck::bytes_of(&t.grass.uniform(frame.seconds, &eyes)));
         }
         for (i, view) in views.iter().enumerate() {
             let (_, _, w, h) = view.viewport.pixels(target_size);
@@ -1139,14 +1246,14 @@ impl ScenePass {
                 }
             })
             .collect();
-        self.culling.prepare(gpu, scene, &cull_views, instances.len(), &self.targets.as_ref().unwrap().pyramid);
+        self.culling.prepare(gpu, &headers, &cull_views, instance_count, &self.targets.as_ref().unwrap().pyramid);
         let targets = self.targets.as_ref().unwrap();
         let viewports: Vec<(f32, f32, f32, f32)> = views.iter().map(|v| v.viewport.pixels(target_size)).collect();
 
         // Culling: each view's list of what it can see, against last frame's pyramid.
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("culling"), timestamp_writes: timers.compute_pass("culling") });
-            self.culling.cull(&mut pass, &targets.pyramid, views.len(), instances.len());
+            self.culling.cull(&mut pass, &targets.pyramid, views.len(), instance_count);
         }
 
         // The fog, now that the shadow maps it reads are drawn.
@@ -1178,6 +1285,8 @@ impl ScenePass {
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain_depth);
                     self.draw_terrain(&mut pass, terrain, 2);
+                    pass.set_pipeline(&self.pipelines.grass_depth);
+                    self.draw_grass(&mut pass, terrain, i, grass_group, &grass_counts);
                     pass.set_pipeline(&self.pipelines.depth);
                 }
             }
@@ -1224,6 +1333,8 @@ impl ScenePass {
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain);
                     self.draw_terrain(&mut pass, terrain, 2);
+                    pass.set_pipeline(&self.pipelines.grass);
+                    self.draw_grass(&mut pass, terrain, i, grass_group, &grass_counts);
                 }
                 if letter_count > 0 {
                     pass.set_pipeline(&self.pipelines.letters);

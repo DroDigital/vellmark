@@ -18,7 +18,9 @@
 **Done:** S02-T04, the air: froxel mist by the hour, god rays from the shadow maps (faint until there are trees), aerial perspective. Evidence: `docs/evidence/S02/air.jpg`.
 **Done:** S02-T05, the sky each place sees (terrain and meshes, baked) and contact occlusion at half resolution. Evidence: `docs/evidence/S02/sky_seen.jpg`.
 **Done:** S02-T06, GPU culling and instancing: one mesh pool and instance buffer, culled per view against the frustum and last frame's depth pyramid, drawn by indirect batches. Test: `crates/harness/tests/culling.rs`.
-**Current task:** S02-T07, grass. Plan: patches of 4 m as instances in the one instance buffer, culled per view like everything else, four levels of detail by distance; the blades built in the vertex shader from the terrain's heights and ground, bent by wind and by whoever walks through; up close each blade is written as a line of characters, and at arm's length the blade is the characters.
+**Done:** S02-T07, grass: patches in the one instance buffer, culled per view, four levels without popping; blades bent by the wind and by whoever walks through; each blade a line of its lexicon's words, and at arm's length nothing but them. Evidence: `docs/evidence/S02/grass.jpg`, `captures/s02_grass.ron`. Test: `crates/harness/tests/grass.rs`.
+**Not yet:** grass casts no shadows (S02-T11's rota); the wind wanders on its own until the weather drives it (S02-T10); density and cost to be judged on the Mac.
+**Next:** S02-T09, water (S02-T08, trees, is the Content lane's).
 
 ## Lane: Sim
 

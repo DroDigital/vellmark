@@ -6,7 +6,7 @@ use glam::{Mat4, Vec3};
 use vellmark_gpu::{wgpu, Gpu, PipelineRegistry};
 
 use crate::frame::MAX_VIEWS;
-use crate::world_gpu::{SceneGpu, MAX_GROUPS, MAX_INSTANCES};
+use crate::world_gpu::{MAX_GROUPS, MAX_INSTANCES};
 
 /// Matches `Cull` in `shaders/cull.wgsl`.
 #[repr(C)]
@@ -240,15 +240,13 @@ impl Culling {
 
     /// This frame's draws, all empty, and each view's culling. A view whose camera has cut
     /// since the last frame, or that has none, culls by the frustum alone.
-    pub fn prepare(&mut self, gpu: &Gpu, scene: &SceneGpu, views: &[CullView], instance_count: usize, pyramid: &PyramidTargets) {
+    /// `headers` holds each batch's draw: its index count, first index, and base vertex.
+    pub fn prepare(&mut self, gpu: &Gpu, headers: &[[u32; 3]], views: &[CullView], instance_count: usize, pyramid: &PyramidTargets) {
         let mut draws: Vec<u32> = Vec::with_capacity(views.len() * MAX_GROUPS * 5);
         for _ in views {
             for g in 0..MAX_GROUPS {
-                match scene.groups.get(g) {
-                    Some(group) => {
-                        let mesh = &scene.meshes[group.mesh];
-                        draws.extend_from_slice(&[mesh.index_count, 0, mesh.first_index, mesh.base_vertex as u32, 0]);
-                    }
+                match headers.get(g) {
+                    Some(h) => draws.extend_from_slice(&[h[0], 0, h[1], h[2], 0]),
                     None => draws.extend_from_slice(&[0; 5]),
                 }
             }
