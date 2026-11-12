@@ -12,6 +12,7 @@ mod lights;
 mod scene_pass;
 mod shaders;
 pub mod sky;
+mod governor;
 mod grass;
 mod terrain;
 mod ui_pass;
@@ -19,6 +20,7 @@ mod world_gpu;
 
 pub use camera::{sun_direction, Camera, View, Viewport};
 pub use frame::{Atmosphere, GlyphTuning};
+pub use governor::{Governor, Knob, Relief};
 pub use shaders::ShaderLibrary;
 pub use world_gpu::SceneGpu;
 
