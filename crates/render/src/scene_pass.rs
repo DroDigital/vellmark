@@ -46,6 +46,7 @@ struct Targets {
     bloom_sources: Vec<wgpu::BindGroup>,
     scene_source: wgpu::BindGroup,
     contact_group: wgpu::BindGroup,
+    pyramid: crate::cull::PyramidTargets,
 }
 
 struct Pipelines {
@@ -91,6 +92,7 @@ pub struct ScenePass {
     frame_bind_groups: Vec<wgpu::BindGroup>,
     fog: crate::fog::FogVolume,
     contact: crate::contact::ContactOcclusion,
+    culling: crate::cull::Culling,
     view_size: u64,
     targets: Option<Targets>,
     target_format: wgpu::TextureFormat,
@@ -371,6 +373,9 @@ impl ScenePass {
                 })
             })
             .collect();
+        let cull_module = shaders.module(gpu, "cull")?;
+        let pyramid_module = shaders.module(gpu, "pyramid")?;
+        let culling = crate::cull::Culling::new(gpu, registry, &cull_module, &pyramid_module);
         let contact_module = shaders.module(gpu, "contact")?;
         let contact = crate::contact::ContactOcclusion::new(gpu, registry, &contact_module, view_size);
         let fog_module = shaders.module(gpu, "fog")?;
@@ -440,6 +445,7 @@ impl ScenePass {
             frame_bind_groups,
             fog,
             contact,
+            culling,
             view_size,
             targets: None,
             target_format,
@@ -863,7 +869,8 @@ impl ScenePass {
                 ],
             });
             let contact_group = self.contact.bind(gpu, &self.view_buffer, self.view_size, &depth_msaa);
-            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, post_bind_group, bloom_levels, bloom_sources, scene_source, contact_group });
+            let pyramid = self.culling.targets(gpu, size, &depth_msaa, &self.instance_buffer, &self.visible_buffer);
+            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, post_bind_group, bloom_levels, bloom_sources, scene_source, contact_group, pyramid });
         }
         self.targets.as_ref().unwrap()
     }
@@ -879,6 +886,49 @@ impl ScenePass {
     /// List 0 is every instance; list 1 + v is what view v sees.
     fn batch_offset(&self, list: usize, group: usize) -> u32 {
         ((list * MAX_GROUPS + group) as u64 * self.object_stride) as u32
+    }
+
+    /// For tests: how many instances of each batch view 0 drew, read back from the draws.
+    #[cfg(feature = "dev")]
+    pub fn drawn_last_frame(&self, gpu: &Gpu, scene: &SceneGpu) -> Vec<(vellmark_content::AssetId, u32)> {
+        let size = (scene.groups.len() * 20) as u64;
+        if size == 0 {
+            return Vec::new();
+        }
+        let readback = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("draws, read back"),
+            size,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = gpu.device.create_command_encoder(&Default::default());
+        encoder.copy_buffer_to_buffer(&self.culling.draws, 0, &readback, 0, size);
+        gpu.queue.submit([encoder.finish()]);
+        let slice = readback.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        let words: Vec<u32> = bytemuck::cast_slice(&slice.get_mapped_range().expect("mapped")).to_vec();
+        scene
+            .groups
+            .iter()
+            .enumerate()
+            .map(|(g, group)| (scene.placed[group.first_instance as usize].key, words[g * 5 + 1]))
+            .collect()
+    }
+
+    /// Every mesh of the scene that view `v` can see, one indirect batch each, as the
+    /// culling pass left them.
+    fn draw_scene_culled(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, v: usize, object_group: u32) {
+        let (Some(vertices), Some(indices)) = (&scene.vertices, &scene.indices) else { return };
+        pass.set_vertex_buffer(0, vertices.slice(..));
+        pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+        for (g, group) in scene.groups.iter().enumerate() {
+            if group.count == 0 || scene.meshes[group.mesh].index_count == 0 {
+                continue;
+            }
+            pass.set_bind_group(object_group, &self.object_bind_group, &[self.batch_offset(1 + v, g)]);
+            pass.draw_indexed_indirect(&self.culling.draws, crate::cull::Culling::draw_offset(v, g));
+        }
     }
 
     /// Every mesh of the scene, one batch each, from list `list`.
@@ -959,10 +1009,9 @@ impl ScenePass {
         let instances = scene.instances(frame.heat, frame.broken);
         if !instances.is_empty() {
             gpu.queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
+            // The shadows draw every instance; each view's own list is written by culling.
             let every: Vec<u32> = (0..instances.len() as u32).collect();
-            for list in 0..=views.len().min(MAX_VIEWS) {
-                gpu.queue.write_buffer(&self.visible_buffer, (list * MAX_INSTANCES * 4) as u64, bytemuck::cast_slice(&every));
-            }
+            gpu.queue.write_buffer(&self.visible_buffer, 0, bytemuck::cast_slice(&every));
             for list in 0..=views.len().min(MAX_VIEWS) {
                 for (g, group) in scene.groups.iter().enumerate() {
                     let base = [(list * MAX_INSTANCES) as u32 + group.first_instance, 0, 0, 0];
@@ -1078,8 +1127,27 @@ impl ScenePass {
         }
 
         self.targets(gpu, target_size);
+        let cull_views: Vec<crate::cull::CullView> = views
+            .iter()
+            .map(|v| {
+                let (x, y, w, h) = v.viewport.pixels(target_size);
+                crate::cull::CullView {
+                    view_proj: v.camera.projection(w / h) * v.camera.view_matrix(),
+                    eye: v.camera.eye,
+                    forward: v.camera.rotation * glam::Vec3::NEG_Z,
+                    viewport: (x, y, w, h),
+                }
+            })
+            .collect();
+        self.culling.prepare(gpu, scene, &cull_views, instances.len(), &self.targets.as_ref().unwrap().pyramid);
         let targets = self.targets.as_ref().unwrap();
         let viewports: Vec<(f32, f32, f32, f32)> = views.iter().map(|v| v.viewport.pixels(target_size)).collect();
+
+        // Culling: each view's list of what it can see, against last frame's pyramid.
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("culling"), timestamp_writes: timers.compute_pass("culling") });
+            self.culling.cull(&mut pass, &targets.pyramid, views.len(), instances.len());
+        }
 
         // The fog, now that the shadow maps it reads are drawn.
         {
@@ -1106,13 +1174,18 @@ impl ScenePass {
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
-                self.draw_scene(&mut pass, scene, 1 + i, 2);
+                self.draw_scene_culled(&mut pass, scene, i, 2);
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain_depth);
                     self.draw_terrain(&mut pass, terrain, 2);
                     pass.set_pipeline(&self.pipelines.depth);
                 }
             }
+        }
+        // The depth pyramid, from the depth just drawn, for the next frame's culling.
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("depth pyramid"), timestamp_writes: timers.compute_pass("depth pyramid") });
+            self.culling.build_pyramid(&mut pass, &targets.pyramid);
         }
         // Contact occlusion, from the depth just drawn.
         {
@@ -1147,7 +1220,7 @@ impl ScenePass {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
                 pass.set_pipeline(&self.pipelines.opaque);
-                self.draw_scene(&mut pass, scene, 1 + i, 2);
+                self.draw_scene_culled(&mut pass, scene, i, 2);
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain);
                     self.draw_terrain(&mut pass, terrain, 2);
@@ -1210,6 +1283,8 @@ impl ScenePass {
             pass.set_bind_group(0, &targets.post_bind_group, &[]);
             pass.draw(0..3, 0..1);
         }
+        // The pyramid now holds this frame's depth, for the next frame to cull against.
+        self.culling.pyramid_ready = true;
     }
 }
 

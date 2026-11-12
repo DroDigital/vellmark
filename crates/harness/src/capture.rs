@@ -278,9 +278,20 @@ impl Offscreen {
         height: u32,
         scene: Option<&str>,
     ) -> Result<Self, String> {
+        Self::with_pack(gpu_options, shaders, width, height, baked_base_pack()?, scene)
+    }
+
+    /// As `new`, drawing from a given pack: for tests with scenes of their own.
+    pub fn with_pack(
+        gpu_options: &GpuOptions,
+        shaders: &ShaderLibrary,
+        width: u32,
+        height: u32,
+        pack: Pack,
+        scene: Option<&str>,
+    ) -> Result<Self, String> {
         let gpu = Gpu::headless(gpu_options).map_err(|e| e.to_string())?;
         let mut registry = PipelineRegistry::new();
-        let pack = baked_base_pack()?;
         let assets = LoadedAssets::from_pack(&pack)?;
         let mut renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &assets.borrow())?;
         let mut loaded = None;

@@ -17,7 +17,8 @@
 **Not yet:** stars as characters in close reading; cloud shadows on the ground; dawn on the placeholder textures reads golden-brown (judge on the Mac).
 **Done:** S02-T04, the air: froxel mist by the hour, god rays from the shadow maps (faint until there are trees), aerial perspective. Evidence: `docs/evidence/S02/air.jpg`.
 **Done:** S02-T05, the sky each place sees (terrain and meshes, baked) and contact occlusion at half resolution. Evidence: `docs/evidence/S02/sky_seen.jpg`.
-**Task:** S02-T06. Plan: (1) one mesh pool and one instance buffer, grouped by mesh, read by the vertex shaders from storage; (2) a culling compute pass per view against the frustum and last frame's depth pyramid, writing visible lists and indirect draws; (3) the depth pyramid built after the depth pre-pass; occlusion skipped after a camera cut.
+**Done:** S02-T06, GPU culling and instancing: one mesh pool and instance buffer, culled per view against the frustum and last frame's depth pyramid, drawn by indirect batches. Test: `crates/harness/tests/culling.rs`.
+**Next:** S02-T07, grass.
 
 ## Lane: Sim
 

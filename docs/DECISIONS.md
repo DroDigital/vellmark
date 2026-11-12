@@ -2,6 +2,37 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-12: culling and instancing (S02-T06)
+
+**One pool, one instance buffer.** Every mesh of a scene is in one vertex and one index
+buffer; every placed thing is an instance in a storage buffer (transform, state, the
+sphere that holds it, its batch), kept together by mesh so that each mesh is one batch.
+Vertex shaders read their instance through a list, so the same draw serves every list.
+Limits: 4,096 instances and 256 meshes a scene. Grass, trees, and creatures will join it.
+
+**Lists.** List 0 is every instance, in order, for the shadow maps, which are not culled
+yet (their far cascade's rota is S02-T11). List 1 + v is what view v can see, written by
+the culling pass each frame, with an indirect draw per batch whose count it adds up.
+
+**Culling** is a compute pass before the depth pre-pass: each instance's sphere against
+the view's frustum (four sides and the near plane; the far plane is at infinity), then
+the box around it against last frame's depth pyramid at the level where it covers two
+texels or fewer. Depth is reversed, so a thing is hidden when its nearest depth is less
+than the least depth drawn over its box.
+
+**The pyramid** is built right after the depth pre-pass, from one sample of the
+multisampled depth, at half resolution, each level the least of the four beneath it
+(three where a level is odd, so nothing at an edge is lost). It is read next frame.
+
+**Never trusted after a cut.** If the eye has moved a metre or turned more than about
+14 degrees since the last frame, or the targets were made anew, a view culls by its
+frustum alone that frame. So something that comes into sight is never a frame late.
+
+**Proof.** The reference images, the shimmer shots, and every capture are unchanged with
+culling on; a test with its own scene shows a crate behind a wall culled once the pyramid
+holds the wall, the crate beside it never culled, everything behind the eye culled, and
+the hidden crate drawn the moment a cut brings it into sight.
+
 ## 2026-11-12: the sky each place sees (S02-T05)
 
 **Terrain:** the bake finds the horizon in eight directions from every sample, out to

@@ -5,6 +5,7 @@
 mod atlas;
 mod camera;
 mod contact;
+mod cull;
 mod fog;
 mod frame;
 mod lights;
@@ -193,6 +194,13 @@ impl Renderer {
     pub fn set_terrain(&mut self, gpu: &Gpu, tiles: &[&vellmark_content::TerrainTile], materials: &MaterialSet) -> Result<(), String> {
         self.terrain = if tiles.is_empty() { None } else { Some(terrain::TerrainGpu::new(gpu, self.world.terrain_layout(), tiles, materials)?) };
         Ok(())
+    }
+
+    /// For tests: how many instances of each batch the first view drew in the last frame,
+    /// by the permanent ID of the batch's first placed thing.
+    #[cfg(feature = "dev")]
+    pub fn drawn_last_frame(&self, gpu: &Gpu) -> Vec<(vellmark_content::AssetId, u32)> {
+        self.world.drawn_last_frame(gpu, &self.scene)
     }
 
     pub fn scene_mut(&mut self) -> &mut SceneGpu {
