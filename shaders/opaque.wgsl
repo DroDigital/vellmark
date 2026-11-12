@@ -279,6 +279,38 @@ fn wetted(s: Surface, wet: f32) -> Surface {
     return Surface(s.albedo * (1.0 - 0.5 * wet * (1.0 - s.metal)), s.normal, mix(s.roughness, 0.12, wet * 0.85), s.metal);
 }
 
+// Rain running down a wall: here and there a rivulet, written as a column of `|` that
+// runs downwards in broken lengths. Returns how much of the pixel is a rivulet's ink, or
+// 0 where there is none or the letters are not drawn. `anchor` is the page, with y up
+// the wall.
+fn runoff(anchor: vec2<f32>, footprint: AnchorFootprint, wet: f32) -> f32 {
+    if wet <= 0.05 || view.switches.x < 0.5 {
+        return 0.0;
+    }
+    let size = CELL_0 * 2.0;
+    let squeeze = max(length(footprint.dx), length(footprint.dy));
+    let h = size / max(squeeze, 1.0e-6) * view.switches.w;
+    if h < 3.0 {
+        return 0.0;
+    }
+    let p = anchor / size;
+    let cell = vec2<i32>(floor(p));
+    let column = hash_cell(vec2<i32>(cell.x, 0), 2, 61u);
+    if unit(column) > 0.22 * wet {
+        return 0.0;
+    }
+    // Water runs about twelve characters a second, in lengths of some ten characters.
+    let run = (f32(cell.y) + view.eye_time.w * (9.0 + unit(column >> 8u) * 6.0)) / 10.0 + unit(hash_cell(vec2<i32>(cell.x, 1), 2, 67u));
+    if fract(run) > 0.55 {
+        return 0.0;
+    }
+    let f = fract(p);
+    let du = footprint.dx * vec2<f32>(1.0 / size, -1.0 / size);
+    let dv = footprint.dy * vec2<f32>(1.0 / size, -1.0 / size);
+    let g = cell_glyph(124u - 32u, vec2<f32>(f.x, 1.0 - f.y), du, dv, h, 0.5);
+    return g.cover * influence_rise(h);
+}
+
 // The rings rain makes on still water, as the slope of the surface, rise over run along
 // x and z. Each cell of a third of a metre takes a drop now and then; its ring runs out
 // and fades. Fewer cells take drops in light rain.
@@ -299,7 +331,7 @@ fn rain_rings(p: vec2<f32>, rain: f32) -> vec2<f32> {
             }
             let period = 0.9 + unit(h >> 4u) * 0.6;
             let age = fract(time / period + unit(h)) * period;
-            let centre = (vec2<f32>(c) + vec2<f32>(unit(h >> 12u), unit(h >> 20u))) * size;
+            let centre = (vec2<f32>(c) + vec2<f32>(unit(h >> 12u), unit(hash_cell(c, 4, 79u)))) * size;
             let away = p - centre;
             let d = length(away);
             let r = age * 0.32;
@@ -358,7 +390,10 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
         let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
         let wet = wet_at(in.sky, n);
-        let surface = wetted(Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a), wet);
+        // On walls, rain runs down in rivulets of `|`: dark and glossy where they run.
+        let streak = runoff(in.anchor, footprint, wet * (1.0 - smoothstep(0.3, 0.6, abs(n.y))));
+        var surface = wetted(Surface(colour_texel.rgb * glyphs.tone * (1.0 - 0.7 * streak), normal, normal_texel.z, colour_texel.a), wet);
+        surface.roughness = mix(surface.roughness, 0.05, streak);
         colour = light_surface(surface, in, n, m.surface.w, in.sky);
         // Heat. A thing hot enough glows, as hot iron does, at any distance: that is the
         // world, not its letters. Up close, the strokes of the letters saying so glow
@@ -707,7 +742,9 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     // the ground is water, and is written as water.
     let wet = wet_at(seen, n);
     let low = sky_noise(in.world.xz * 0.35 + vec2<f32>(3.1, 7.7)) * 0.65 + sky_noise(in.world.xz * 1.3) * 0.35;
-    let puddle = smoothstep(0.96, 0.995, n.y) * smoothstep(0.0, 0.04, wet * 0.42 - low + 0.08) * (1.0 - weights[7]);
+    // Roads, bare earth, and banks hold water; pasture and fields drink it.
+    let holds = mix(0.25, 1.0, clamp(weights[2] + weights[3] + weights[4], 0.0, 1.0));
+    let puddle = smoothstep(0.96, 0.995, n.y) * smoothstep(0.0, 0.03, wet * 0.34 * holds - low + 0.05) * (1.0 - weights[7]);
     let written_as = select(material, terrain_material(9u), puddle > 0.5);
 
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
@@ -1412,7 +1449,7 @@ fn vs_rain(@builtin(vertex_index) vertex: u32, @builtin(instance_index) drop: u3
     let drift = view.wind.xy * view.weather.z * 2.5;
     let top = eye.y + RAIN_ABOVE;
     let period = (RAIN_ABOVE + RAIN_BELOW) / RAIN_SPEED;
-    let since = fract(view.eye_time.w / period + unit(h >> 20u)) * period;
+    let since = fract(view.eye_time.w / period + unit(hash_cell(cell, 6, 93u))) * period;
     let ground = ground_height_at(column);
     let lands = (top - max(ground, eye.y - RAIN_BELOW)) / RAIN_SPEED;
     let up = vec3<f32>(0.0, 1.0, 0.0);
@@ -1449,7 +1486,7 @@ fn vs_rain(@builtin(vertex_index) vertex: u32, @builtin(instance_index) drop: u3
         return out;
     }
     let right = normalize(cross(up, to_eye) + vec3<f32>(1.0e-5, 0.0, 0.0));
-    let size = 0.016;
+    let size = 0.035;
     let world = at + right * c.x * size * 0.5 + up * c.y * size;
     out.position = view.view_proj * vec4<f32>(world, 1.0);
     out.uv = vec2<f32>(c.x * 0.5 + 0.5, 1.0 - c.y);
