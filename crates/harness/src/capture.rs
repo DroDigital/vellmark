@@ -105,6 +105,9 @@ pub struct Shot {
     /// A gust that writes one of the wind's sentences, by number, at its fullest.
     #[serde(default)]
     pub wind_sentence: Option<u32>,
+    /// Everything the governor may give up, given up this far, 0 to 1.
+    #[serde(default)]
+    pub relief: Option<f32>,
     /// The vertical field of view in degrees, if not the usual.
     #[serde(default)]
     pub fov: Option<f32>,
@@ -432,6 +435,7 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                     }
                 },
                 wind_gust: shot.wind_sentence.map(|n| (n, 0.4)),
+                relief: vellmark_render::Relief { levels: [shot.relief.unwrap_or(0.0); 6] },
                 ui: None,
             };
             frames.push(offscreen.frame(&input));

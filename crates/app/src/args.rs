@@ -17,6 +17,8 @@ pub struct Args {
     pub profiler: bool,
     /// The scene to start in, by name: `yard` or `valley`.
     pub scene: Option<String>,
+    /// Low, Medium, or High. Medium if not given.
+    pub preset: Option<String>,
 }
 
 impl Args {
@@ -42,6 +44,7 @@ impl Args {
                 "--accept-refs" => args.accept_refs = true,
                 "--profiler" => args.profiler = true,
                 "--scene" => args.scene = Some(value("--scene")?),
+                "--preset" => args.preset = Some(value("--preset")?),
                 other => return Err(format!("unknown argument `{other}`")),
             }
         }

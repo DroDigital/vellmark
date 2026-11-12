@@ -12,7 +12,7 @@ use vellmark_gpu::{wgpu, Gpu, GpuOptions, PassTimers, PipelineRegistry, WindowHa
 use vellmark_platform::{
     Action, ActionState, Bindings, InputSource, Platform, PlatformEvent, RawInput, Window, WindowOptions,
 };
-use vellmark_render::{Camera, FrameInput, Renderer, ShaderLibrary, View};
+use vellmark_render::{Camera, FrameInput, Governor, Preset, Renderer, ShaderLibrary, View};
 use vellmark_ui::Canvas;
 use vellmark_sim::{buttons, FixedClock, PlayerInput, Snapshot, World, WorldConfig};
 
@@ -166,6 +166,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Ok(r) => r,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
+    // Medium is the Showcase's target; Low and High are chosen by hand for now.
+    #[allow(unused_mut)]
+    let mut preset = args.preset.as_deref().and_then(Preset::parse).unwrap_or(Preset::Medium);
     let scene_key = format!("scene.{}", args.scene.as_deref().unwrap_or(START_SCENE));
     let scene = match vellmark_render::load_scene(&gpu, &base, &scene_key) {
         Ok((scene, on_gpu)) => {
@@ -191,7 +194,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     }
     registry.seal();
     log::line(&format!("renderer ready, presenting {:?} as {:?}", screen.config.format, screen.config.present_mode));
-    let mut timers = PassTimers::new(&gpu, cfg!(feature = "dev") || args.perf_run);
+    // Always on where the GPU can time its passes: the governor reads them.
+    let mut timers = PassTimers::new(&gpu, true);
 
     #[cfg(feature = "dev")]
     let mut dev_tools = crate::dev::DevTools::new(args.profiler);
@@ -242,6 +246,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
     let mut tuning = vellmark_render::GlyphTuning::default();
     let started = Instant::now();
+    renderer.set_quality(preset.quality());
+    // The one governor: it holds the frame time, and logs every step it takes.
+    let mut governor = Governor::new(1000.0 / 60.0);
+    let mut relief = vellmark_render::Relief::default();
+    log::line(&format!("preset {preset:?}"));
 
     'frames: loop {
         let now = Instant::now();
@@ -310,6 +319,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         }
                     }
                     Command::Rain(r) => world.set_rain(r),
+                    Command::Preset(p) => {
+                        preset = p;
+                        renderer.set_quality(p.quality());
+                        log::line(&format!("preset {p:?}"));
+                    }
                     Command::Wind(n) => forced_gust = Some((n, started.elapsed().as_secs_f32())),
                     Command::Quit => break 'frames,
                 }
@@ -380,7 +394,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         dev_tools.draw(&mut canvas, &assets.glyphs, screen.size(), window.pixel_density(), frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), &registry, &tuning);
 
         if let Some(run) = perf.as_mut() {
-            match run.frame(frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), 1.0) {
+            match run.frame(frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), relief.scene_scale()) {
                 PerfStep::Camera { eye, yaw, pitch, hour: h } => {
                     camera = Camera::looking(eye.into(), yaw, pitch);
                     hour = h;
@@ -392,6 +406,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         screen.size(),
                         &format!("{:?}", screen.config.present_mode),
                         registry.created_during_play(),
+                        &format!("{preset:?}"),
+                        &governor.log,
                     );
                     log::line(&format!("performance report written to {}", path.display()));
                     break 'frames;
@@ -421,6 +437,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     let progress = (started.elapsed().as_secs_f32() - at) / 3.2;
                     (progress < 1.0).then_some((n, progress))
                 }),
+                relief,
                 ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());
@@ -436,6 +453,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
         let _ = gpu.device.poll(wgpu::PollType::Poll);
         timers.collect();
+        // The frame's GPU time where the timers can say, its wall time where they cannot.
+        let gpu_ms: f32 = timers.latest().iter().map(|p| p.milliseconds).sum();
+        let frame_ms = if timers.active() && gpu_ms > 0.0 { gpu_ms } else { frame_time.as_secs_f32() * 1000.0 };
+        let logged = governor.log.len();
+        relief = governor.frame(frame_ms, frame_time.as_secs_f32(), started.elapsed().as_secs_f32(), close_reading > 0.0);
+        for line in &governor.log[logged..] {
+            log::line(&format!("governor: {line}"));
+        }
 
         if frame_index == 0 {
             log::line("first frame drawn");

@@ -28,6 +28,8 @@ pub enum Command {
     Rain(f32),
     /// A gust that writes one of the wind's sentences, by number.
     Wind(u32),
+    /// Choose a preset: low, medium, or high.
+    Preset(vellmark_render::Preset),
     Quit,
 }
 
@@ -182,6 +184,10 @@ impl Overlay {
             (Some("wind"), Some(v)) => match v.parse::<u32>() {
                 Ok(n) => self.commands.push(Command::Wind(n)),
                 _ => self.say("wind takes the number of a sentence, from 0"),
+            },
+            (Some("preset"), Some(v)) => match vellmark_render::Preset::parse(v) {
+                Some(p) => self.commands.push(Command::Preset(p)),
+                None => self.say("preset takes low, medium, or high"),
             },
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),

@@ -13,6 +13,7 @@ mod scene_pass;
 mod shaders;
 pub mod sky;
 mod governor;
+mod quality;
 mod grass;
 mod terrain;
 mod ui_pass;
@@ -21,6 +22,7 @@ mod world_gpu;
 pub use camera::{sun_direction, Camera, View, Viewport};
 pub use frame::{Atmosphere, GlyphTuning};
 pub use governor::{Governor, Knob, Relief};
+pub use quality::{Preset, Quality};
 pub use shaders::ShaderLibrary;
 pub use world_gpu::SceneGpu;
 
@@ -67,6 +69,8 @@ pub struct FrameInput<'a> {
     /// For tools: a gust writing a wind sentence, by number, and how far it has come, 0
     /// to 1; at 0.4 the sentence is whole.
     pub wind_gust: Option<(u32, f32)>,
+    /// What the governor has given up this frame.
+    pub relief: Relief,
     /// The interface, drawn over the finished frame.
     pub ui: Option<&'a Canvas>,
 }
@@ -213,11 +217,24 @@ impl Renderer {
         self.scene = scene;
     }
 
+    /// Chooses a preset. Safe in play: nothing is rebuilt that would stall.
+    pub fn set_quality(&mut self, quality: Quality) {
+        self.world.quality = quality;
+        if let Some(t) = self.terrain.as_mut() {
+            t.grass.set_tuning(grass::GrassTuning { density: quality.grass_density, near: quality.grass_near });
+        }
+        self.world.forget_grass_patches();
+    }
+
     /// Replaces the terrain being drawn, or removes it. Buffers and textures only, so it
     /// is safe in play.
     pub fn set_terrain(&mut self, gpu: &Gpu, tiles: &[&vellmark_content::TerrainTile], materials: &MaterialSet) -> Result<(), String> {
         self.world.forget_terrain();
         self.terrain = if tiles.is_empty() { None } else { Some(terrain::TerrainGpu::new(gpu, self.world.terrain_layout(), tiles, materials)?) };
+        let q = self.world.quality;
+        if let Some(t) = self.terrain.as_mut() {
+            t.grass.set_tuning(grass::GrassTuning { density: q.grass_density, near: q.grass_near });
+        }
         Ok(())
     }
 

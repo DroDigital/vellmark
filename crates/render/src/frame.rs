@@ -38,6 +38,10 @@ pub struct ViewUniform {
     pub gust: [f32; 4],
     /// The finest terrain tiles around the eye: corner x and z, layer, and 1 if present.
     pub ground_tiles: [[f32; 4]; 4],
+    /// What the governor has left: x the share of grass beyond 30 m, y contact
+    /// occlusion's strength, z the fog grid's share of its full size, w the share of
+    /// particles drawn.
+    pub quality: [f32; 4],
 }
 
 /// The most views drawn in one frame. Two is all the full game will ever ask for; four
@@ -240,6 +244,7 @@ pub fn view_uniform(
         sentence: [0.0, 0.0, 1.0, 0.0],
         gust: [-1.0, 0.0, 1.0, 1.0],
         ground_tiles: [[0.0; 4]; 4],
+        quality: [1.0; 4],
     }
 }
 

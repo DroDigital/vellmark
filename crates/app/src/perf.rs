@@ -80,8 +80,16 @@ impl PerfRun {
         }
     }
 
-    pub fn write_report(&self, adapter: &str, software: bool, resolution: (u32, u32), present_mode: &str, pipelines_during_play: u32) -> PathBuf {
-        let report = self.report(adapter, software, resolution, present_mode, pipelines_during_play);
+    pub fn write_report(&self, adapter: &str, software: bool, resolution: (u32, u32), present_mode: &str, pipelines_during_play: u32, preset: &str, governor: &[String]) -> PathBuf {
+        let mut report = self.report(adapter, software, resolution, present_mode, pipelines_during_play);
+        use std::fmt::Write;
+        let _ = writeln!(report, "preset {preset}; lowest scene resolution {:.0}%", self.min_scene_scale * 100.0);
+        if governor.is_empty() {
+            let _ = writeln!(report, "nothing was given up");
+        }
+        for line in governor {
+            let _ = writeln!(report, "{line}");
+        }
         if let Some(parent) = self.out.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -149,7 +157,6 @@ impl PerfRun {
         }
         let _ = writeln!(r);
         let _ = writeln!(r, "[governor]");
-        let _ = writeln!(r, "not built yet (stage 10 of the order of building); nothing was given up");
         r
     }
 }

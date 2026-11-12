@@ -122,6 +122,10 @@ pub struct ScenePass {
     far_shadows: [Option<FarShadow>; SHADOWED_VIEWS],
     /// For tests: the sun's shadow maps and the lights' cubes drawn last frame.
     pub shadows_drawn: (usize, usize),
+    /// Counts the far cascade's checks, for the governor's rota.
+    frame_count: u64,
+    /// What the preset asks of the frame.
+    pub quality: crate::Quality,
 }
 
 /// A gust that writes one of the wind's sentences across the grass: which, where its
@@ -182,6 +186,7 @@ struct FarShadow {
     light: Vec3,
     cell: glam::IVec3,
     statics: u64,
+    frame: u64,
 }
 
 fn aligned(size: u64, align: u64) -> u64 {
@@ -557,6 +562,8 @@ impl ScenePass {
             grass_sent: None,
             far_shadows: [None; SHADOWED_VIEWS],
             shadows_drawn: (0, 0),
+            frame_count: 0,
+            quality: crate::Quality::default(),
         })
     }
 
@@ -1159,6 +1166,11 @@ impl ScenePass {
         }
     }
 
+    /// The grass's density has changed: choose and send its patches afresh.
+    pub fn forget_grass_patches(&mut self) {
+        self.grass_sent = None;
+    }
+
     /// The terrain has been replaced: send its grass afresh and bind its water anew.
     pub fn forget_terrain(&mut self) {
         self.grass_sent = None;
@@ -1172,12 +1184,16 @@ impl ScenePass {
     /// turning never changes it. It is drawn once and kept until the light has moved by a
     /// quarter of a degree, the eye has crossed into another cell of a grid an eighth of
     /// its reach, or a still thing has changed.
-    fn far_cascade(&mut self, s: usize, eye: Vec3, light: Vec3, statics: u64) -> (Mat4, bool) {
+    fn far_cascade(&mut self, s: usize, eye: Vec3, light: Vec3, statics: u64, relief: &crate::Relief) -> (Mat4, bool) {
         let reach = CASCADE_FAR[CASCADES - 1];
         let step = reach / 8.0;
         let cell = (eye / step).floor().as_ivec3();
+        self.frame_count += 1;
         if let Some(far) = self.far_shadows[s] {
-            if far.cell == cell && far.statics == statics && far.light.dot(light) > 0.25f32.to_radians().cos() {
+            // The governor may let the light move further, and less often, before a redraw.
+            let light_held = far.light.dot(light) > relief.far_shadow_degrees().to_radians().cos()
+                || self.frame_count - far.frame < relief.far_shadow_frames() as u64;
+            if far.cell == cell && far.statics == statics && light_held {
                 return (far.matrix, false);
             }
         }
@@ -1185,7 +1201,7 @@ impl ScenePass {
         // Reach from the cell's middle to any eye within it, and the whole cascade beyond.
         let radius = reach + step * 0.9;
         let matrix = crate::frame::sphere_cascade_matrix(centre, radius, light);
-        self.far_shadows[s] = Some(FarShadow { matrix, light, cell, statics });
+        self.far_shadows[s] = Some(FarShadow { matrix, light, cell, statics, frame: self.frame_count });
         (matrix, true)
     }
 
@@ -1240,6 +1256,13 @@ impl ScenePass {
         terrain: Option<&crate::terrain::TerrainGpu>,
         timers: &mut PassTimers,
     ) {
+        // The scene is drawn at the governor's share of the target, in its top left
+        // corner; the post pass stretches it to fill the screen.
+        let scale = frame.relief.scene_scale();
+        let scene_size = (
+            ((target_size.0 as f32 * scale).round() as u32).clamp(1, target_size.0),
+            ((target_size.1 as f32 * scale).round() as u32).clamp(1, target_size.1),
+        );
         let _ = &self.shadow_sampler;
         let mut atmosphere = Atmosphere::at(frame.time_of_day);
         let air = self.grade.at(frame.time_of_day);
@@ -1362,16 +1385,16 @@ impl ScenePass {
             }
         }
         for (i, view) in views.iter().enumerate() {
-            let (_, _, w, h) = view.viewport.pixels(target_size);
+            let (_, _, w, h) = view.viewport.pixels(scene_size);
             let source = if i < SHADOWED_VIEWS { view } else { &views[0] };
-            let (_, _, sw, sh) = source.viewport.pixels(target_size);
+            let (_, _, sw, sh) = source.viewport.pixels(scene_size);
             let mut cascades = [Mat4::IDENTITY; CASCADES];
             let mut near = source.camera.near;
             for (c, slot) in cascades.iter_mut().enumerate() {
                 if c == CASCADES - 1 {
                     // The far cascade is kept from frame to frame: see `far_cascade`.
                     let s = i.min(SHADOWED_VIEWS - 1);
-                    let (matrix, redraw) = self.far_cascade(s, source.camera.eye, atmosphere.light_dir, statics);
+                    let (matrix, redraw) = self.far_cascade(s, source.camera.eye, atmosphere.light_dir, statics, &frame.relief);
                     *slot = matrix;
                     if i < SHADOWED_VIEWS && redraw {
                         self.write_cascade(gpu, i * CASCADES + c, slot, surface.glowing);
@@ -1398,7 +1421,7 @@ impl ScenePass {
                 frame.reveal_mask,
                 i as u32,
                 {
-                    let (x, y, _, _) = view.viewport.pixels(target_size);
+                    let (x, y, _, _) = view.viewport.pixels(scene_size);
                     (x, y)
                 },
                 frame.dive,
@@ -1408,6 +1431,8 @@ impl ScenePass {
             let mut uniform = uniform;
             let w = &frame.weather;
             uniform.weather = [w.rain, w.wetness, w.wind_strength, 0.0];
+            let r = &frame.relief;
+            uniform.quality = [r.far_grass(), r.contact(), r.fog_grid(), r.particles() * self.quality.particles];
             uniform.wind = [w.wind[0], w.wind[1], 0.0, 0.0];
             if let Some((g, progress)) = reading {
                 uniform.sentence = [g.origin.x, g.origin.y, g.along.x, g.along.y];
@@ -1424,19 +1449,19 @@ impl ScenePass {
         let post: [f32; 16] = [
             atmosphere.exposure, bloom, edge, if frame.reveal_mask { 1.0 } else { 0.0 },
             g.lift[0], g.lift[1], g.lift[2], g.saturation,
-            g.gamma[0], g.gamma[1], g.gamma[2], 0.0,
-            g.gain[0], g.gain[1], g.gain[2], 0.0,
+            g.gamma[0], g.gamma[1], g.gamma[2], scene_size.0 as f32 / target_size.0 as f32,
+            g.gain[0], g.gain[1], g.gain[2], scene_size.1 as f32 / target_size.1 as f32,
         ];
         gpu.queue.write_buffer(&self.post_buffer, 0, bytemuck::cast_slice(&post));
 
         let aspects: Vec<f32> = views
             .iter()
             .map(|v| {
-                let (_, _, w, h) = v.viewport.pixels(target_size);
+                let (_, _, w, h) = v.viewport.pixels(scene_size);
                 w / h
             })
             .collect();
-        self.lights.update(gpu, &scene.lights, views, &aspects, generation);
+        self.lights.update(gpu, &scene.lights, views, &aspects, generation, self.quality.shadowed_lights);
         if let Some((_, position, radius)) = self.lights.draw {
             self.shadows_drawn.1 += 1;
             for face in 0..CUBE_FACES {
@@ -1506,7 +1531,7 @@ impl ScenePass {
         let cull_views: Vec<crate::cull::CullView> = views
             .iter()
             .map(|v| {
-                let (x, y, w, h) = v.viewport.pixels(target_size);
+                let (x, y, w, h) = v.viewport.pixels(scene_size);
                 crate::cull::CullView {
                     view_proj: v.camera.projection(w / h) * v.camera.view_matrix(),
                     eye: v.camera.eye,
@@ -1517,7 +1542,7 @@ impl ScenePass {
             .collect();
         self.culling.prepare(gpu, &headers, &cull_views, instance_count, &self.targets.as_ref().unwrap().pyramid);
         let targets = self.targets.as_ref().unwrap();
-        let viewports: Vec<(f32, f32, f32, f32)> = views.iter().map(|v| v.viewport.pixels(target_size)).collect();
+        let viewports: Vec<(f32, f32, f32, f32)> = views.iter().map(|v| v.viewport.pixels(scene_size)).collect();
 
         // Culling: each view's list of what it can see, against last frame's pyramid.
         {
@@ -1529,7 +1554,7 @@ impl ScenePass {
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("fog"), timestamp_writes: timers.compute_pass("fog") });
             for v in 0..views.len().min(SHADOWED_VIEWS) {
-                self.fog.dispatch(&mut pass, v, (v as u64 * self.view_stride) as u32);
+                self.fog.dispatch(&mut pass, v, (v as u64 * self.view_stride) as u32, frame.relief.fog_grid());
             }
         }
         {
@@ -1571,7 +1596,7 @@ impl ScenePass {
                 label: Some("contact occlusion"),
                 timestamp_writes: timers.compute_pass("contact occlusion"),
             });
-            for (i, &(_, _, w, h)) in viewports.iter().enumerate() {
+            for (i, &(_, _, w, h)) in viewports.iter().enumerate().filter(|_| frame.relief.contact() > 0.0) {
                 self.contact.dispatch(&mut pass, &targets.contact_group, (i as u64 * self.view_stride) as u32, (w as u32, h as u32));
             }
         }

@@ -39,7 +39,12 @@ const FOG_FAR: f32 = 400.0;
 fn mist_between(depth_in_view: f32, pixel: vec2<f32>) -> vec4<f32> {
     let uv = clamp(pixel / view.viewport.xy, vec2<f32>(0.0), vec2<f32>(1.0));
     let slice = log(max(depth_in_view, FOG_NEAR) / FOG_NEAR) / log(FOG_FAR / FOG_NEAR);
-    return textureSampleLevel(fog_volume, fog_sampler, vec3<f32>(uv, clamp(slice - 0.5 / 64.0, 0.0, 1.0)), 0.0);
+    // Only part of the grid may be in use, when the governor has made it coarser.
+    let used = vec3<f32>(fog_grid(view.quality.z));
+    let full = vec3<f32>(FOG_GRID_MAX);
+    let xy = clamp(uv * used.xy / full.xy, vec2<f32>(0.5) / full.xy, (used.xy - 0.5) / full.xy);
+    let z = clamp((slice * used.z - 0.5) / full.z, 0.0, (used.z - 0.5) / full.z);
+    return textureSampleLevel(fog_volume, fog_sampler, vec3<f32>(xy, z), 0.0);
 }
 
 // A surface's light as it reaches the eye: through the mist, then through the air, which
@@ -244,7 +249,7 @@ fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f
     let shadow = sun_shadow(in.world, flat_normal, depth_in_view);
     var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
     // Contact occlusion: the fine darkening where things meet, at half resolution.
-    let contact = textureSampleLevel(contact_occlusion, fog_sampler, in.position.xy * 0.5 / vec2<f32>(textureDimensions(contact_occlusion)), 0.0).r;
+    let contact = mix(1.0, textureSampleLevel(contact_occlusion, fog_sampler, in.position.xy * 0.5 / vec2<f32>(textureDimensions(contact_occlusion)), 0.0).r, view.quality.y);
     // The sky's light, as much of it as this place can see.
     colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb, view.sky_horizon.rgb * 0.35) * seen * contact;
     // And what the sunlit ground sends back, from below and the sides. A place that sees
@@ -930,7 +935,8 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     let dist = distance(eye, root);
     let near = grass.shape.x;
     let keep = min(1.0, (near * near) / max(dist * dist, 1.0e-3));
-    let wanted = f32(grass.counts.y) * keep;
+    // The governor may thin the grass beyond 30 m.
+    let wanted = f32(grass.counts.y) * keep * mix(1.0, view.quality.x, smoothstep(30.0, 40.0, dist));
     var fade = clamp((wanted - f32(blade)) / max(wanted * 0.3, 1.0), 0.0, 1.0);
     fade *= 1.0 - smoothstep(grass.shape.w * 0.7, grass.shape.w, dist);
     fade *= grows;
@@ -1488,7 +1494,7 @@ fn vs_rain(@builtin(vertex_index) vertex: u32, @builtin(instance_index) drop: u3
     let cell = vec2<i32>(floor(eye.xz / RAIN_CELL)) - vec2<i32>(half) + vec2<i32>(i32(drop % RAIN_SIDE), i32(drop / RAIN_SIDE));
     let h = hash_cell(cell, 5, 91u);
     // Light rain has fewer columns falling.
-    if unit(h) > rain {
+    if unit(h) > rain * view.quality.w {
         return out;
     }
     let corners = array<vec2<f32>, 6>(

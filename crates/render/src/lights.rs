@@ -141,13 +141,13 @@ impl Lights {
     /// Uploads the lights and sorts them into each view's clusters, and chooses which cast
     /// shadows and which cube, if any, is drawn this frame. `generation` changes whenever
     /// anything that casts shadows has moved, broken, or fallen.
-    pub fn update(&mut self, gpu: &Gpu, lights: &[Light], views: &[View], aspects: &[f32], generation: u64) {
+    pub fn update(&mut self, gpu: &Gpu, lights: &[Light], views: &[View], aspects: &[f32], generation: u64, shadowed: usize) {
         let lights = &lights[..lights.len().min(MAX_LIGHTS)];
         // The shadows go to the shadow-casting lights nearest the first view.
         let eye = views.first().map(|v| v.camera.eye).unwrap_or(Vec3::ZERO);
         let mut casting: Vec<usize> = (0..lights.len()).filter(|&i| lights[i].casts_shadow).collect();
         casting.sort_by(|&a, &b| Vec3::from(lights[a].position).distance(eye).total_cmp(&Vec3::from(lights[b].position).distance(eye)));
-        casting.truncate(SHADOWED_LIGHTS);
+        casting.truncate(shadowed.min(SHADOWED_LIGHTS));
         let same = |slot: &Slot, i: usize| slot.position == Vec3::from(lights[i].position) && slot.radius == lights[i].radius;
         // A light keeps its cube while it stays among the nearest; the others give theirs up.
         for slot in self.slots.iter_mut() {

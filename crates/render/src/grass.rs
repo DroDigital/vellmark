@@ -30,6 +30,9 @@ pub const BLADE_VERTICES: u32 = 7;
 pub const BLADE_INDICES: u32 = 15;
 /// The most things that may push the grass aside at once.
 pub const MAX_PUSHERS: usize = 8;
+/// The most blades per square metre any preset asks for; the shared blade indices hold
+/// that many for a patch.
+pub const MAX_DENSITY: f32 = 160.0;
 /// The most wind sentences, and the most characters in one.
 pub const MAX_SENTENCES: usize = 8;
 pub const SENTENCE_CHARS: usize = 32;
@@ -169,7 +172,7 @@ impl GrassField {
                 }
             }
         }
-        let indices = blade_indices(tuning.blades());
+        let indices = blade_indices(GrassTuning { density: MAX_DENSITY, ..tuning }.blades());
         let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("grass blades"),
             size: (indices.len() * 4).max(4) as u64,
@@ -178,6 +181,11 @@ impl GrassField {
         });
         gpu.queue.write_buffer(&buffer, 0, bytemuck::cast_slice(&indices));
         Self { patches, indices: buffer, tuning }
+    }
+
+    /// Changes the density, within what the shared indices hold.
+    pub fn set_tuning(&mut self, tuning: GrassTuning) {
+        self.tuning = GrassTuning { density: tuning.density.min(MAX_DENSITY), ..tuning };
     }
 
     /// The patches within reach of any eye, each at the level of detail its nearest eye

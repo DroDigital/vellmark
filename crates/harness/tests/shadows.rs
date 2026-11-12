@@ -24,6 +24,7 @@ fn frame(offscreen: &mut Offscreen, eye: (f32, f32, f32), hour: f32, broken: &[u
         heat: &[],
         weather: Default::default(),
         wind_gust: None,
+        relief: Default::default(),
         ui: None,
     };
     offscreen.frame(&input);

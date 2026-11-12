@@ -39,6 +39,7 @@ The first build takes several minutes.
 | F6 | Step through the depth looks: living (the default), flat, atoms, lattice, source |
 | \` then `heat door 0.9` | Heat a thing; up close its letters say so (`-0.8` freezes it) |
 | \` then `rain 1` | Rain, from `0` (dry) to `1` (a downpour); the ground soaks over a minute and dries over eight |
+| \` then `preset low` | Choose a preset: `low`, `medium` (the default), or `high`. `--preset high` at launch does the same |
 | \` then `wind 0` | A gust writes one of the wind's sentences (`0` to `5`) across the grass ahead of you |
 | `--scene valley` (on the command line) | Start on Tithe Hill in the valley instead of the yard |
 | F7 | Break the nearest breakable thing (the door) into its letters; `break door 0.1` in the console crumbles it into a heap |

@@ -71,3 +71,4 @@ Added as each system is built.
 | The wind that reads | S02-T10b | Stand at the foot of Tithe Hill looking up it, or look out over open pasture, and type `wind 0` to `wind 5`. Can you read the sentence as the gust passes? Say what would make it readable: bigger, nearer, stronger, slower |
 | Rain inside its budget | S02-T10a | With `rain 1`, read the `rain` and `water` lines of the report |
 | Shadows inside 2.0 ms, and no pop when the far cascade is redrawn | S02-T11 | In the valley, read the `shadows` lines of the report. Watch the far hills' shadows as the sun moves: they should step so little that you cannot see it |
+| The governor and the presets | S02-T12 | Run `perf-run.command` once with each preset (`--preset low`, `medium`, `high`). Send the three reports: the `[governor]` part says what was given up and when. In play, the console's `preset high` and `preset low` should change grass density with no stall |

@@ -48,6 +48,17 @@ struct ViewUniform {
     gust: vec4<f32>,
     // The finest terrain tiles around the eye: corner x and z, layer, and 1 if present.
     ground_tiles: array<vec4<f32>, 4>,
+    // What the governor has left: x the share of grass beyond 30 m, y contact
+    // occlusion's strength, z the fog grid's share of its full size, w the share of
+    // particles drawn.
+    quality: vec4<f32>,
+}
+
+// The fog grid at its full size, and the part of it in use.
+const FOG_GRID_MAX: vec3<u32> = vec3<u32>(160u, 90u, 64u);
+
+fn fog_grid(view_quality: f32) -> vec3<u32> {
+    return max(vec3<u32>(1u), vec3<u32>(round(vec3<f32>(FOG_GRID_MAX) * view_quality)));
 }
 
 // ---- the atmosphere: the same model as `crates/render/src/sky.rs` ----

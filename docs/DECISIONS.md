@@ -2,6 +2,38 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-12: the governor and the presets (S02-T12)
+
+**One governor** (`render::governor`), fed every frame the sum of the GPU's pass timers
+(the frame's wall time where the GPU cannot time its passes), smoothed over half a
+second. Above 16.0 ms it gives up a tenth of the next thing in the brief's order and
+waits a quarter of a second; below 14.1 ms it takes back a tenth of the last thing
+given and waits three quarters. Between the two it holds still. The timers are now on
+in every build where the GPU has them, since the governor reads them.
+
+**What each step gives up**, from nothing to all of it:
+
+| Knob | At nothing | At all |
+|---|---|---|
+| The far cascade | redrawn after a quarter of a degree | after a degree, and at most every eighth frame |
+| Particles | all | half |
+| Grass beyond 30 m | all | 35% |
+| The fog grid | 160 by 90 by 64 | 60% along each side, a sub-grid of the same texture |
+| Contact occlusion | full | none, and not computed |
+| The scene's resolution | 100% | 85%, drawn in the corner of full-size targets and stretched with a sharpening filter |
+
+Nothing is reallocated as the knobs move, so nothing stalls; letters keep their reveal
+distances because the reveal is measured against the scene's own size. Reading brings
+the resolution back at once. Each step is logged, and the performance report lists
+them with the lowest resolution reached.
+
+**Presets.** Low, Medium, and High set grass density and its near distance (80, 120, and
+160 blades a square metre within 6, 7, and 8 m), how many lights cast shadows (1, 2, 3),
+and the share of particles (60%, 80%, all). Medium is the Showcase's target and the
+game's default; `--preset` and the console's `preset` choose another. Captures and
+tests draw at High with nothing given up, so the evidence does not move. Choosing Low
+automatically on the minimum machine waits for its numbers.
+
 ## 2026-11-12: cached shadows and rationed lights (S02-T11)
 
 **The far cascade is kept.** The two near cascades are drawn every frame. The far one,
