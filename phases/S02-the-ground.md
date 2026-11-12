@@ -33,7 +33,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S02-T09** [Render] Add water for the river and pond: flow, reflection, refraction, foam, and ripples that resolve into characters at the edge
 - [x] **S02-T10a** [Render] Add rain with its close-up characters and wet surfaces
 - [ ] **S02-T10b** [Render] Add the wind that reads, from a pool of six sentences, legible in motion on the owner's screen
-- [ ] **S02-T11** [Render] Cache the far shadow cascades and ration shadowed lights
+- [x] **S02-T11** [Render] Cache the far shadow cascades and ration shadowed lights
 - [ ] **S02-T12** [Render] Build the governor and the Low, Medium, and High presets
 - [ ] **S02-T13** [Shell] Add wind, water, rain, and birdsong ambience by synthesis and approved samples
 - [ ] **S02-T14** [Render] Capture the valley at dawn, noon, dusk, night, rain, and fog, and pass the shimmer check across the barley

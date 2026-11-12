@@ -1,6 +1,11 @@
 //! Fires, lanterns, and windows: point lights, sorted into clusters of the view so
-//! that each pixel looks only at the lights that can reach it, and the one nearest
-//! light that is allowed a shadow.
+//! that each pixel looks only at the lights that can reach it, and the few nearest that
+//! are allowed shadows.
+//!
+//! Shadowed lights are rationed: the nearest `SHADOWED_LIGHTS` that cast shadows each
+//! hold a cube of a cube array. A cube is drawn once and kept while its light and the
+//! things around it stay as they are, and at most one cube is drawn in a frame. A light
+//! newly among the nearest lights without a shadow until its cube is drawn.
 
 use crate::camera::{look_at, View};
 use bytemuck::{Pod, Zeroable};
@@ -14,13 +19,15 @@ pub const CLUSTERS: (u32, u32, u32) = (16, 9, 16);
 /// The nearest and farthest depth the clusters cover, in metres.
 pub const CLUSTER_DEPTH: (f32, f32) = (0.1, 120.0);
 pub const CUBE_SIZE: u32 = 512;
+/// How many lights may cast shadows at once.
+pub const SHADOWED_LIGHTS: usize = 3;
 const CUBE_NEAR: f32 = 0.04;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct PointLight {
     position_radius: [f32; 4],
-    /// rgb: colour times strength. w: 1 if this light's shadow is in the cube.
+    /// rgb: colour times strength. w: which cube holds its shadow, from 1, or 0 for none.
     colour_shadow: [f32; 4],
 }
 
@@ -37,9 +44,20 @@ pub struct Lights {
     cluster_texture: wgpu::Texture,
     pub cluster_view: wgpu::TextureView,
     pub cube_view: wgpu::TextureView,
+    /// Six faces for each cube, cube after cube.
     pub cube_faces: Vec<wgpu::TextureView>,
-    /// The light whose shadow the cube holds this frame, if any.
-    pub shadowed: Option<(Vec3, f32)>,
+    /// What each cube is for: its light's place and reach, and the state of the world it
+    /// was last drawn in, if it has been.
+    slots: [Option<Slot>; SHADOWED_LIGHTS],
+    /// The cube to draw this frame, if any: its slot, its light's place, and its reach.
+    pub draw: Option<(usize, Vec3, f32)>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Slot {
+    position: Vec3,
+    radius: f32,
+    drawn: Option<u64>,
 }
 
 /// The view-projection of one face of a light's shadow cube. Faces are in the order
@@ -95,7 +113,7 @@ impl Lights {
         });
         let cube = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("light shadow cube"),
-            size: wgpu::Extent3d { width: CUBE_SIZE, height: CUBE_SIZE, depth_or_array_layers: 6 },
+            size: wgpu::Extent3d { width: CUBE_SIZE, height: CUBE_SIZE, depth_or_array_layers: 6 * SHADOWED_LIGHTS as u32 },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -104,10 +122,10 @@ impl Lights {
             view_formats: &[],
         });
         let cube_view = cube.create_view(&wgpu::TextureViewDescriptor {
-            dimension: Some(wgpu::TextureViewDimension::Cube),
+            dimension: Some(wgpu::TextureViewDimension::CubeArray),
             ..Default::default()
         });
-        let cube_faces = (0..6)
+        let cube_faces = (0..6 * SHADOWED_LIGHTS as u32)
             .map(|face| {
                 cube.create_view(&wgpu::TextureViewDescriptor {
                     dimension: Some(wgpu::TextureViewDimension::D2),
@@ -117,29 +135,55 @@ impl Lights {
                 })
             })
             .collect();
-        Self { uniform, cluster_texture, cluster_view, cube_view, cube_faces, shadowed: None }
+        Self { uniform, cluster_texture, cluster_view, cube_view, cube_faces, slots: [None; SHADOWED_LIGHTS], draw: None }
     }
 
-    /// Uploads the lights and sorts them into each view's clusters.
-    pub fn update(&mut self, gpu: &Gpu, lights: &[Light], views: &[View], aspects: &[f32]) {
+    /// Uploads the lights and sorts them into each view's clusters, and chooses which cast
+    /// shadows and which cube, if any, is drawn this frame. `generation` changes whenever
+    /// anything that casts shadows has moved, broken, or fallen.
+    pub fn update(&mut self, gpu: &Gpu, lights: &[Light], views: &[View], aspects: &[f32], generation: u64) {
         let lights = &lights[..lights.len().min(MAX_LIGHTS)];
-        // The shadow goes to the shadow-casting light nearest the first view.
+        // The shadows go to the shadow-casting lights nearest the first view.
         let eye = views.first().map(|v| v.camera.eye).unwrap_or(Vec3::ZERO);
-        let shadowed = lights
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| l.casts_shadow)
-            .min_by(|a, b| {
-                Vec3::from(a.1.position).distance(eye).total_cmp(&Vec3::from(b.1.position).distance(eye))
-            })
-            .map(|(i, _)| i);
-        self.shadowed = shadowed.map(|i| (Vec3::from(lights[i].position), lights[i].radius));
+        let mut casting: Vec<usize> = (0..lights.len()).filter(|&i| lights[i].casts_shadow).collect();
+        casting.sort_by(|&a, &b| Vec3::from(lights[a].position).distance(eye).total_cmp(&Vec3::from(lights[b].position).distance(eye)));
+        casting.truncate(SHADOWED_LIGHTS);
+        let same = |slot: &Slot, i: usize| slot.position == Vec3::from(lights[i].position) && slot.radius == lights[i].radius;
+        // A light keeps its cube while it stays among the nearest; the others give theirs up.
+        for slot in self.slots.iter_mut() {
+            if slot.is_some_and(|s| !casting.iter().any(|&i| same(&s, i))) {
+                *slot = None;
+            }
+        }
+        for &i in &casting {
+            if !self.slots.iter().flatten().any(|s| same(s, i)) {
+                if let Some(free) = self.slots.iter_mut().find(|s| s.is_none()) {
+                    *free = Some(Slot { position: Vec3::from(lights[i].position), radius: lights[i].radius, drawn: None });
+                }
+            }
+        }
+        // One cube a frame: the nearest light whose cube is missing or out of date.
+        self.draw = None;
+        for &i in &casting {
+            if let Some(k) = self.slots.iter().position(|s| s.is_some_and(|s| same(&s, i) && s.drawn != Some(generation))) {
+                let slot = self.slots[k].as_mut().unwrap();
+                slot.drawn = Some(generation);
+                self.draw = Some((k, slot.position, slot.radius));
+                break;
+            }
+        }
+        let cube_of = |i: usize| -> f32 {
+            self.slots
+                .iter()
+                .position(|s| s.is_some_and(|s| same(&s, i) && s.drawn.is_some()))
+                .map_or(0.0, |k| (k + 1) as f32)
+        };
 
         let mut uniform = LightsUniform::zeroed();
         uniform.count[0] = lights.len() as u32;
         for (i, (slot, light)) in uniform.lights.iter_mut().zip(lights).enumerate() {
             slot.position_radius = [light.position[0], light.position[1], light.position[2], light.radius];
-            slot.colour_shadow = [light.colour[0], light.colour[1], light.colour[2], if shadowed == Some(i) { 1.0 } else { 0.0 }];
+            slot.colour_shadow = [light.colour[0], light.colour[1], light.colour[2], cube_of(i)];
         }
         gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
 

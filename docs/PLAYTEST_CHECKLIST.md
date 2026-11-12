@@ -70,3 +70,4 @@ Added as each system is built.
 | Rain that feels like rain | S02-T10a | In the valley, console `rain 1`. Watch the sky close, the road darken and puddle over a minute, splashes at your feet (`'` when you look close), and the river ringed. `rain 0`, and it dries over eight minutes |
 | The wind that reads | S02-T10b | Stand at the foot of Tithe Hill looking up it, or look out over open pasture, and type `wind 0` to `wind 5`. Can you read the sentence as the gust passes? Say what would make it readable: bigger, nearer, stronger, slower |
 | Rain inside its budget | S02-T10a | With `rain 1`, read the `rain` and `water` lines of the report |
+| Shadows inside 2.0 ms, and no pop when the far cascade is redrawn | S02-T11 | In the valley, read the `shadows` lines of the report. Watch the far hills' shadows as the sun moves: they should step so little that you cannot see it |

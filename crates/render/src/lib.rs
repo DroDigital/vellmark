@@ -226,6 +226,12 @@ impl Renderer {
         self.world.drawn_last_frame(gpu, &self.scene)
     }
 
+    /// For tests: how many of the sun's shadow maps and the lights' shadow cubes were
+    /// drawn last frame. The rest were kept from earlier frames.
+    pub fn shadows_drawn_last_frame(&self) -> (usize, usize) {
+        self.world.shadows_drawn
+    }
+
     /// For tests: how many grass patches view 0 drew last frame at each level of detail.
     #[cfg(feature = "dev")]
     pub fn grass_drawn_last_frame(&self, gpu: &Gpu) -> [u32; 4] {

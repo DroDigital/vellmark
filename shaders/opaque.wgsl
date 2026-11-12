@@ -25,7 +25,7 @@ struct Batch {
 @group(0) @binding(2) var shadow_sampler: sampler_comparison;
 @group(0) @binding(3) var<uniform> lights: Lights;
 @group(0) @binding(4) var light_clusters: texture_2d_array<u32>;
-@group(0) @binding(5) var light_shadow: texture_depth_cube;
+@group(0) @binding(5) var light_shadow: texture_depth_cube_array;
 @group(0) @binding(6) var fog_volume: texture_3d<f32>;
 @group(0) @binding(7) var fog_sampler: sampler;
 @group(0) @binding(8) var contact_occlusion: texture_2d<f32>;
@@ -185,8 +185,9 @@ fn sun_shadow(world: vec3<f32>, normal: vec3<f32>, depth_in_view: f32) -> f32 {
     return lit / 9.0;
 }
 
-// How much of a point light reaches a point, through its shadow cube.
-fn light_shadow_at(from_light: vec3<f32>, radius: f32, normal: vec3<f32>) -> f32 {
+// How much of a point light reaches a point, through its shadow cube, `cube` of the
+// array.
+fn light_shadow_at(from_light: vec3<f32>, radius: f32, normal: vec3<f32>, cube: i32) -> f32 {
     // Step off the surface, then compare depths along the cube face's own axis.
     let d = from_light + normal * 0.02;
     let a = abs(d);
@@ -196,10 +197,10 @@ fn light_shadow_at(from_light: vec3<f32>, radius: f32, normal: vec3<f32>) -> f32
     let side = normalize(cross(d, vec3<f32>(0.3, 1.0, 0.2))) * length(d) * 0.006;
     let up = normalize(cross(d, side)) * length(d) * 0.006;
     var lit = 0.0;
-    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side + up, depth);
-    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side + up, depth);
-    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side - up, depth);
-    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side - up, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side + up, cube, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side + up, cube, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side - up, cube, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side - up, cube, depth);
     return lit * 0.25;
 }
 
@@ -226,7 +227,7 @@ fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>
             let window = pow(clamp(1.0 - pow(distance / radius, 4.0), 0.0, 1.0), 2.0);
             var radiance = light.colour_shadow.rgb * view.effects.y * window / (distance * distance + 0.02);
             if light.colour_shadow.w > 0.5 {
-                radiance *= light_shadow_at(-offset, radius, flat_normal);
+                radiance *= light_shadow_at(-offset, radius, flat_normal, i32(light.colour_shadow.w + 0.5) - 1);
             }
             total += shade_light(surface, to_eye, offset / distance, radiance);
         }

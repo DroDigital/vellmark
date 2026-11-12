@@ -2,6 +2,28 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-12: cached shadows and rationed lights (S02-T11)
+
+**The far cascade is kept.** The two near cascades are drawn every frame. The far one,
+out to 260 m, is fitted to a sphere around a cell of a grid an eighth of its reach,
+not to the slice of the view, so turning the head never changes it. It is drawn once
+and kept until the light has moved a quarter of a degree (about two seconds of the
+day's clock), the eye has crossed into another cell, or a still thing has changed:
+the scene, the terrain, or what is broken. Its texels are a little coarser than a fit
+to the view's slice (about 29 cm against 15 to 25), which at that distance is not seen.
+
+**Shadowed lights are rationed.** The three nearest lights that cast shadows each hold a
+cube of a cube array. A cube is drawn once and kept while its light and what casts
+shadows near it stay as they are, loose letters included, and at most one cube is
+drawn in a frame. A light newly among the nearest lights without a shadow until its
+cube is drawn, which is the next frame or two. The count is the presets' to change.
+
+**Cube arrays** are core WebGPU and present on Metal, Vulkan, and DirectX 12; the build's
+shader check now allows them.
+
+**Not yet.** Grass casts no shadow: its blades are made from the view's eye, and the
+near cascade would need its own pass of them. Judged with the governor's numbers.
+
 ## 2026-11-12: rain and the wind that reads (S02-T10)
 
 **Weather is the rules'.** `sim::weather` keeps the rain, how wet the world is, and the

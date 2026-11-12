@@ -164,7 +164,13 @@ pub fn cascade_matrix(view: &View, aspect: f32, near: f32, far: f32, light_dir: 
     // A sphere, so the box's size does not change as the camera turns.
     let radius = corners.iter().map(|c| c.distance(centre)).fold(0.0f32, f32::max);
     let radius = (radius * 16.0).ceil() / 16.0;
+    sphere_cascade_matrix(centre, radius, light_dir)
+}
 
+/// The shadow map's view-projection for a sphere of the world: the light looking along
+/// `light_dir`, its texels kept on a fixed grid so that the shadows do not crawl as the
+/// sphere moves.
+pub fn sphere_cascade_matrix(centre: Vec3, radius: f32, light_dir: Vec3) -> Mat4 {
     let up = if light_dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
     let light_view = crate::camera::look_at(Vec3::ZERO, -light_dir, up);
     let texel = radius * 2.0 / SHADOW_SIZE as f32;

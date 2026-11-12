@@ -23,7 +23,8 @@
 **Done:** S02-T09, water: refraction through peaty water by depth, screen-space reflection with the sky behind it, sun glints, flow down the surface, foam at the edge and in fast water written as `.` and `,`, and the water's own letters on its ripple crests. Evidence: `docs/evidence/S02/water.jpg`, `captures/s02_water.ron`.
 **Done:** S02-T10a, rain: weather kept by the rules (rain, wetness, wind) and sent in the snapshot; overcast skies; wet, darkened, glossy surfaces; puddles on roads, earth, and banks that ring in rain and are written as water; streaks around each view; splashes that are `'` close by; runoff down walls as `|`; rings on the river. Evidence: `docs/evidence/S02/rain.jpg`, `captures/s02_rain.ron`, `captures/s02_rain_wall.ron`. Console: `rain 0..1`.
 **In progress:** S02-T10b, the wind that reads. Built: six canon sentences in `assets/text/en/wind.ron`; a gust at most once in each 150 s, in a strong enough wind, laid where the gaze meets the grass; the blades in its strokes bow and shine, and the ground's grass with them. Not yet: it is not legible in a still capture on the software renderer (`captures/s02_wind.ron`). It must be judged in motion on the Mac (console `wind 0`..`wind 5`), and tuned there: strength, size, and where it is laid.
-**Next:** S02-T10b with the owner's eye; meanwhile S02-T11, caching the far shadow cascades.
+**Done:** S02-T11: the far cascade drawn once and kept until the light, the eye's cell, or a still thing changes; three shadowed lights in a cube array, each cube kept until its surroundings change, at most one drawn a frame. Test: `crates/harness/tests/shadows.rs`.
+**Next:** S02-T12, the governor and the presets. S02-T10b waits for the owner's eye.
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim

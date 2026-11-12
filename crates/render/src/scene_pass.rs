@@ -7,7 +7,7 @@ use crate::frame::{
 use crate::lights::{cube_face_matrix, Lights};
 use crate::world_gpu::{vertex_layout, InstanceGpu, SceneGpu, SurfaceResources, MAX_GROUPS, MAX_INSTANCES};
 use crate::{FrameInput, ShaderLibrary};
-use glam::Mat4;
+use glam::{Mat4, Vec3};
 use vellmark_gpu::{wgpu, Gpu, PassTimers, PipelineRegistry};
 
 pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -118,6 +118,10 @@ pub struct ScenePass {
     letters_sent: Option<(u64, usize)>,
     /// The grass patches last sent, after how many placed things.
     grass_sent: Option<(usize, Vec<crate::grass::Chosen>)>,
+    /// Each shadowed view's far cascade, as it was last drawn.
+    far_shadows: [Option<FarShadow>; SHADOWED_VIEWS],
+    /// For tests: the sun's shadow maps and the lights' cubes drawn last frame.
+    pub shadows_drawn: (usize, usize),
 }
 
 /// A gust that writes one of the wind's sentences across the grass: which, where its
@@ -169,6 +173,15 @@ fn gust_ahead(view: &crate::View, grass: &crate::grass::GrassField, sentence: u3
     let length = chars as f32 * width;
     let origin = glam::Vec2::new(centre.x, centre.z) - along * length * 0.5 - f * depth * 0.5;
     Some(Gust { window, sentence, origin, along, width, depth, start })
+}
+
+/// A far cascade as it was last drawn.
+#[derive(Clone, Copy, Debug)]
+struct FarShadow {
+    matrix: Mat4,
+    light: Vec3,
+    cell: glam::IVec3,
+    statics: u64,
 }
 
 fn aligned(size: u64, align: u64) -> u64 {
@@ -241,7 +254,7 @@ impl ScenePass {
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Texture {
                         sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::Cube,
+                        view_dimension: wgpu::TextureViewDimension::CubeArray,
                         multisampled: false,
                     },
                     count: None,
@@ -542,6 +555,8 @@ impl ScenePass {
             }),
             letters_sent: None,
             grass_sent: None,
+            far_shadows: [None; SHADOWED_VIEWS],
+            shadows_drawn: (0, 0),
         })
     }
 
@@ -1148,6 +1163,30 @@ impl ScenePass {
     pub fn forget_terrain(&mut self) {
         self.grass_sent = None;
         self.water_group = None;
+        self.far_shadows = [None; SHADOWED_VIEWS];
+    }
+
+    /// The far cascade of shadowed view `s`, and whether it must be drawn this frame.
+    ///
+    /// It covers everything within its reach of the eye, whichever way the eye looks, so
+    /// turning never changes it. It is drawn once and kept until the light has moved by a
+    /// quarter of a degree, the eye has crossed into another cell of a grid an eighth of
+    /// its reach, or a still thing has changed.
+    fn far_cascade(&mut self, s: usize, eye: Vec3, light: Vec3, statics: u64) -> (Mat4, bool) {
+        let reach = CASCADE_FAR[CASCADES - 1];
+        let step = reach / 8.0;
+        let cell = (eye / step).floor().as_ivec3();
+        if let Some(far) = self.far_shadows[s] {
+            if far.cell == cell && far.statics == statics && far.light.dot(light) > 0.25f32.to_radians().cos() {
+                return (far.matrix, false);
+            }
+        }
+        let centre = (cell.as_vec3() + 0.5) * step;
+        // Reach from the cell's middle to any eye within it, and the whole cascade beyond.
+        let radius = reach + step * 0.9;
+        let matrix = crate::frame::sphere_cascade_matrix(centre, radius, light);
+        self.far_shadows[s] = Some(FarShadow { matrix, light, cell, statics });
+        (matrix, true)
     }
 
     pub fn terrain_layout(&self) -> &wgpu::BindGroupLayout {
@@ -1273,6 +1312,21 @@ impl ScenePass {
             }
             gpu.queue.write_buffer(&t.grass_uniform, 0, bytemuck::bytes_of(&t.grass.uniform(frame.seconds, &eyes, &frame.weather, &self.wind_sentences)));
         }
+        // What casts shadows, as a number that changes whenever any of it does: the
+        // still things (the scene, the terrain, what is broken) and, for the lights' cubes,
+        // the loose letters too.
+        let statics = {
+            let mut h = vellmark_sim::Fnv64::new();
+            h.u64(scene.placed.len() as u64);
+            h.u64(terrain.map_or(0, |t| t.tile_count as u64));
+            for b in frame.broken {
+                h.u64(*b);
+            }
+            h.finish()
+        };
+        let generation = statics ^ frame.letters_step.wrapping_mul(0x9e37_79b9_7f4a_7c15);
+        let mut redraw_layers = [false; SHADOWED_VIEWS * CASCADES];
+        self.shadows_drawn = (0, 0);
         // The wind that reads. Now and then, in a strong enough wind over grass, a gust
         // writes one of its sentences across the field ahead of the first view. Each
         // stretch of time has at most one, at a time fixed by the clock, so a capture or
@@ -1314,10 +1368,22 @@ impl ScenePass {
             let mut cascades = [Mat4::IDENTITY; CASCADES];
             let mut near = source.camera.near;
             for (c, slot) in cascades.iter_mut().enumerate() {
+                if c == CASCADES - 1 {
+                    // The far cascade is kept from frame to frame: see `far_cascade`.
+                    let s = i.min(SHADOWED_VIEWS - 1);
+                    let (matrix, redraw) = self.far_cascade(s, source.camera.eye, atmosphere.light_dir, statics);
+                    *slot = matrix;
+                    if i < SHADOWED_VIEWS && redraw {
+                        self.write_cascade(gpu, i * CASCADES + c, slot, surface.glowing);
+                        redraw_layers[i * CASCADES + c] = true;
+                    }
+                    continue;
+                }
                 *slot = cascade_matrix(source, sw / sh, near, CASCADE_FAR[c], atmosphere.light_dir);
                 near = CASCADE_FAR[c] * 0.9;
                 if i < SHADOWED_VIEWS {
                     self.write_cascade(gpu, i * CASCADES + c, slot, surface.glowing);
+                    redraw_layers[i * CASCADES + c] = true;
                 }
             }
             let uniform = view_uniform(
@@ -1370,8 +1436,9 @@ impl ScenePass {
                 w / h
             })
             .collect();
-        self.lights.update(gpu, &scene.lights, views, &aspects);
-        if let Some((position, radius)) = self.lights.shadowed {
+        self.lights.update(gpu, &scene.lights, views, &aspects, generation);
+        if let Some((_, position, radius)) = self.lights.draw {
+            self.shadows_drawn.1 += 1;
             for face in 0..CUBE_FACES {
                 let matrix = cube_face_matrix(position, radius, face);
                 self.write_cascade(gpu, CASCADES * SHADOWED_VIEWS + face, &matrix, surface.glowing);
@@ -1381,6 +1448,10 @@ impl ScenePass {
         // Sun shadows, one pass for each cascade of each shadowed view. Only the first
         // is timed; the timer's name covers them all in the report.
         for layer in 0..views.len().min(SHADOWED_VIEWS) * CASCADES {
+            if !redraw_layers[layer] {
+                continue;
+            }
+            self.shadows_drawn.0 += 1;
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("shadows"),
                 color_attachments: &[],
@@ -1403,13 +1474,15 @@ impl ScenePass {
             }
         }
 
-        // The one shadowed lantern or fire: six faces of a cube around it.
-        for face in 0..CUBE_FACES {
+        // A shadowed lantern or fire whose cube is missing or out of date: six faces of
+        // a cube around it. The other cubes are kept as they were.
+        for face in 0..CUBE_FACES * usize::from(self.lights.draw.is_some()) {
+            let cube = self.lights.draw.map_or(0, |d| d.0);
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("light shadow"),
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.lights.cube_faces[face],
+                    view: &self.lights.cube_faces[cube * CUBE_FACES + face],
                     depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
                     stencil_ops: None,
                 }),
@@ -1417,7 +1490,7 @@ impl ScenePass {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if self.lights.shadowed.is_some() {
+            {
                 pass.set_pipeline(&self.pipelines.shadow);
                 pass.set_bind_group(0, &self.cascade_bind_group, &[((CASCADES * SHADOWED_VIEWS + face) as u64 * self.cascade_stride) as u32]);
                 self.draw_scene(&mut pass, scene, 0, 1);
