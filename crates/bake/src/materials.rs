@@ -26,6 +26,7 @@ enum Generator {
     Moss,
     Rock,
     Paper,
+    Water,
 }
 
 #[derive(Deserialize)]
@@ -363,6 +364,19 @@ fn mud(u: f32, v: f32) -> Texel {
     }
 }
 
+/// Water: what is seen of its body, for its letters and its tint. Its surface, its light,
+/// and its depth are drawn by the water pass, not from these maps.
+fn water(u: f32, v: f32) -> Texel {
+    let broad = fbm(u, v, 4, 4, 4, 211);
+    let fine = fbm(u, v, 32, 32, 3, 223);
+    Texel {
+        colour: scale3([0.05, 0.09, 0.08], 0.9 + broad * 0.2),
+        height: 0.5 + (broad - 0.5) * 0.3 + (fine - 0.5) * 0.2,
+        roughness: 0.04,
+        metal: 0.0,
+    }
+}
+
 /// The floor of a wood: moss and fallen leaves.
 fn moss(u: f32, v: f32) -> Texel {
     let broad = fbm(u, v, 6, 6, 4, 191);
@@ -434,6 +448,7 @@ fn relief_depth(generator: Generator) -> f32 {
         Generator::Moss => 0.015,
         Generator::Rock => 0.03,
         Generator::Paper => 0.0005,
+        Generator::Water => 0.002,
     }
 }
 
@@ -458,6 +473,7 @@ fn generate(generator: Generator, size: u32, tile_metres: f32) -> Maps {
                 Generator::Moss => moss(u, v),
                 Generator::Rock => rock(u, v),
                 Generator::Paper => paper(u, v),
+                Generator::Water => water(u, v),
             }
         })
         .collect();

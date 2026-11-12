@@ -40,6 +40,10 @@ struct Targets {
     colour_msaa: wgpu::TextureView,
     depth_msaa: wgpu::TextureView,
     resolved: wgpu::TextureView,
+    resolved_texture: wgpu::Texture,
+    /// The lit scene as it was before the water, which the water pass reads.
+    behind_texture: wgpu::Texture,
+    behind: wgpu::TextureView,
     post_bind_group: wgpu::BindGroup,
     /// Each level of the bloom chain, largest first, as a target and as a source.
     bloom_levels: Vec<wgpu::TextureView>,
@@ -61,6 +65,7 @@ struct Pipelines {
     terrain: wgpu::RenderPipeline,
     grass_depth: wgpu::RenderPipeline,
     grass: wgpu::RenderPipeline,
+    water: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     bloom_first: wgpu::RenderPipeline,
     bloom_down: wgpu::RenderPipeline,
@@ -75,6 +80,10 @@ pub struct ScenePass {
     post_layout: wgpu::BindGroupLayout,
     bloom_layout: wgpu::BindGroupLayout,
     terrain_layout: wgpu::BindGroupLayout,
+    water_layout: wgpu::BindGroupLayout,
+    water_sampler: wgpu::Sampler,
+    /// Made for the terrain and the targets of the moment; remade when either changes.
+    water_group: Option<wgpu::BindGroup>,
     lights: Lights,
     view_buffer: wgpu::Buffer,
     view_stride: u64,
@@ -419,8 +428,17 @@ impl ScenePass {
         });
 
         let terrain_layout = crate::terrain::layout(&gpu.device);
+        let water_layout = crate::terrain::water_layout(&gpu.device);
+        let water_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("water"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
         let pipelines = Self::pipelines(
-            gpu, registry, shaders, surface, target_format, &frame_layout, &object_layout, &cascade_layout, &post_layout, &bloom_layout, &terrain_layout,
+            gpu, registry, shaders, surface, target_format, &frame_layout, &object_layout, &cascade_layout, &post_layout, &bloom_layout, &terrain_layout, &water_layout,
         )?;
         Ok(Self {
             pipelines,
@@ -430,6 +448,9 @@ impl ScenePass {
             post_layout,
             bloom_layout,
             terrain_layout,
+            water_layout,
+            water_sampler,
+            water_group: None,
             lights,
             view_buffer,
             view_stride,
@@ -477,6 +498,7 @@ impl ScenePass {
         post_layout: &wgpu::BindGroupLayout,
         bloom_layout: &wgpu::BindGroupLayout,
         terrain_layout: &wgpu::BindGroupLayout,
+        water_layout: &wgpu::BindGroupLayout,
     ) -> Result<Pipelines, String> {
         let device = &gpu.device;
         let opaque_module = shaders.module(gpu, "opaque")?;
@@ -726,6 +748,28 @@ impl ScenePass {
                 cache: None,
             },
         );
+        // Water: after the opaque pass, into the resolved scene, reading a copy of it and
+        // its depth. It tests depth itself, so it needs no depth target.
+        let water_world_layout = layout("water", &[Some(frame_layout), Some(&surface.layout), Some(object_layout), Some(water_layout)]);
+        let water = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("water"),
+                layout: Some(&water_world_layout),
+                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_water"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_water"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(HDR_FORMAT.into())],
+                }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: None,
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            },
+        );
         let letters = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
@@ -815,7 +859,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, water, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -839,6 +883,7 @@ impl ScenePass {
             &self.post_layout,
             &self.bloom_layout,
             &self.terrain_layout,
+            &self.water_layout,
         )?;
         Ok(())
     }
@@ -865,7 +910,23 @@ impl ScenePass {
             let colour_msaa = texture("scene colour", HDR_FORMAT, SAMPLES, attachment);
             // Read by contact occlusion as well as drawn into.
             let depth_msaa = texture("scene depth", DEPTH_FORMAT, SAMPLES, attachment | wgpu::TextureUsages::TEXTURE_BINDING);
-            let resolved = texture("scene resolved", HDR_FORMAT, 1, attachment | wgpu::TextureUsages::TEXTURE_BINDING);
+            let plain = |label| {
+                gpu.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: HDR_FORMAT,
+                    usage: attachment | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                })
+            };
+            let resolved_texture = plain("scene resolved");
+            let resolved = resolved_texture.create_view(&Default::default());
+            let behind_texture = plain("scene behind the water");
+            let behind = behind_texture.create_view(&Default::default());
+            self.water_group = None;
             let bloom_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("bloom"),
                 size: wgpu::Extent3d { width: (size.0 / 2).max(16), height: (size.1 / 2).max(16), depth_or_array_layers: 1 },
@@ -909,7 +970,7 @@ impl ScenePass {
             });
             let contact_group = self.contact.bind(gpu, &self.view_buffer, self.view_size, &depth_msaa);
             let pyramid = self.culling.targets(gpu, size, &depth_msaa, &self.instance_buffer, &self.visible_buffer);
-            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, post_bind_group, bloom_levels, bloom_sources, scene_source, contact_group, pyramid });
+            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, resolved_texture, behind_texture, behind, post_bind_group, bloom_levels, bloom_sources, scene_source, contact_group, pyramid });
         }
         self.targets.as_ref().unwrap()
     }
@@ -999,9 +1060,10 @@ impl ScenePass {
         }
     }
 
-    /// The terrain has been replaced: send its grass afresh.
-    pub fn forget_grass(&mut self) {
+    /// The terrain has been replaced: send its grass afresh and bind its water anew.
+    pub fn forget_terrain(&mut self) {
         self.grass_sent = None;
+        self.water_group = None;
     }
 
     pub fn terrain_layout(&self) -> &wgpu::BindGroupLayout {
@@ -1234,6 +1296,10 @@ impl ScenePass {
         }
 
         self.targets(gpu, target_size);
+        if let (Some(t), None) = (terrain.filter(|t| t.water_tile_count > 0), &self.water_group) {
+            let tg = self.targets.as_ref().unwrap();
+            self.water_group = Some(t.water_group(&gpu.device, &self.water_layout, &tg.behind, &tg.depth_msaa, &self.water_sampler));
+        }
         let cull_views: Vec<crate::cull::CullView> = views
             .iter()
             .map(|v| {
@@ -1345,6 +1411,37 @@ impl ScenePass {
                 pass.set_pipeline(&self.pipelines.sky);
                 pass.set_bind_group(2, &self.object_bind_group, &[0]);
                 pass.draw(0..3, 0..1);
+            }
+        }
+        // The water, over the scene it lies on, which it reads from a copy.
+        if let (Some(t), Some(group)) = (terrain.filter(|t| t.water_tile_count > 0), &self.water_group) {
+            encoder.copy_texture_to_texture(
+                targets.resolved_texture.as_image_copy(),
+                targets.behind_texture.as_image_copy(),
+                wgpu::Extent3d { width: targets.size.0, height: targets.size.1, depth_or_array_layers: 1 },
+            );
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("water"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &targets.resolved,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: timers.render_pass("water"),
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.pipelines.water);
+            pass.set_bind_group(1, &surface.bind_group, &[]);
+            pass.set_bind_group(2, &self.object_bind_group, &[0]);
+            pass.set_bind_group(3, group, &[]);
+            pass.set_index_buffer(t.indices.slice(..), wgpu::IndexFormat::Uint32);
+            for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
+                pass.set_viewport(x, y, w, h, 0.0, 1.0);
+                pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
+                pass.draw_indexed(0..t.index_count, 0, 0..t.water_tile_count);
             }
         }
         // Bloom: down the chain, then back up it, each level added to the one above.

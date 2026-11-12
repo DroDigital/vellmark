@@ -24,5 +24,6 @@
         (key: "moss", generator: Moss, tile_metres: 3.0, family: "/\\|,\"'", contrast: 0.30, relief: -0.3),
         (key: "rock", generator: Rock, tile_metres: 4.0, family: "#%&@8", contrast: 0.36, relief: -0.6),
         (key: "erasure", generator: Paper, tile_metres: 4.0, family: ".,'", contrast: 0.12, relief: -0.1),
+        (key: "water", generator: Water, tile_metres: 4.0, family: "~-=_", contrast: 0.30, relief: 0.2),
     ],
 )

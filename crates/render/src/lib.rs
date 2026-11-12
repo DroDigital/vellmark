@@ -193,7 +193,7 @@ impl Renderer {
     /// Replaces the terrain being drawn, or removes it. Buffers and textures only, so it
     /// is safe in play.
     pub fn set_terrain(&mut self, gpu: &Gpu, tiles: &[&vellmark_content::TerrainTile], materials: &MaterialSet) -> Result<(), String> {
-        self.world.forget_grass();
+        self.world.forget_terrain();
         self.terrain = if tiles.is_empty() { None } else { Some(terrain::TerrainGpu::new(gpu, self.world.terrain_layout(), tiles, materials)?) };
         Ok(())
     }

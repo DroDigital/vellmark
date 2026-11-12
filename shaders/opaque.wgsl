@@ -990,3 +990,284 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
     colour = select(colour, vec3<f32>(0.0), colour != colour);
     return vec4<f32>(colour, letters.revealed);
 }
+
+// ---- water: the river and the pond, over the scene they lie on ----
+
+@group(3) @binding(5) var water_level: texture_2d_array<f32>;
+@group(3) @binding(6) var<uniform> water_list: array<vec4<u32>, 48>;
+@group(3) @binding(7) var behind: texture_2d<f32>;
+@group(3) @binding(8) var scene_depth: texture_depth_multisampled_2d;
+@group(3) @binding(9) var behind_sampler: sampler;
+
+// The level stored where a sample is dry. Matches `DRY` in `crates/render/src/terrain.rs`.
+const DRY: f32 = -1.0e6;
+// How long one phase of the flow lasts, in seconds: the surface is two layers carried
+// along the flow, each reset while the other shows.
+const FLOW_PERIOD: f32 = 2.4;
+
+struct WaterVaryings {
+    @builtin(position) position: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    // How the water moves over the ground, in metres a second.
+    @location(1) flow: vec2<f32>,
+    @location(2) @interpolate(flat) tile: u32,
+    // 1 at a wet sample, a half at a dry one beside water, 0 at one with none beside it.
+    // Wherever it is below a half the surface is not drawn.
+    @location(3) wet: f32,
+}
+
+fn water_sample(i: i32, j: i32, layer: i32) -> f32 {
+    return textureLoad(water_level, vec2<i32>(i + 1, j + 1), layer, 0).r;
+}
+
+@vertex
+fn vs_water(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> WaterVaryings {
+    let tile = water_list[instance / 4u][instance % 4u];
+    let t = terrain.tiles[tile * 2u];
+    let layer = i32(t.w);
+    let i = i32(vertex % TERRAIN_SAMPLES);
+    let j = i32(vertex / TERRAIN_SAMPLES);
+    var level = water_sample(i, j, layer);
+    // A dry sample beside water takes the water's level, so that the surface runs on
+    // into the bank and the bank, drawn already, cuts it where they meet. A dry sample
+    // with no water beside it is put under the ground, where it is never seen.
+    var sum = 0.0;
+    var count = 0.0;
+    var lo = vec2<f32>(0.0);
+    var hi = vec2<f32>(0.0);
+    for (var dj = -1; dj <= 1; dj++) {
+        for (var di = -1; di <= 1; di++) {
+            let w = water_sample(i + di, j + dj, layer);
+            if w > DRY * 0.5 {
+                sum += w;
+                count += 1.0;
+            }
+        }
+    }
+    var wet = 1.0;
+    if level <= DRY * 0.5 {
+        level = select(terrain_sample(i, j, layer), sum / max(count, 1.0), count > 0.0);
+        wet = select(0.0, 0.5, count > 0.0);
+    }
+    // The water runs down its own surface: the steeper, the faster.
+    let here = level;
+    var ex = water_sample(i + 1, j, layer);
+    var wx = water_sample(i - 1, j, layer);
+    var sz = water_sample(i, j + 1, layer);
+    var nz = water_sample(i, j - 1, layer);
+    ex = select(here, ex, ex > DRY * 0.5);
+    wx = select(here, wx, wx > DRY * 0.5);
+    sz = select(here, sz, sz > DRY * 0.5);
+    nz = select(here, nz, nz > DRY * 0.5);
+    let slope = vec2<f32>(ex - wx, sz - nz) / (2.0 * t.z);
+    let steep = length(slope);
+    var out: WaterVaryings;
+    out.flow = select(vec2<f32>(0.0), -slope / max(steep, 1.0e-6) * clamp(steep * 220.0, 0.0, 1.6), steep > 1.0e-5);
+    out.world = vec3<f32>(t.x + f32(i) * t.z, level, t.y + f32(j) * t.z);
+    out.tile = tile;
+    out.wet = wet;
+    out.position = view.view_proj * vec4<f32>(out.world, 1.0);
+    return out;
+}
+
+// The slope of the surface's ripples at a place, as rise over run along x and z.
+fn ripple_slope(p: vec2<f32>, fine: f32) -> vec2<f32> {
+    let e = 0.04;
+    var s = vec2<f32>(0.0);
+    // Broad swell, then small ripples, each fading where they would be finer than a pixel.
+    let scales = array<f32, 3>(0.9, 2.7, 7.9);
+    let heights = array<f32, 3>(0.05, 0.022, 0.009);
+    for (var k = 0; k < 3; k++) {
+        let q = p * scales[k] + vec2<f32>(f32(k) * 17.3, f32(k) * 9.1);
+        let fade = 1.0 - smoothstep(0.25, 0.6, fine * scales[k]);
+        let dx = sky_noise(q + vec2<f32>(e, 0.0)) - sky_noise(q - vec2<f32>(e, 0.0));
+        let dz = sky_noise(q + vec2<f32>(0.0, e)) - sky_noise(q - vec2<f32>(0.0, e));
+        s += vec2<f32>(dx, dz) / (2.0 * e) * scales[k] * heights[k] * fade;
+    }
+    return s;
+}
+
+// A place in the world as the scene before the water saw it: from a pixel of the target
+// and that pixel's depth.
+fn scene_point(pixel: vec2<f32>, depth: f32) -> vec3<f32> {
+    let uv = (pixel - view.viewport_origin.xy) / view.viewport.xy;
+    let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
+    let p = view.inv_view_proj * ndc;
+    return p.xyz / p.w;
+}
+
+// What a ray from the water's surface meets, from the scene drawn before the water: its
+// light and how sure the answer is, 0 where it left the view or met nothing.
+fn reflected_scene(start: vec3<f32>, dir: vec3<f32>) -> vec4<f32> {
+    let target_size = vec2<f32>(textureDimensions(behind));
+    var t = 0.25;
+    for (var k = 0; k < 28; k++) {
+        t *= 1.16;
+        let q = start + dir * t;
+        let clip = view.view_proj * vec4<f32>(q, 1.0);
+        if clip.w <= 1.0e-3 {
+            break;
+        }
+        let ndc = clip.xyz / clip.w;
+        if abs(ndc.x) > 1.0 || abs(ndc.y) > 1.0 {
+            break;
+        }
+        let pixel = view.viewport_origin.xy + (ndc.xy * vec2<f32>(0.5, -0.5) + 0.5) * view.viewport.xy;
+        let d = textureLoad(scene_depth, vec2<i32>(pixel), 0);
+        if d > ndc.z {
+            // Something drawn is nearer than the ray here. It is a hit if the ray has
+            // only just gone behind it, not passed far beneath it.
+            let surface = scene_point(pixel, d);
+            let eye = view.eye_time.xyz;
+            let behind_by = distance(eye, q) - distance(eye, surface);
+            if behind_by < t * 0.3 + 0.2 {
+                let edge = 1.0 - smoothstep(0.8, 1.0, max(abs(ndc.x), abs(ndc.y)));
+                return vec4<f32>(textureSampleLevel(behind, behind_sampler, pixel / target_size, 0.0).rgb, edge);
+            }
+            break;
+        }
+    }
+    return vec4<f32>(0.0);
+}
+
+@fragment
+fn fs_water(in: WaterVaryings) -> @location(0) vec4<f32> {
+    // Footprints first, while every pixel of the quad is still here.
+    let dwx = dpdx(in.world);
+    let dwy = dpdy(in.world);
+    let fine = max(length(dwx), length(dwy));
+    let time = view.eye_time.w;
+    let phase = time / FLOW_PERIOD;
+    let p0 = fract(phase);
+    let p1 = fract(phase + 0.5);
+    // The weight of the second layer: it shows while the first resets.
+    let second = abs(1.0 - 2.0 * p0);
+    let drift = grass.wind.xy * grass.wind.z * time * 0.25;
+    let at0 = in.world.xz - in.flow * p0 * FLOW_PERIOD;
+    let at1 = in.world.xz - in.flow * p1 * FLOW_PERIOD + vec2<f32>(0.37, 0.71);
+    // The water's page, carried by the flow: its letters drift downstream.
+    let anchor0 = vec2<f32>(at0.x, -at0.y);
+    let anchor1 = vec2<f32>(at1.x, -at1.y);
+    let footprint = AnchorFootprint(vec2<f32>(dwx.x, -dwx.z), vec2<f32>(dwy.x, -dwy.z));
+    let material = terrain_material(9u);
+    var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
+    if view.switches.x > 0.5 {
+        let g0 = glyph_surface(anchor0, footprint, material, 0u, vec3<f32>(0.08), 0.0, 0.0);
+        let g1 = glyph_surface(anchor1, footprint, material, 0u, vec3<f32>(0.08), 0.0, 0.0);
+        glyphs = GlyphResult(mix(g0.tone, g1.tone, second), mix(g0.relief, g1.relief, second), mix(g0.ink, g1.ink, second), max(g0.revealed, g1.revealed));
+    }
+
+    if terrain_cut(in.world, in.tile) || in.wet < 0.499 {
+        discard;
+    }
+    // The water tests depth itself against the scene drawn before it.
+    let pixel = in.position.xy;
+    let ground_depth = textureLoad(scene_depth, vec2<i32>(pixel), 0);
+    if ground_depth >= in.position.z {
+        discard;
+    }
+    if view.viewport.w > 0.5 {
+        return vec4<f32>(vec3<f32>(glyphs.revealed * 100.0), 1.0);
+    }
+
+    let eye = view.eye_time.xyz;
+    let to_eye = normalize(eye - in.world);
+    let distance_to = length(eye - in.world);
+    let ground = scene_point(pixel, ground_depth);
+    // How deep the water is beneath this point, and how far the eye looks through it.
+    let deep = max(in.world.y - ground.y, 0.0);
+    let through = clamp(distance(eye, ground) - distance_to, 0.0, 60.0);
+
+    // The surface: ripples carried by the flow and stirred by the wind, and the letters'
+    // own relief, which is how they are written on water.
+    let s0 = ripple_slope(at0 + drift, fine);
+    let s1 = ripple_slope(at1 + drift, fine);
+    let calm = smoothstep(0.0, 0.3, deep);
+    let slope = mix(s0, s1, second) * mix(0.3, 1.0, calm);
+    var n = normalize(vec3<f32>(-slope.x, 1.0, -slope.y) + vec3<f32>(glyphs.relief.x, 0.0, -glyphs.relief.y) * 0.5);
+    if dot(n, to_eye) < 0.05 {
+        n = normalize(n + to_eye * (0.05 - dot(n, to_eye)));
+    }
+
+    // What lies beneath, bent by the surface, and the water's colour through its depth.
+    let target_size = vec2<f32>(textureDimensions(behind));
+    var bent = pixel + n.xz * view.viewport.y * 0.05 * clamp(through, 0.0, 1.5) / max(distance_to, 1.0);
+    bent = clamp(bent, view.viewport_origin.xy, view.viewport_origin.xy + view.viewport.xy - 1.0);
+    if textureLoad(scene_depth, vec2<i32>(bent), 0) >= in.position.z {
+        // Bent onto something in front of the water: take what is straight beneath.
+        bent = pixel;
+    }
+    let under = textureSampleLevel(behind, behind_sampler, bent / target_size, 0.0).rgb;
+    let m = materials.entries[material];
+    let tint = textureSampleLevel(material_colour, material_sampler, at0 / m.surface.x, material, 6.0).rgb;
+    // A northern river: peat and silt take the light quickly, red first, and what the
+    // water gives back of the day is a dark green-brown.
+    let absorb = vec3<f32>(0.9, 0.42, 0.5);
+    let kept = exp(-absorb * through);
+    let lit_from_above = view.sky_zenith.rgb * 0.8 + view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * 0.5;
+    let body = under * kept + tint * vec3<f32>(0.9, 0.8, 0.55) * lit_from_above * 0.5 * (1.0 - kept);
+
+    // What it mirrors: the scene where a ray finds it, the sky where it does not.
+    var r = reflect(-to_eye, n);
+    r.y = max(r.y, 0.01);
+    r = normalize(r);
+    let sky = sky_colour(r, view);
+    let found = reflected_scene(in.world, r);
+    let mirrored = mix(sky, found.rgb, found.a);
+    let facing = max(dot(n, to_eye), 0.0);
+    let fresnel = 0.02 + 0.98 * pow(1.0 - facing, 5.0);
+    var colour = mix(body, mirrored, fresnel);
+
+    // The sun's glint, where the sun reaches the water.
+    let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
+    let shadow = sun_shadow(in.world, vec3<f32>(0.0, 1.0, 0.0), depth_in_view);
+    let glint = shade_light(Surface(vec3<f32>(0.0), n, 0.06, 0.0), to_eye, view.light_dir_hour.xyz, view.light_colour.rgb);
+    colour += glint * shadow;
+
+    // Foam where it is shallow at the edge and where it runs fast, carried along. Up
+    // close it is written: it is `.` and `,` and nothing between.
+    let speed = length(in.flow);
+    let froth0 = sky_noise(at0 * 3.1) * 0.6 + sky_noise(at0 * 9.3) * 0.4;
+    let froth1 = sky_noise(at1 * 3.1) * 0.6 + sky_noise(at1 * 9.3) * 0.4;
+    let froth = mix(froth0, froth1, second);
+    let lace = sky_noise(mix(at0, at1, second) * 0.6 + vec2<f32>(41.0, 7.0));
+    var foam = clamp((1.0 - smoothstep(0.0, 0.08, deep)) * (0.4 + lace) + smoothstep(1.2, 1.6, speed) * 0.4 - (1.0 - froth) * 1.2, 0.0, 1.0) * 0.85;
+    let squeeze = max(length(footprint.dx), length(footprint.dy));
+    let h = CELL_0 * 4.0 / max(squeeze, 1.0e-6) * view.switches.w;
+    if foam > 0.0 && view.switches.x > 0.5 && h >= 3.0 {
+        let size = CELL_0 * 4.0;
+        let q = select(anchor1, anchor0, second < 0.5) / size;
+        let cell = vec2<i32>(floor(q));
+        let f = fract(q);
+        let character = select(46u, 44u, (hash_cell(cell, 1, 31u) & 1u) == 1u);
+        let du = footprint.dx * vec2<f32>(1.0 / size, -1.0 / size);
+        let dv = footprint.dy * vec2<f32>(1.0 / size, -1.0 / size);
+        let g = cell_glyph(character - 32u, vec2<f32>(f.x, 1.0 - f.y), du, dv, h, 0.5);
+        let written = smoothstep(g.threshold - 0.12, g.threshold - 0.02, g.distance);
+        foam *= mix(1.0, written * 2.5, influence_rise(h));
+    }
+    let foam_light = view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * shadow * 0.8 + view.sky_zenith.rgb * 0.9;
+    colour = mix(colour, vec3<f32>(0.85, 0.87, 0.86) * foam_light, clamp(foam, 0.0, 1.0));
+
+    // The water's fine print, `~ - =` and its words, drifting with it.
+    colour *= glyphs.tone;
+    let look = u32(view.effects.z + 0.5);
+    if look > 0u && glyphs.revealed > 0.0 {
+        // Up close the eye sees down into it: characters float in the water.
+        let tangent = vec3<f32>(1.0, 0.0, 0.0);
+        let bitangent = vec3<f32>(0.0, 0.0, -1.0);
+        let in_frame = vec3<f32>(dot(to_eye, tangent), dot(to_eye, bitangent), to_eye.y);
+        let win = Window(anchor0, tangent, bitangent, lit_from_above, 0.0);
+        colour = glyph_depth(colour, anchor0, footprint, in_frame, WorldFootprint(in.world, dwx, dwy), -to_eye, distance_to, material, 0u, max(deep, 0.3), glyphs.ink, look, win);
+    }
+
+    // At the very edge, the water thins to nothing over the bank.
+    colour = mix(under, colour, smoothstep(0.0, 0.03, deep));
+    colour = through_air(colour, in.world, pixel - view.viewport_origin.xy);
+    if view.switches.y > 0.0 {
+        let text = mix(paper_of(tint), ink_of(tint), glyphs.ink) / view.viewport.z;
+        colour = mix(colour, text, view.switches.y);
+    }
+    colour = select(colour, vec3<f32>(0.0), colour != colour);
+    return vec4<f32>(colour, glyphs.revealed);
+}

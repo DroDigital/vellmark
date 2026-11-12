@@ -1,0 +1,16 @@
+// Phase S02, water: the River Quill and the mill pond. Heights are above the ground.
+// The river from its north bank; its edge up close, where ripples and foam are written;
+// the pond by the mill; and the river at dusk, mirroring the sky.
+#![enable(implicit_some)]
+(
+    name: "s02_water",
+    scene: "scene.valley",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "river", from: (eye: (0.0, 1.7, -100.0), yaw: 0.0, pitch: -14.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "edge", from: (eye: (2.0, 0.6, -108.0), yaw: 10.0, pitch: -38.0), hour: 10.0, above_ground: true, fov: 50.0, pair: true),
+        (name: "pond", from: (eye: (100.0, 1.7, -50.0), yaw: 0.0, pitch: -12.0), hour: 13.0, above_ground: true, pair: true),
+        (name: "dusk", from: (eye: (-40.0, 1.7, -100.0), yaw: 60.0, pitch: -6.0), hour: 18.3, above_ground: true, pair: true),
+    ],
+)
