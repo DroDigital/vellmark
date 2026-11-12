@@ -16,7 +16,8 @@
 **Done:** S02-T02, the terrain drawn (`--scene valley`); S02-T03, the sky: a scattering atmosphere, sun, moon with its phase and faint `@`, stars, two cloud layers, and the Vale's grade by the hour. Evidence: `docs/evidence/S02/sky.jpg`, `captures/s02_sky.ron`.
 **Not yet:** stars as characters in close reading; cloud shadows on the ground; dawn on the placeholder textures reads golden-brown (judge on the Mac).
 **Done:** S02-T04, the air: froxel mist by the hour, god rays from the shadow maps (faint until there are trees), aerial perspective. Evidence: `docs/evidence/S02/air.jpg`.
-**Task:** S02-T05. Plan: (1) the terrain bake finds the horizon in eight directions at every sample and stores the visible share of the sky (`VLMKTER2`); (2) the scene bake casts rays from every vertex at the scene's boxes (`VLMKMSH2`, a sky value per vertex); (3) ambient light is scaled by it; (4) contact occlusion at half resolution from the depth pre-pass.
+**Done:** S02-T05, the sky each place sees (terrain and meshes, baked) and contact occlusion at half resolution. Evidence: `docs/evidence/S02/sky_seen.jpg`.
+**Next:** S02-T06, GPU culling and instancing with the depth pyramid.
 
 ## Lane: Sim
 

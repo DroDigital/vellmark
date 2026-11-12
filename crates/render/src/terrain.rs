@@ -59,6 +59,7 @@ pub fn layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
             },
             texture(1, wgpu::TextureSampleType::Float { filterable: false }, wgpu::ShaderStages::VERTEX_FRAGMENT),
             texture(2, wgpu::TextureSampleType::Uint, wgpu::ShaderStages::FRAGMENT),
+            texture(3, wgpu::TextureSampleType::Float { filterable: false }, wgpu::ShaderStages::FRAGMENT),
         ],
     })
 }
@@ -86,6 +87,7 @@ impl TerrainGpu {
         let last = TILE_SAMPLES as i32 - 1;
         let mut heights = Vec::with_capacity((BORDERED * BORDERED) as usize * tiles.len());
         let mut ground = Vec::with_capacity(heights.capacity());
+        let mut sky = Vec::with_capacity(heights.capacity());
         for tile in tiles {
             for j in -1..=last + 1 {
                 for i in -1..=last + 1 {
@@ -101,6 +103,7 @@ impl TerrainGpu {
                     let k = TerrainTile::index(si as usize, sj as usize);
                     heights.push(source.heights[k]);
                     ground.push(source.ground[k] as u8);
+                    sky.push(source.sky[k]);
                 }
             }
         }
@@ -150,6 +153,7 @@ impl TerrainGpu {
         };
         let height_view = make("terrain heights", wgpu::TextureFormat::R32Float, bytemuck::cast_slice(&heights), 4);
         let ground_view = make("terrain ground", wgpu::TextureFormat::R8Uint, &ground, 1);
+        let sky_view = make("terrain sky", wgpu::TextureFormat::R8Unorm, &sky, 1);
         let table_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("terrain table"),
             size: std::mem::size_of::<TerrainTable>() as u64,
@@ -172,6 +176,7 @@ impl TerrainGpu {
                 wgpu::BindGroupEntry { binding: 0, resource: table_buffer.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&height_view) },
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&ground_view) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&sky_view) },
             ],
         });
         Ok(Self { tile_count: tiles.len() as u32, index_count: indices.len() as u32, indices: index_buffer, bind_group })

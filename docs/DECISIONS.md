@@ -2,6 +2,29 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-12: the sky each place sees (S02-T05)
+
+**Terrain:** the bake finds the horizon in eight directions from every sample, out to
+about 120 samples in growing steps, and stores the cosine-weighted share of the sky seen
+(`1 - sin²` of each horizon's angle, averaged) as a byte per sample (`VLMKTER2`).
+
+**Meshes:** box faces are divided into cells of half a metre, so the value can change
+across a face, and each vertex casts 48 rays spread by the cosine over its hemisphere, to
+25 m, against every box of the scene, still and moving (as the box that bounds each
+where it stands). The share that escapes is stored per vertex (`VLMKMSH2`, 64 bytes).
+
+**Use.** The sky's light on a surface is scaled by its share. The sunlit ground's bounce
+is not: a place that sees less sky sees more ground. The bounce was weak; it is now a
+tenth of the sun's light on the ground, about what a pale floor returns.
+
+**Contact occlusion** is a compute pass after the depth pre-pass, at half resolution,
+reading one sample of the multisampled depth: eight neighbours on a spiral about 35 cm
+across, counting what rises in front of the surface within half a metre. It darkens only
+the sky's light and the bounce. Its texture is sized for half of 4K and each view writes
+its own part, so the frame's bind group never needs remaking. The shimmer check passes.
+
+**Not used yet:** the sky share for fog's colour, rain, and snow, as `docs/TECH.md` plans.
+
 ## 2026-11-11: the air (S02-T04)
 
 **A froxel volume per view:** 160 × 90 × 64 cells, slices spaced exponentially from

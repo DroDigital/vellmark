@@ -140,6 +140,10 @@ fn rotate_y(v: [f32; 3], degrees: f32) -> [f32; 3] {
     [v[0] * c + v[2] * s, v[1], -v[0] * s + v[2] * c]
 }
 
+/// The side of the cells a box's faces are divided into, so that the sky each point
+/// sees can change across a face: darker at the foot of a wall, lighter at its top.
+const FACE_CELL: f32 = 0.5;
+
 /// `page_of` gives the text page, counted from 1, of a tagged box's face.
 fn add_box(mesh: &mut Mesh, b: &AuthoredBox, material: u32, page_of: &dyn Fn(&str, usize) -> u32) {
     let (min, max) = ([b.min.0, b.min.1, b.min.2], [b.max.0, b.max.1, b.max.2]);
@@ -148,28 +152,100 @@ fn add_box(mesh: &mut Mesh, b: &AuthoredBox, material: u32, page_of: &dyn Fn(&st
     for (face, (normal, tangent, up)) in FACES.into_iter().enumerate() {
         let first = mesh.vertices.len() as u32;
         let page = b.tag.as_deref().map(|tag| page_of(tag, face)).unwrap_or(0);
-        for (su, sv) in [(-1.0f32, -1.0f32), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
-            // A corner of this face, about the box's centre and before any turn.
-            let local: [f32; 3] = std::array::from_fn(|i| (normal[i] + tangent[i] * su + up[i] * sv) * half[i]);
-            let unturned: [f32; 3] = std::array::from_fn(|i| centre[i] + local[i]);
-            let turned = rotate_y(local, b.yaw);
-            // The page is laid on the grid of the space the box was authored in, so that
-            // text runs unbroken across boxes that share a plane. A turned box keeps the
-            // page it would have had unturned.
-            let anchor = [dot(unturned, tangent), dot(unturned, up)];
-            let t = rotate_y(tangent, b.yaw);
-            mesh.vertices.push(Vertex {
-                position: std::array::from_fn(|i| centre[i] + turned[i]),
-                normal: rotate_y(normal, b.yaw),
-                tangent: [t[0], t[1], t[2], 1.0],
-                anchor,
-                material,
-                page,
-                // The box's extent along this face's normal.
-                thickness: 2.0 * (normal[0].abs() * half[0] + normal[1].abs() * half[1] + normal[2].abs() * half[2]),
-            });
+        let extent = |axis: [f32; 3]| 2.0 * (axis[0].abs() * half[0] + axis[1].abs() * half[1] + axis[2].abs() * half[2]);
+        let cells = |axis: [f32; 3]| ((extent(axis) / FACE_CELL).ceil() as u32).clamp(1, 64);
+        let (nu, nv) = (cells(tangent), cells(up));
+        for jv in 0..=nv {
+            for iu in 0..=nu {
+                let (su, sv) = (iu as f32 / nu as f32 * 2.0 - 1.0, jv as f32 / nv as f32 * 2.0 - 1.0);
+                // A point of this face, about the box's centre and before any turn.
+                let local: [f32; 3] = std::array::from_fn(|i| (normal[i] + tangent[i] * su + up[i] * sv) * half[i]);
+                let unturned: [f32; 3] = std::array::from_fn(|i| centre[i] + local[i]);
+                let turned = rotate_y(local, b.yaw);
+                // The page is laid on the grid of the space the box was authored in, so that
+                // text runs unbroken across boxes that share a plane. A turned box keeps the
+                // page it would have had unturned.
+                let anchor = [dot(unturned, tangent), dot(unturned, up)];
+                let t = rotate_y(tangent, b.yaw);
+                mesh.vertices.push(Vertex {
+                    position: std::array::from_fn(|i| centre[i] + turned[i]),
+                    normal: rotate_y(normal, b.yaw),
+                    tangent: [t[0], t[1], t[2], 1.0],
+                    anchor,
+                    material,
+                    page,
+                    // The box's extent along this face's normal.
+                    thickness: extent(normal),
+                    sky: 1.0,
+                });
+            }
         }
-        mesh.indices.extend_from_slice(&[first, first + 1, first + 2, first, first + 2, first + 3]);
+        let row = nu + 1;
+        for jv in 0..nv {
+            for iu in 0..nu {
+                let a = first + jv * row + iu;
+                mesh.indices.extend_from_slice(&[a, a + 1, a + row + 1, a, a + row + 1, a + row]);
+            }
+        }
+    }
+}
+
+/// Bakes the share of the sky each vertex sees: rays over its hemisphere, spread by the
+/// cosine, against every box of the scene. `to_world` places the mesh.
+fn bake_sky(mesh: &mut Mesh, to_world: &dyn Fn([f32; 3], bool) -> [f32; 3], occluders: &[([f32; 3], [f32; 3])]) {
+    const RAYS: usize = 48;
+    const REACH: f32 = 25.0;
+    // Directions spread evenly over a hemisphere about +Z, by the cosine: a Fibonacci
+    // spiral on the disc, lifted.
+    let golden = std::f32::consts::PI * (3.0 - 5.0f32.sqrt());
+    let local: Vec<[f32; 3]> = (0..RAYS)
+        .map(|k| {
+            let r = ((k as f32 + 0.5) / RAYS as f32).sqrt();
+            let a = k as f32 * golden;
+            [r * a.cos(), r * a.sin(), (1.0 - r * r).max(0.0).sqrt()]
+        })
+        .collect();
+    let hits = |origin: [f32; 3], dir: [f32; 3]| {
+        occluders.iter().any(|(lo, hi)| {
+            let (mut near, mut far) = (0.0f32, REACH);
+            for i in 0..3 {
+                if dir[i].abs() < 1e-6 {
+                    if origin[i] < lo[i] || origin[i] > hi[i] {
+                        return false;
+                    }
+                    continue;
+                }
+                let (t0, t1) = ((lo[i] - origin[i]) / dir[i], (hi[i] - origin[i]) / dir[i]);
+                near = near.max(t0.min(t1));
+                far = far.min(t0.max(t1));
+                if near > far {
+                    return false;
+                }
+            }
+            true
+        })
+    };
+    for v in &mut mesh.vertices {
+        let n = to_world(v.normal, false);
+        let p = to_world(v.position, true);
+        let origin = [p[0] + n[0] * 0.02, p[1] + n[1] * 0.02, p[2] + n[2] * 0.02];
+        // A frame about the normal.
+        let helper = if n[1].abs() < 0.9 { [0.0, 1.0, 0.0] } else { [1.0, 0.0, 0.0] };
+        let cross = |a: [f32; 3], b: [f32; 3]| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+        let norm = |a: [f32; 3]| {
+            let l = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
+            [a[0] / l, a[1] / l, a[2] / l]
+        };
+        let tx = norm(cross(helper, n));
+        let ty = cross(n, tx);
+        let open = local
+            .iter()
+            .filter(|d| {
+                let dir: [f32; 3] = std::array::from_fn(|i| tx[i] * d[0] + ty[i] * d[1] + n[i] * d[2]);
+                !hits(origin, dir)
+            })
+            .count();
+        v.sky = open as f32 / RAYS as f32;
     }
 }
 
@@ -312,7 +388,8 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
         let static_mesh = AssetId::from_key(&format!("scene.{name}.static"));
         meshes.push((static_mesh, build(&authored.boxes, set, &file, &page_of)?));
 
-        let colliders = authored.boxes.iter().map(|b| solid(b, set)).collect();
+        let colliders_list: Vec<SolidBox> = authored.boxes.iter().map(|b| solid(b, set)).collect();
+        let colliders = colliders_list.clone();
         let mut breakables = Vec::new();
         let mut objects = Vec::new();
         for o in &authored.objects {
@@ -323,6 +400,39 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
             let key = AssetId::from_key(&format!("scene.{name}.{}", o.key));
             breakables.push(Breakable { key, transform, boxes: o.boxes.iter().map(|b| solid(b, set)).collect() });
             objects.push(Object { key, mesh, transform });
+        }
+        // The sky each vertex sees, against every box of the scene: the still boxes, and
+        // the objects' boxes where they stand.
+        let mut occluders: Vec<([f32; 3], [f32; 3])> = colliders_list.iter().map(|c: &SolidBox| (c.min, c.max)).collect();
+        for breakable in &breakables {
+            let t = breakable.transform;
+            for bx in &breakable.boxes {
+                let mut lo = [f32::MAX; 3];
+                let mut hi = [f32::MIN; 3];
+                for corner in 0..8 {
+                    let p = [
+                        if corner & 1 == 0 { bx.min[0] } else { bx.max[0] },
+                        if corner & 2 == 0 { bx.min[1] } else { bx.max[1] },
+                        if corner & 4 == 0 { bx.min[2] } else { bx.max[2] },
+                    ];
+                    let w = [t[0] * p[0] + t[1] * p[1] + t[2] * p[2] + t[3], t[4] * p[0] + t[5] * p[1] + t[6] * p[2] + t[7], t[8] * p[0] + t[9] * p[1] + t[10] * p[2] + t[11]];
+                    for i in 0..3 {
+                        lo[i] = lo[i].min(w[i]);
+                        hi[i] = hi[i].max(w[i]);
+                    }
+                }
+                occluders.push((lo, hi));
+            }
+        }
+        let identity = |p: [f32; 3], _point: bool| p;
+        bake_sky(&mut meshes[0].1, &identity, &occluders);
+        for (i, object) in objects.iter().enumerate() {
+            let t = object.transform;
+            let place = move |p: [f32; 3], point: bool| {
+                let w = if point { 1.0 } else { 0.0 };
+                [t[0] * p[0] + t[1] * p[1] + t[2] * p[2] + t[3] * w, t[4] * p[0] + t[5] * p[1] + t[6] * p[2] + t[7] * w, t[8] * p[0] + t[9] * p[1] + t[10] * p[2] + t[11] * w]
+            };
+            bake_sky(&mut meshes[i + 1].1, &place, &occluders);
         }
         let lights = authored
             .lights
@@ -382,7 +492,9 @@ mod tests {
         let mut mesh = Mesh::default();
         add_box(&mut mesh, &unit((0.0, 0.0, 0.0), (2.0, 1.0, 1.0)), 0, &|_, _| 0);
         add_box(&mut mesh, &unit((2.0, 0.0, 0.0), (5.0, 1.0, 1.0)), 0, &|_, _| 0);
-        assert_eq!(mesh.vertices.len(), 48);
+        // Faces are divided into half-metre cells: 78 points for the first box, 102 for
+        // the second.
+        assert_eq!(mesh.vertices.len(), 180);
         for tri in mesh.indices.chunks_exact(3) {
             let [a, b, c] = [mesh.vertices[tri[0] as usize], mesh.vertices[tri[1] as usize], mesh.vertices[tri[2] as usize]];
             let e1: [f32; 3] = std::array::from_fn(|i| b.position[i] - a.position[i]);
@@ -393,5 +505,25 @@ mod tests {
         for v in mesh.vertices.iter().filter(|v| v.normal == [0.0, 0.0, 1.0]) {
             assert_eq!(v.anchor, [v.position[0], v.position[1]]);
         }
+    }
+
+    #[test]
+    fn the_foot_of_a_wall_sees_less_sky_than_its_top() {
+        let unit = |min: V3, max: V3| AuthoredBox { material: String::new(), min, max, yaw: 0.0, tag: None };
+        let ground = unit((-10.0, -0.5, -10.0), (10.0, 0.0, 10.0));
+        let wall = unit((-3.0, 0.0, -0.2), (3.0, 3.0, 0.2));
+        let mut mesh = Mesh::default();
+        add_box(&mut mesh, &wall, 0, &|_, _| 0);
+        let occluders = [([-10.0, -0.5, -10.0], [10.0, 0.0, 10.0]), ([-3.0, 0.0, -0.2], [3.0, 3.0, 0.2])];
+        let _ = ground;
+        bake_sky(&mut mesh, &|p, _| p, &occluders);
+        let south: Vec<&Vertex> = mesh.vertices.iter().filter(|v| v.normal == [0.0, 0.0, 1.0] && v.position[0] == 0.0).collect();
+        let foot = south.iter().find(|v| v.position[1] == 0.0).unwrap().sky;
+        let top = south.iter().find(|v| v.position[1] == 3.0).unwrap().sky;
+        assert!(foot < top, "the foot of the wall ({foot}) sees less sky than its top ({top})");
+        assert!(top > 0.45 && top < 0.75, "a wall's face sees about half the sky: {top}");
+        // The top of the wall sees all of it.
+        let crown = mesh.vertices.iter().filter(|v| v.normal == [0.0, 1.0, 0.0]).map(|v| v.sky).fold(0.0, f32::max);
+        assert!(crown > 0.95);
     }
 }

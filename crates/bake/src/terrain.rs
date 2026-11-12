@@ -30,7 +30,7 @@ use crate::sha256::{hex, sha256};
 use crate::{err, BakeError};
 
 /// Changes whenever the generator does, so that the cache is not trusted across it.
-const VERSION: &str = "terrain 1";
+const VERSION: &str = "terrain 2";
 /// Samples along each side of a grid: eight tiles of 64 cells, and the last edge.
 const GRID: usize = 513;
 /// The levels baked, finest last, with the half-width of each grid in metres.
@@ -763,6 +763,41 @@ fn carve(h: f32, water: f32, lip: f32, d: f32, half: f32, depth: f32, bank: f32)
     }
 }
 
+// ---- step 5: the sky each sample sees ----
+
+/// The share of the sky seen from each sample of a grid, cosine weighted, from the
+/// horizon found in eight directions. A horizon raised by an angle `a` hides `sin²(a)`
+/// of the light that direction's slice of sky would give; the eight are averaged. Each
+/// direction is searched outwards in growing steps to about a hundred samples away.
+fn sky_seen(grid: &Grid) -> Vec<u8> {
+    let directions: [(f32, f32); 8] = [(1.0, 0.0), (0.7071, 0.7071), (0.0, 1.0), (-0.7071, 0.7071), (-1.0, 0.0), (-0.7071, -0.7071), (0.0, -1.0), (0.7071, -0.7071)];
+    let mut out = vec![255u8; GRID * GRID];
+    for j in 0..GRID {
+        for i in 0..GRID {
+            let (x, z) = grid.position(i, j);
+            let h0 = grid.h[j * GRID + i] + 0.3;
+            let mut seen = 0.0;
+            for (dx, dz) in directions {
+                let mut steepest = 0.0f32;
+                let mut d = grid.spacing;
+                while d < grid.spacing * 120.0 {
+                    let (px, pz) = (x + dx * d, z + dz * d);
+                    if !grid.contains(px, pz) {
+                        break;
+                    }
+                    steepest = steepest.max((grid.height_at(px, pz) - h0) / d);
+                    d *= 1.35;
+                }
+                // sin² of the horizon's angle, from its tangent.
+                let hidden = steepest * steepest / (1.0 + steepest * steepest);
+                seen += 1.0 - hidden;
+            }
+            out[j * GRID + i] = ((seen / 8.0).clamp(0.0, 1.0) * 255.0).round() as u8;
+        }
+    }
+    out
+}
+
 // ---- the bake ----
 
 pub struct BakedTerrain {
@@ -890,6 +925,7 @@ pub fn generate(path: &Path) -> Result<BakedTerrain, BakeError> {
     let mut tiles = Vec::new();
     let mut maps = Vec::new();
     for (grid, (water, ground)) in grids.iter().zip(finished) {
+        let sky = sky_seen(grid);
         let per = GRID / 8;
         for tz in 0..8 {
             for tx in 0..8 {
@@ -903,6 +939,7 @@ pub fn generate(path: &Path) -> Result<BakedTerrain, BakeError> {
                         tile.heights[t] = grid.h[k];
                         tile.water[t] = water[k];
                         tile.ground[t] = ground[k];
+                        tile.sky[t] = sky[k];
                     }
                 }
                 tiles.push(tile);
@@ -1145,6 +1182,29 @@ mod tests {
         assert!(far.contains(&Ground::Forest));
         assert!(far.contains(&Ground::Erasure));
         assert!(baked.grids[1].4.contains(&Ground::Forest));
+    }
+
+    #[test]
+    fn hollows_see_less_sky_than_hilltops() {
+        let baked = valley();
+        let fine = baked.tiles.iter().filter(|t| t.coord.level == 0);
+        let (mut low, mut high) = (255u8, 0u8);
+        for t in fine {
+            for &s in &t.sky {
+                low = low.min(s);
+                high = high.max(s);
+            }
+        }
+        assert!(high >= 250, "open ground sees nearly all the sky: {high}");
+        assert!(low < 200, "somewhere in the valley sees less: {low}");
+        // The river's channel sees less than the top of Tithe Hill.
+        let at = |x: f32, z: f32| {
+            let c = TileCoord::containing(x, z, 0);
+            let t = baked.tiles.iter().find(|t| t.coord == c).unwrap();
+            let (x0, z0) = c.origin();
+            t.sky[TerrainTile::index((x - x0).round() as usize, (z - z0).round() as usize)]
+        };
+        assert!(at(0.0, -118.0) < at(-112.0, 128.0), "the river's bed sees less sky than the hilltop");
     }
 
     #[test]

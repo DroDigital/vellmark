@@ -18,6 +18,7 @@ struct ObjectUniform {
 @group(0) @binding(5) var light_shadow: texture_depth_cube;
 @group(0) @binding(6) var fog_volume: texture_3d<f32>;
 @group(0) @binding(7) var fog_sampler: sampler;
+@group(0) @binding(8) var contact_occlusion: texture_2d<f32>;
 
 const FOG_NEAR: f32 = 0.5;
 const FOG_FAR: f32 = 400.0;
@@ -83,6 +84,7 @@ struct VertexInput {
     @location(4) material: u32,
     @location(5) page: u32,
     @location(6) thickness: f32,
+    @location(7) sky: f32,
 }
 
 struct Varyings {
@@ -94,6 +96,7 @@ struct Varyings {
     @location(4) @interpolate(flat) material: u32,
     @location(5) @interpolate(flat) page: u32,
     @location(6) @interpolate(flat) thickness: f32,
+    @location(7) sky: f32,
 }
 
 @vertex
@@ -114,6 +117,7 @@ fn vs(in: VertexInput) -> Varyings {
     out.material = in.material;
     out.page = in.page;
     out.thickness = in.thickness;
+    out.sky = in.sky;
     return out;
 }
 
@@ -199,14 +203,20 @@ fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>
 
 // All the light that reaches a surface: the sun or moon, the sky, every fire and
 // lantern, and its own glow.
-fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32) -> vec3<f32> {
+// `seen` is the share of the sky the place can see, baked: it scales the sky's light.
+fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32, seen: f32) -> vec3<f32> {
     let to_eye = normalize(view.eye_time.xyz - in.world);
     let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
     let shadow = sun_shadow(in.world, flat_normal, depth_in_view);
     var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
-    // What the ground sends back: the sky's light on it, and the sun's where it is lit.
-    let ground = view.sky_horizon.rgb * 0.35 + view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * 0.06;
-    colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb, ground);
+    // Contact occlusion: the fine darkening where things meet, at half resolution.
+    let contact = textureSampleLevel(contact_occlusion, fog_sampler, in.position.xy * 0.5 / vec2<f32>(textureDimensions(contact_occlusion)), 0.0).r;
+    // The sky's light, as much of it as this place can see.
+    colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb, view.sky_horizon.rgb * 0.35) * seen * contact;
+    // And what the sunlit ground sends back, from below and the sides. A place that sees
+    // less sky sees more ground, so this is not scaled by `seen`.
+    let bounce = view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * 0.1;
+    colour += surface.albedo * (1.0 - surface.metal) * bounce * (0.5 - surface.normal.y * 0.5) * contact;
     colour += shade_point_lights(surface, in.world, flat_normal, to_eye, in.position.xy - view.viewport_origin.xy, depth_in_view);
     colour += surface.albedo * glow * view.effects.y;
     return colour;
@@ -244,7 +254,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     if reading > 0.0 {
         let z0 = sqrt(max(1.0 - dot(map_normal, map_normal), 0.05));
         let plain = Surface(colour_texel.rgb, normalize(t * map_normal.x + b * map_normal.y + n * z0), normal_texel.z, colour_texel.a);
-        plain_lit = light_surface(plain, in, n, m.surface.w);
+        plain_lit = light_surface(plain, in, n, m.surface.w, in.sky);
         let seen = plain_lit * view.viewport.z;
         light = clamp(dot(seen / (seen + vec3<f32>(0.6)), vec3<f32>(0.2126, 0.7152, 0.0722)) * 1.6, 0.0, 1.0);
     }
@@ -270,7 +280,7 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
         let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
         let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
-        colour = light_surface(surface, in, n, m.surface.w);
+        colour = light_surface(surface, in, n, m.surface.w, in.sky);
         // Heat. A thing hot enough glows, as hot iron does, at any distance: that is the
         // world, not its letters. Up close, the strokes of the letters saying so glow
         // first, as embers in the grain.
@@ -376,8 +386,8 @@ fn fs_letter(in: LetterVaryings) -> @location(0) vec4<f32> {
         n = -n;
     }
     let surface = Surface(colour_texel.rgb * colour_texel.rgb * 0.55, n, normal_texel.z, colour_texel.a);
-    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0);
-    let colour = through_air(light_surface(surface, as_surface, n, 0.0), in.world, in.position.xy - view.viewport_origin.xy);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0);
+    let colour = through_air(light_surface(surface, as_surface, n, 0.0, 1.0), in.world, in.position.xy - view.viewport_origin.xy);
     return vec4<f32>(colour, cover);
 }
 
@@ -460,6 +470,7 @@ struct TerrainTable {
 @group(3) @binding(0) var<uniform> terrain: TerrainTable;
 @group(3) @binding(1) var terrain_height: texture_2d_array<f32>;
 @group(3) @binding(2) var terrain_ground: texture_2d_array<u32>;
+@group(3) @binding(3) var terrain_sky: texture_2d_array<f32>;
 
 const TERRAIN_SAMPLES: u32 = 65u;
 
@@ -620,8 +631,14 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
     let normal = normalize(tangent * tangent_normal.x + bitangent * tangent_normal.y + n * z);
     let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
-    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, material, 0u, 1.2);
-    var colour = light_surface(surface, as_surface, n, 0.0);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, material, 0u, 1.2, 1.0);
+    // The share of the sky this place sees, baked, between its four samples.
+    let s00 = textureLoad(terrain_sky, base + 1, layer, 0).r;
+    let s10 = textureLoad(terrain_sky, base + vec2<i32>(2, 1), layer, 0).r;
+    let s01 = textureLoad(terrain_sky, base + vec2<i32>(1, 2), layer, 0).r;
+    let s11 = textureLoad(terrain_sky, base + 2, layer, 0).r;
+    let seen = mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+    var colour = light_surface(surface, as_surface, n, 0.0, seen);
     let look = u32(view.effects.z + 0.5);
     if look > 0u && glyphs.revealed > 0.0 {
         let to_eye = normalize(view.eye_time.xyz - in.world);

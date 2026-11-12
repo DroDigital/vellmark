@@ -4,6 +4,7 @@
 
 mod atlas;
 mod camera;
+mod contact;
 mod fog;
 mod frame;
 mod lights;

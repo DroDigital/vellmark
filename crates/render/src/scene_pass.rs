@@ -47,6 +47,7 @@ struct Targets {
     bloom_levels: Vec<wgpu::TextureView>,
     bloom_sources: Vec<wgpu::BindGroup>,
     scene_source: wgpu::BindGroup,
+    contact_group: wgpu::BindGroup,
 }
 
 struct Pipelines {
@@ -89,6 +90,8 @@ pub struct ScenePass {
     shadow_layers: Vec<wgpu::TextureView>,
     frame_bind_groups: Vec<wgpu::BindGroup>,
     fog: crate::fog::FogVolume,
+    contact: crate::contact::ContactOcclusion,
+    view_size: u64,
     targets: Option<Targets>,
     target_format: wgpu::TextureFormat,
     /// One instance for each loose letter, and the step they were last sent at.
@@ -185,6 +188,17 @@ impl ScenePass {
                     binding: 7,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                // Contact occlusion, at half resolution.
+                wgpu::BindGroupLayoutEntry {
+                    binding: 8,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
                     count: None,
                 },
             ],
@@ -321,6 +335,8 @@ impl ScenePass {
                 })
             })
             .collect();
+        let contact_module = shaders.module(gpu, "contact")?;
+        let contact = crate::contact::ContactOcclusion::new(gpu, registry, &contact_module, view_size);
         let fog_module = shaders.module(gpu, "fog")?;
         let fog = crate::fog::FogVolume::new(gpu, registry, &fog_module, SHADOWED_VIEWS, &view_buffer, view_size, &shadow_arrays, &shadow_sampler);
         let frame_bind_groups = (0..SHADOWED_VIEWS)
@@ -345,6 +361,7 @@ impl ScenePass {
                         wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&lights.cube_view) },
                         wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&fog.integrated_views[v]) },
                         wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
+                        wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(&contact.view) },
                     ],
                 })
             })
@@ -384,6 +401,8 @@ impl ScenePass {
             shadow_layers,
             frame_bind_groups,
             fog,
+            contact,
+            view_size,
             targets: None,
             target_format,
             letter_buffer: gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -761,7 +780,8 @@ impl ScenePass {
             };
             let attachment = wgpu::TextureUsages::RENDER_ATTACHMENT;
             let colour_msaa = texture("scene colour", HDR_FORMAT, SAMPLES, attachment);
-            let depth_msaa = texture("scene depth", DEPTH_FORMAT, SAMPLES, attachment);
+            // Read by contact occlusion as well as drawn into.
+            let depth_msaa = texture("scene depth", DEPTH_FORMAT, SAMPLES, attachment | wgpu::TextureUsages::TEXTURE_BINDING);
             let resolved = texture("scene resolved", HDR_FORMAT, 1, attachment | wgpu::TextureUsages::TEXTURE_BINDING);
             let bloom_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("bloom"),
@@ -804,7 +824,8 @@ impl ScenePass {
                     wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&bloom_levels[0]) },
                 ],
             });
-            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, post_bind_group, bloom_levels, bloom_sources, scene_source });
+            let contact_group = self.contact.bind(gpu, &self.view_buffer, self.view_size, &depth_msaa);
+            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, post_bind_group, bloom_levels, bloom_sources, scene_source, contact_group });
         }
         self.targets.as_ref().unwrap()
     }
@@ -1037,6 +1058,16 @@ impl ScenePass {
                     self.draw_terrain(&mut pass, terrain, 2);
                     pass.set_pipeline(&self.pipelines.depth);
                 }
+            }
+        }
+        // Contact occlusion, from the depth just drawn.
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("contact occlusion"),
+                timestamp_writes: timers.compute_pass("contact occlusion"),
+            });
+            for (i, &(_, _, w, h)) in viewports.iter().enumerate() {
+                self.contact.dispatch(&mut pass, &targets.contact_group, (i as u64 * self.view_stride) as u32, (w as u32, h as u32));
             }
         }
         {
