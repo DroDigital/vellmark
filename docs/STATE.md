@@ -21,7 +21,7 @@
 **Done:** S02-T07, grass: patches in the one instance buffer, culled per view, four levels without popping; blades bent by the wind and by whoever walks through; each blade a line of its lexicon's words, and at arm's length nothing but them. Evidence: `docs/evidence/S02/grass.jpg`, `captures/s02_grass.ron`. Test: `crates/harness/tests/grass.rs`.
 **Not yet:** grass casts no shadows (S02-T11's rota); the wind wanders on its own until the weather drives it (S02-T10); density and cost to be judged on the Mac.
 **Done:** S02-T09, water: refraction through peaty water by depth, screen-space reflection with the sky behind it, sun glints, flow down the surface, foam at the edge and in fast water written as `.` and `,`, and the water's own letters on its ripple crests. Evidence: `docs/evidence/S02/water.jpg`, `captures/s02_water.ron`.
-**Next:** S02-T10, rain and the wind that reads.
+**Current task:** S02-T10, rain and the wind that reads. Plan: weather (rain, wetness, wind) kept by the simulation and sent in its snapshot; overcast skies and wet, darkened surfaces with puddles in the hollows; rain streaks around each view, splashes that are `'` close by, runoff down walls as `|`, and rings on puddles and water that are `~`; and now and then a gust that bends the grass into one of six Ledger sentences from the canon, kept in `assets/text/en/wind.ron`.
 
 ## Lane: Sim
 
