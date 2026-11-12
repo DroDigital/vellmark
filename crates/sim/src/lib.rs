@@ -6,6 +6,7 @@
 
 mod clock;
 pub mod debris;
+pub mod weather;
 
 /// The ground the players walk on: its height at a point, if there is ground there.
 /// The world crate answers this from the terrain; the rules only ask.
@@ -21,4 +22,5 @@ pub use clock::{FixedClock, StepPlan, STEP_HZ, STEP_SECONDS};
 pub use hash::Fnv64;
 pub use input::{buttons, PlayerInput};
 pub use snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
+pub use weather::Weather;
 pub use world::{BreakableThing, PlayerId, World, WorldConfig, EYE_HEIGHT};

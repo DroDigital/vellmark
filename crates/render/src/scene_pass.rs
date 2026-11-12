@@ -16,6 +16,8 @@ pub const SAMPLES: u32 = 4;
 
 /// Views whose shadows are drawn. Further views borrow the first view's.
 const SHADOWED_VIEWS: usize = 2;
+/// Rain columns around each view. Matches `RAIN_SIDE` squared in `shaders/opaque.wgsl`.
+const RAIN_DROPS: u32 = 160 * 160;
 
 const BLOOM_LEVELS: usize = 5;
 const CUBE_FACES: usize = 6;
@@ -66,6 +68,7 @@ struct Pipelines {
     grass_depth: wgpu::RenderPipeline,
     grass: wgpu::RenderPipeline,
     water: wgpu::RenderPipeline,
+    rain: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
     bloom_first: wgpu::RenderPipeline,
     bloom_down: wgpu::RenderPipeline,
@@ -770,6 +773,30 @@ impl ScenePass {
                 cache: None,
             },
         );
+        // Rain: streaks and splashes over everything, after the water, blended.
+        let rain = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("rain"),
+                layout: Some(&water_world_layout),
+                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_rain"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_rain"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: HDR_FORMAT,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: None,
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            },
+        );
         let letters = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
@@ -859,7 +886,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, water, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, water, rain, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -1121,6 +1148,7 @@ impl ScenePass {
         let mut atmosphere = Atmosphere::at(frame.time_of_day);
         let air = self.grade.at(frame.time_of_day);
         atmosphere.fog = [air.fog_density, air.fog_floor, air.fog_falloff];
+        let atmosphere = atmosphere.with_rain(frame.weather.rain);
         let views = &frame.views[..frame.views.len().min(MAX_VIEWS)];
         let letter_count = frame.letters.len().min(vellmark_sim::debris::MAX_LETTERS);
         if self.letters_sent != Some((frame.letters_step, letter_count)) {
@@ -1186,7 +1214,7 @@ impl ScenePass {
                 }
                 start += count;
             }
-            gpu.queue.write_buffer(&t.grass_uniform, 0, bytemuck::bytes_of(&t.grass.uniform(frame.seconds, &eyes)));
+            gpu.queue.write_buffer(&t.grass_uniform, 0, bytemuck::bytes_of(&t.grass.uniform(frame.seconds, &eyes, &frame.weather)));
         }
         for (i, view) in views.iter().enumerate() {
             let (_, _, w, h) = view.viewport.pixels(target_size);
@@ -1220,6 +1248,13 @@ impl ScenePass {
                 frame.lamps,
                 &cascades,
             );
+            let mut uniform = uniform;
+            let w = &frame.weather;
+            uniform.weather = [w.rain, w.wetness, w.wind_strength, -1.0];
+            uniform.wind = [w.wind[0], w.wind[1], 0.0, 0.0];
+            if let Some(t) = terrain {
+                uniform.ground_tiles = t.tiles_around(view.camera.eye.x, view.camera.eye.z);
+            }
             gpu.queue.write_buffer(&self.view_buffer, i as u64 * self.view_stride, bytemuck::bytes_of(&uniform));
         }
         // In the reveal mask nothing may bleed from one pixel to the next.
@@ -1296,7 +1331,7 @@ impl ScenePass {
         }
 
         self.targets(gpu, target_size);
-        if let (Some(t), None) = (terrain.filter(|t| t.water_tile_count > 0), &self.water_group) {
+        if let (Some(t), None) = (terrain, &self.water_group) {
             let tg = self.targets.as_ref().unwrap();
             self.water_group = Some(t.water_group(&gpu.device, &self.water_layout, &tg.behind, &tg.depth_msaa, &self.water_sampler));
         }
@@ -1442,6 +1477,32 @@ impl ScenePass {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
                 pass.draw_indexed(0..t.index_count, 0, 0..t.water_tile_count);
+            }
+        }
+        // The rain, over everything, around each view.
+        if let (Some(t), Some(group)) = (terrain.filter(|_| frame.weather.rain > 0.0), &self.water_group) {
+            let _ = t;
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("rain"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &targets.resolved,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: timers.render_pass("rain"),
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.pipelines.rain);
+            pass.set_bind_group(1, &surface.bind_group, &[]);
+            pass.set_bind_group(2, &self.object_bind_group, &[0]);
+            pass.set_bind_group(3, group, &[]);
+            for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
+                pass.set_viewport(x, y, w, h, 0.0, 1.0);
+                pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
+                pass.draw(0..6, 0..RAIN_DROPS);
             }
         }
         // Bloom: down the chain, then back up it, each level added to the one above.

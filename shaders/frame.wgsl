@@ -37,6 +37,15 @@ struct ViewUniform {
     // x: how much of the sky is cloud, 0 to 1. y: the mist's density per metre at its
     // floor. z: the height of its floor. w: the metres in which it thins to a third.
     sky: vec4<f32>,
+    // x: rain, 0 to 1. y: how wet the world is. z: the wind's strength. w: how far the
+    // wind's sentence has come, 0 to 1, or less than 0 for none.
+    weather: vec4<f32>,
+    // xy: the wind's direction over the ground. zw: where the wind's sentence starts.
+    wind: vec4<f32>,
+    // xy: the direction the sentence runs. z: its letters' height. w: which sentence.
+    sentence: vec4<f32>,
+    // The finest terrain tiles around the eye: corner x and z, layer, and 1 if present.
+    ground_tiles: array<vec4<f32>, 4>,
 }
 
 // ---- the atmosphere: the same model as `crates/render/src/sky.rs` ----

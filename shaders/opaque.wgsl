@@ -266,6 +266,51 @@ fn ink_of(albedo: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(0.012, 0.010, 0.009) + albedo * 0.03;
 }
 
+// ---- the rain on surfaces ----
+
+// How wet a surface is: the world's wetness where the sky reaches it, and none under an
+// overhang. `seen` is the share of the sky the place sees.
+fn wet_at(seen: f32, n: vec3<f32>) -> f32 {
+    return view.weather.y * smoothstep(0.15, 0.55, seen) * smoothstep(-0.4, 0.2, n.y);
+}
+
+// A surface as rain leaves it: darker, as soaked things are, and glossy.
+fn wetted(s: Surface, wet: f32) -> Surface {
+    return Surface(s.albedo * (1.0 - 0.5 * wet * (1.0 - s.metal)), s.normal, mix(s.roughness, 0.12, wet * 0.85), s.metal);
+}
+
+// The rings rain makes on still water, as the slope of the surface, rise over run along
+// x and z. Each cell of a third of a metre takes a drop now and then; its ring runs out
+// and fades. Fewer cells take drops in light rain.
+fn rain_rings(p: vec2<f32>, rain: f32) -> vec2<f32> {
+    if rain <= 0.0 {
+        return vec2<f32>(0.0);
+    }
+    let size = 0.33;
+    let base = vec2<i32>(floor(p / size));
+    let time = view.eye_time.w;
+    var slope = vec2<f32>(0.0);
+    for (var dz = -1; dz <= 1; dz++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let c = base + vec2<i32>(dx, dz);
+            let h = hash_cell(c, 3, 77u);
+            if unit(h >> 8u) > rain {
+                continue;
+            }
+            let period = 0.9 + unit(h >> 4u) * 0.6;
+            let age = fract(time / period + unit(h)) * period;
+            let centre = (vec2<f32>(c) + vec2<f32>(unit(h >> 12u), unit(h >> 20u))) * size;
+            let away = p - centre;
+            let d = length(away);
+            let r = age * 0.32;
+            let x = (d - r) / 0.02;
+            let ring = x * exp(-x * x) * (1.0 - age / period);
+            slope += away / max(d, 1.0e-4) * ring * 0.35;
+        }
+    }
+    return slope;
+}
+
 @fragment
 fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let m = materials.entries[in.material];
@@ -312,7 +357,8 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         let tangent_normal = map_normal + glyphs.relief;
         let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
         let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
-        let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
+        let wet = wet_at(in.sky, n);
+        let surface = wetted(Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a), wet);
         colour = light_surface(surface, in, n, m.surface.w, in.sky);
         // Heat. A thing hot enough glows, as hot iron does, at any distance: that is the
         // world, not its letters. Up close, the strokes of the letters saying so glow
@@ -650,9 +696,23 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     bitangent = normalize(bitangent * sign(dot(bitangent, page_y) + 1.0e-6));
     let map_normal = vec2<f32>(normal_texel.x, normal_texel.y) * 2.0 - 1.0;
 
+    // The share of the sky this place sees, baked, between its four samples.
+    let s00 = textureLoad(terrain_sky, base + 1, layer, 0).r;
+    let s10 = textureLoad(terrain_sky, base + vec2<i32>(2, 1), layer, 0).r;
+    let s01 = textureLoad(terrain_sky, base + vec2<i32>(1, 2), layer, 0).r;
+    let s11 = textureLoad(terrain_sky, base + 2, layer, 0).r;
+    let seen = mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+
+    // Puddles, in the low places of flat ground, as wet as the world is. In a puddle
+    // the ground is water, and is written as water.
+    let wet = wet_at(seen, n);
+    let low = sky_noise(in.world.xz * 0.35 + vec2<f32>(3.1, 7.7)) * 0.65 + sky_noise(in.world.xz * 1.3) * 0.35;
+    let puddle = smoothstep(0.96, 0.995, n.y) * smoothstep(0.0, 0.04, wet * 0.42 - low + 0.08) * (1.0 - weights[7]);
+    let written_as = select(material, terrain_material(9u), puddle > 0.5);
+
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     if view.switches.x > 0.5 {
-        glyphs = glyph_surface(anchor, footprint, material, 0u, colour_texel.rgb, 0.0, 0.0);
+        glyphs = glyph_surface(anchor, footprint, written_as, 0u, colour_texel.rgb, 0.0, 0.0);
     }
     if terrain_cut(in.world, in.tile) {
         discard;
@@ -660,17 +720,18 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     if view.viewport.w > 0.5 {
         return vec4<f32>(vec3<f32>(glyphs.revealed * 100.0), 1.0);
     }
-    let tangent_normal = map_normal + glyphs.relief;
+    let tangent_normal = map_normal * (1.0 - puddle) + glyphs.relief;
     let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
-    let normal = normalize(tangent * tangent_normal.x + bitangent * tangent_normal.y + n * z);
-    let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
-    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, material, 0u, 1.2, 1.0, 0u);
-    // The share of the sky this place sees, baked, between its four samples.
-    let s00 = textureLoad(terrain_sky, base + 1, layer, 0).r;
-    let s10 = textureLoad(terrain_sky, base + vec2<i32>(2, 1), layer, 0).r;
-    let s01 = textureLoad(terrain_sky, base + vec2<i32>(1, 2), layer, 0).r;
-    let s11 = textureLoad(terrain_sky, base + 2, layer, 0).r;
-    let seen = mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+    var normal = normalize(tangent * tangent_normal.x + bitangent * tangent_normal.y + n * z);
+    var surface = wetted(Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a), wet);
+    if puddle > 0.0 {
+        // Still water over the ground: dark, smooth, and ringed while it rains.
+        let rings = rain_rings(in.world.xz, view.weather.x);
+        let still = normalize(vec3<f32>(-rings.x, 1.0, -rings.y) + vec3<f32>(glyphs.relief.x, 0.0, -glyphs.relief.y) * 0.5);
+        normal = normalize(mix(normal, still, puddle));
+        surface = Surface(mix(surface.albedo, surface.albedo * 0.35, puddle), normal, mix(surface.roughness, 0.03, puddle), 0.0);
+    }
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, written_as, 0u, 1.2, 1.0, 0u);
     var colour = light_surface(surface, as_surface, n, 0.0, seen);
     let look = u32(view.effects.z + 0.5);
     if look > 0u && glyphs.revealed > 0.0 {
@@ -974,7 +1035,7 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
     var albedo = texel.rgb * (0.8 + 0.4 * unit(in.seed >> 9u));
     // Tips are drier and paler than the stem.
     albedo = mix(albedo, albedo * vec3<f32>(1.25, 1.18, 0.85), in.up * in.up * 0.6) * ao;
-    let surface = Surface(albedo * letters.tone, n, 0.6, 0.0);
+    let surface = wetted(Surface(albedo * letters.tone, n, 0.6, 0.0), wet_at(in.blade.x, vec3<f32>(0.0, 1.0, 0.0)) * 0.8);
     let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0, 0u);
     var colour = light_surface(surface, as_surface, n, 0.0, in.blade.x);
     // Light through the blade: a blade lit from behind glows.
@@ -1183,7 +1244,7 @@ fn fs_water(in: WaterVaryings) -> @location(0) vec4<f32> {
     let s0 = ripple_slope(at0 + drift, fine);
     let s1 = ripple_slope(at1 + drift, fine);
     let calm = smoothstep(0.0, 0.3, deep);
-    let slope = mix(s0, s1, second) * mix(0.3, 1.0, calm);
+    let slope = mix(s0, s1, second) * mix(0.3, 1.0, calm) + rain_rings(in.world.xz, view.weather.x);
     var n = normalize(vec3<f32>(-slope.x, 1.0, -slope.y) + vec3<f32>(glyphs.relief.x, 0.0, -glyphs.relief.y) * 0.5);
     if dot(n, to_eye) < 0.05 {
         n = normalize(n + to_eye * (0.05 - dot(n, to_eye)));
@@ -1273,4 +1334,156 @@ fn fs_water(in: WaterVaryings) -> @location(0) vec4<f32> {
     }
     colour = select(colour, vec3<f32>(0.0), colour != colour);
     return vec4<f32>(colour, glyphs.revealed);
+}
+
+// ---- rain: streaks in columns fixed to the ground around the eye, and their splashes ----
+
+// Columns across the square of rain around each eye, and the side of each column's cell.
+const RAIN_SIDE: u32 = 160u;
+const RAIN_CELL: f32 = 0.3;
+// How fast a drop falls, and how far above and below the eye it is drawn, in metres.
+const RAIN_SPEED: f32 = 7.5;
+const RAIN_ABOVE: f32 = 12.0;
+const RAIN_BELOW: f32 = 6.0;
+// How long a splash shows, in seconds.
+const SPLASH_SECONDS: f32 = 0.16;
+
+struct RainVaryings {
+    @builtin(position) position: vec4<f32>,
+    // A streak: x across it, -1 to 1, and y along it, 0 at its tail and 1 at its head.
+    // A splash: the place in its character's cell.
+    @location(0) uv: vec2<f32>,
+    // 0 for a streak, 1 for a splash.
+    @location(1) @interpolate(flat) kind: u32,
+    @location(2) @interpolate(flat) fade: f32,
+}
+
+// The ground's height under a place, from the finest tiles around the eye, or very far
+// below where none holds it.
+fn ground_height_at(p: vec2<f32>) -> f32 {
+    for (var k = 0; k < 4; k++) {
+        let g = view.ground_tiles[k];
+        if g.w < 0.5 {
+            continue;
+        }
+        let t = terrain.tiles[u32(g.z) * 2u];
+        let local = (p - t.xy) / t.z;
+        if any(local < vec2<f32>(0.0)) || any(local > vec2<f32>(64.0)) {
+            continue;
+        }
+        let layer = i32(t.w);
+        let base = clamp(vec2<i32>(floor(local)), vec2<i32>(0), vec2<i32>(63));
+        let f = clamp(local - vec2<f32>(base), vec2<f32>(0.0), vec2<f32>(1.0));
+        let h00 = terrain_sample(base.x, base.y, layer);
+        let h10 = terrain_sample(base.x + 1, base.y, layer);
+        let h01 = terrain_sample(base.x, base.y + 1, layer);
+        let h11 = terrain_sample(base.x + 1, base.y + 1, layer);
+        if f.x >= f.y {
+            return h00 + f.x * (h10 - h00) + f.y * (h11 - h10);
+        }
+        return h00 + f.y * (h01 - h00) + f.x * (h11 - h01);
+    }
+    return -1.0e6;
+}
+
+@vertex
+fn vs_rain(@builtin(vertex_index) vertex: u32, @builtin(instance_index) drop: u32) -> RainVaryings {
+    var out: RainVaryings;
+    out.position = NOWHERE;
+    out.uv = vec2<f32>(0.0);
+    out.kind = 0u;
+    out.fade = 0.0;
+    let rain = view.weather.x;
+    let eye = view.eye_time.xyz;
+    let half = i32(RAIN_SIDE / 2u);
+    let cell = vec2<i32>(floor(eye.xz / RAIN_CELL)) - vec2<i32>(half) + vec2<i32>(i32(drop % RAIN_SIDE), i32(drop / RAIN_SIDE));
+    let h = hash_cell(cell, 5, 91u);
+    // Light rain has fewer columns falling.
+    if unit(h) > rain {
+        return out;
+    }
+    let corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
+    );
+    let c = corners[vertex];
+    // Where the drop lands; it falls slanting, carried downwind.
+    let column = (vec2<f32>(cell) + vec2<f32>(unit(h >> 4u), unit(h >> 12u))) * RAIN_CELL;
+    let drift = view.wind.xy * view.weather.z * 2.5;
+    let top = eye.y + RAIN_ABOVE;
+    let period = (RAIN_ABOVE + RAIN_BELOW) / RAIN_SPEED;
+    let since = fract(view.eye_time.w / period + unit(h >> 20u)) * period;
+    let ground = ground_height_at(column);
+    let lands = (top - max(ground, eye.y - RAIN_BELOW)) / RAIN_SPEED;
+    let up = vec3<f32>(0.0, 1.0, 0.0);
+    // The world's size of a pixel at a distance of one metre.
+    let pixel = 1.3e-3 * 1080.0 / view.viewport.y;
+    if since < lands {
+        let head = vec3<f32>(column.x, top - RAIN_SPEED * since, column.y) - vec3<f32>(drift.x, 0.0, drift.y) * (lands - since);
+        let to_eye = eye - head;
+        let distance_to = length(to_eye);
+        if distance_to > 30.0 {
+            return out;
+        }
+        let fall = normalize(vec3<f32>(drift.x, -RAIN_SPEED, drift.y));
+        // A drop is a streak as long as it falls in a twentieth of a second, and never
+        // thinner than a pixel; a wider one is fainter, so each keeps its weight.
+        let thin = 0.0012;
+        let wide = max(thin, distance_to * pixel * 0.9);
+        let side = normalize(cross(fall, to_eye / distance_to) + vec3<f32>(1.0e-5, 0.0, 0.0));
+        let world = head + side * c.x * wide * 0.5 - fall * (1.0 - c.y) * 0.38;
+        out.position = view.view_proj * vec4<f32>(world, 1.0);
+        out.uv = c;
+        out.kind = 0u;
+        out.fade = thin / wide * (1.0 - smoothstep(20.0, 30.0, distance_to));
+        return out;
+    }
+    let age = since - lands;
+    if age > SPLASH_SECONDS || ground < -1.0e5 || ground < eye.y - RAIN_BELOW {
+        return out;
+    }
+    // A splash stands on the ground where the drop struck, facing the eye.
+    let at = vec3<f32>(column.x, ground, column.y);
+    let to_eye = eye - at;
+    if length(to_eye) > 12.0 {
+        return out;
+    }
+    let right = normalize(cross(up, to_eye) + vec3<f32>(1.0e-5, 0.0, 0.0));
+    let size = 0.016;
+    let world = at + right * c.x * size * 0.5 + up * c.y * size;
+    out.position = view.view_proj * vec4<f32>(world, 1.0);
+    out.uv = vec2<f32>(c.x * 0.5 + 0.5, 1.0 - c.y);
+    out.kind = 1u;
+    out.fade = 1.0 - age / SPLASH_SECONDS;
+    return out;
+}
+
+@fragment
+fn fs_rain(in: RainVaryings) -> @location(0) vec4<f32> {
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    if textureLoad(scene_depth, vec2<i32>(in.position.xy), 0) > in.position.z {
+        discard;
+    }
+    let light = view.sky_horizon.rgb * 0.9 + view.light_colour.rgb * 0.12;
+    if in.kind == 0u {
+        if view.viewport.w > 0.5 {
+            discard;
+        }
+        let across = 1.0 - abs(in.uv.x);
+        return vec4<f32>(light * 1.3, 0.28 * in.fade * across * in.uv.y);
+    }
+    // Close by, a splash is a `'`; further off, a fleck of spray.
+    let h = 1.0 / max(max(length(du), length(dv)), 1.0e-5);
+    let legible = smoothstep(4.0, 7.0, h) * view.switches.x;
+    let g = cell_glyph(39u - 32u, in.uv, du, dv, h, 0.5);
+    let fleck = smoothstep(1.0, 0.3, length((in.uv - vec2<f32>(0.5, 0.6)) * vec2<f32>(2.2, 3.0)));
+    let cover = mix(fleck * 0.6, g.cover, legible);
+    if view.viewport.w > 0.5 {
+        if legible > 0.0 && cover > 0.1 {
+            return vec4<f32>(vec3<f32>(100.0), 1.0);
+        }
+        discard;
+    }
+    return vec4<f32>(light * 1.5, cover * in.fade * 0.85);
 }

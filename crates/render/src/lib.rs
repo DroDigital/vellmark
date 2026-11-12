@@ -60,6 +60,8 @@ pub struct FrameInput<'a> {
     /// How hot or cold things are, by permanent ID, from -1 (frozen) to 1 (as hot as
     /// it gets). Up close their letters say so.
     pub heat: &'a [(u64, f32)],
+    /// The rain, how wet the world is, and the wind.
+    pub weather: vellmark_sim::Weather,
     /// The interface, drawn over the finished frame.
     pub ui: Option<&'a Canvas>,
 }

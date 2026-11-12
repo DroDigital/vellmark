@@ -66,6 +66,7 @@ pub struct World {
     letters_step: u64,
     heat: Arc<Vec<(u64, f32)>>,
     ground: Option<Arc<dyn crate::Ground>>,
+    weather: crate::weather::WeatherState,
 }
 
 impl World {
@@ -86,6 +87,7 @@ impl World {
             letters_step: 0,
             heat: Arc::default(),
             ground: None,
+            weather: Default::default(),
         }
     }
 
@@ -150,6 +152,16 @@ impl World {
 
     /// Gives the world ground to walk on. Without it the players walk on the level of
     /// wherever they started, as in the yard.
+    /// Asks for rain, 0 to 1. It comes on and eases over some seconds.
+    pub fn set_rain(&mut self, rain: f32) {
+        self.weather.rain_wanted = rain.clamp(0.0, 1.0);
+    }
+
+    /// The weather of this step.
+    pub fn weather(&self) -> crate::Weather {
+        self.weather.now
+    }
+
     pub fn set_ground(&mut self, ground: Arc<dyn crate::Ground>) {
         self.ground = Some(ground);
         for p in &mut self.players {
@@ -226,6 +238,7 @@ impl World {
             self.debris.step(STEP_SECONDS);
             self.refresh_letters();
         }
+        self.weather.step(self.step as f64 * STEP_SECONDS as f64);
         self.time_of_day =
             (self.time_of_day + self.config.hours_per_second * STEP_SECONDS).rem_euclid(24.0);
         self.step += 1;
@@ -257,6 +270,7 @@ impl World {
             letters_step: self.letters_step,
             broken: self.broken.clone(),
             heat: self.heat.clone(),
+            weather: self.weather.now,
         })
     }
 
@@ -267,6 +281,9 @@ impl World {
         h.u64(self.step);
         h.u64(self.rng);
         h.f32(self.time_of_day);
+        h.f32(self.weather.now.rain);
+        h.f32(self.weather.now.wetness);
+        h.f32(self.weather.rain_wanted);
         h.u32(self.next_player);
         h.u32(self.players.len() as u32);
         for p in &self.players {

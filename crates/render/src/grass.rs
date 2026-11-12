@@ -240,14 +240,9 @@ impl GrassField {
     }
 
     /// This frame's wind and pushers.
-    pub fn uniform(&self, seconds: f32, pushers: &[Vec3]) -> GrassUniform {
-        let t = seconds;
-        // A wind that wanders: until the weather drives it (S02-T10), it drifts slowly in
-        // direction and strength on its own.
-        let angle = 0.7 + 0.35 * (t / 47.0).sin();
-        let strength = 0.45 + 0.2 * (t / 23.0).sin();
+    pub fn uniform(&self, _seconds: f32, pushers: &[Vec3], weather: &vellmark_sim::Weather) -> GrassUniform {
         let mut out = GrassUniform {
-            wind: [angle.cos(), angle.sin(), strength, 3.5],
+            wind: [weather.wind[0], weather.wind[1], weather.wind_strength, 3.5],
             shape: [self.tuning.near, self.tuning.density, PATCH, REACH],
             pushers: [[0.0; 4]; MAX_PUSHERS],
             counts: [0, self.tuning.blades(), 0, 0],

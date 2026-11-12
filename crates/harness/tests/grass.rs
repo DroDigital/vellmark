@@ -21,6 +21,7 @@ fn drawn(offscreen: &mut Offscreen, eye: (f32, f32, f32), yaw: f32, pitch: f32) 
         letters_step: 0,
         broken: &[],
         heat: &[],
+        weather: Default::default(),
         ui: None,
     };
     offscreen.frame(&frame);

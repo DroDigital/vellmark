@@ -27,6 +27,15 @@ pub struct ViewUniform {
     pub effects: [f32; 4],
     pub moon_dir: [f32; 4],
     pub sky: [f32; 4],
+    /// x: rain, 0 to 1. y: how wet the world is. z: the wind's strength. w: how far the
+    /// wind's sentence has come, 0 to 1, or less than 0 for none.
+    pub weather: [f32; 4],
+    /// xy: the wind's direction over the ground. zw: where the wind's sentence starts.
+    pub wind: [f32; 4],
+    /// xy: the direction the sentence runs. z: its letters' height. w: which sentence.
+    pub sentence: [f32; 4],
+    /// The finest terrain tiles around the eye: corner x and z, layer, and 1 if present.
+    pub ground_tiles: [[f32; 4]; 4],
 }
 
 /// The most views drawn in one frame. Two is all the full game will ever ask for; four
@@ -47,7 +56,7 @@ pub struct Atmosphere {
     pub moon_dir: Vec3,
     /// How much of the moon's face is lit, 0 to 1.
     pub moon_lit: f32,
-    /// How much of the sky is cloud, 0 to 1. The weather (S02-T10) will drive this.
+    /// How much of the sky is cloud, 0 to 1, more as it rains.
     pub cloud_cover: f32,
     /// The mist: density per metre at its floor, the floor's height, and its falloff.
     pub fog: [f32; 3],
@@ -60,6 +69,25 @@ pub struct Atmosphere {
 }
 
 impl Atmosphere {
+    /// The same hour under rain, 0 to 1: the sky closes over, the sun is lost behind it,
+    /// the sky's own light greys and dims, and the air thickens.
+    pub fn with_rain(mut self, rain: f32) -> Self {
+        let r = rain.clamp(0.0, 1.0);
+        if r <= 0.0 {
+            return self;
+        }
+        self.cloud_cover = self.cloud_cover.max(0.35 + 0.6 * r);
+        self.light_colour *= 1.0 - 0.85 * r;
+        let grey = |c: Vec3| {
+            let l = c.dot(Vec3::new(0.2126, 0.7152, 0.0722));
+            c.lerp(Vec3::splat(l) * Vec3::new(0.95, 1.0, 1.05), 0.8 * r) * (1.0 - 0.35 * r)
+        };
+        self.sky_zenith = grey(self.sky_zenith);
+        self.sky_horizon = grey(self.sky_horizon);
+        self.fog[0] *= 1.0 + 3.0 * r;
+        self
+    }
+
     pub fn at(hour: f32) -> Self {
         let sun_dir = sun_direction(hour);
         // The moon keeps about ten hours behind the sun: a waxing gibbous moon that is
@@ -199,6 +227,10 @@ pub fn view_uniform(
         effects: [dive, lamps, tuning.look as f32, 0.0],
         moon_dir: atmosphere.moon_dir.extend(atmosphere.moon_lit).to_array(),
         sky: [atmosphere.cloud_cover, atmosphere.fog[0], atmosphere.fog[1], atmosphere.fog[2]],
+        weather: [0.0, 0.0, 0.0, -1.0],
+        wind: [1.0, 0.0, 0.0, 0.0],
+        sentence: [1.0, 0.0, 1.0, 0.0],
+        ground_tiles: [[0.0; 4]; 4],
     }
 }
 

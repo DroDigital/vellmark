@@ -55,6 +55,9 @@ pub struct TerrainGpu {
     pub water_view: wgpu::TextureView,
     pub water_tiles: wgpu::Buffer,
     pub water_tile_count: u32,
+    /// The finest tiles by their place on the grid, and the layer each is in.
+    finest: HashMap<(i32, i32), u32>,
+    finest_side: f32,
 }
 
 /// The most tiles that hold water, four to an entry of the list.
@@ -120,6 +123,22 @@ pub fn water_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
 }
 
 impl TerrainGpu {
+    /// The four finest tiles nearest a place, as the rain reads them: each tile's least
+    /// corner, then its layer, then 1, or all 0 where there is none.
+    pub fn tiles_around(&self, x: f32, z: f32) -> [[f32; 4]; 4] {
+        let side = self.finest_side;
+        let (fx, fz) = (x / side - 0.5, z / side - 0.5);
+        let (x0, z0) = (fx.floor() as i32, fz.floor() as i32);
+        let mut out = [[0.0; 4]; 4];
+        for (k, (dx, dz)) in [(0, 0), (1, 0), (0, 1), (1, 1)].into_iter().enumerate() {
+            let c = (x0 + dx, z0 + dz);
+            if let Some(layer) = self.finest.get(&c) {
+                out[k] = [c.0 as f32 * side, c.1 as f32 * side, *layer as f32, 1.0];
+            }
+        }
+        out
+    }
+
     /// The water pass's bind group, for the scene `behind` the water and its `depth`.
     pub fn water_group(&self, device: &wgpu::Device, layout: &wgpu::BindGroupLayout, behind: &wgpu::TextureView, depth: &wgpu::TextureView, sampler: &wgpu::Sampler) -> wgpu::BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -273,7 +292,7 @@ impl TerrainGpu {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        gpu.queue.write_buffer(&grass_uniform, 0, bytemuck::bytes_of(&grass.uniform(0.0, &[])));
+        gpu.queue.write_buffer(&grass_uniform, 0, bytemuck::bytes_of(&grass.uniform(0.0, &[], &Default::default())));
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain"),
             layout,
@@ -299,6 +318,16 @@ impl TerrainGpu {
             water_view,
             water_tiles,
             water_tile_count: wet.len() as u32,
+            finest: tiles
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.coord.level == 0)
+                .map(|(i, t)| {
+                    let (x0, z0) = t.coord.origin();
+                    (((x0 / t.coord.side()).round() as i32, (z0 / t.coord.side()).round() as i32), i as u32)
+                })
+                .collect(),
+            finest_side: tiles.iter().find(|t| t.coord.level == 0).map_or(64.0, |t| t.coord.side()),
         })
     }
 }

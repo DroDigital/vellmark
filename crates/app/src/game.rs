@@ -411,6 +411,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 letters_step: current.letters_step,
                 broken: &current.broken,
                 heat: &current.heat,
+                weather: current.weather,
                 ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());

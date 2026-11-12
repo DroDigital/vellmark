@@ -56,6 +56,8 @@ pub struct Snapshot {
     /// How hot or cold things are, by permanent ID, -1 to 1. Things not listed are as
     /// the weather leaves them.
     pub heat: std::sync::Arc<Vec<(u64, f32)>>,
+    /// The weather of this step.
+    pub weather: crate::Weather,
 }
 
 impl Snapshot {

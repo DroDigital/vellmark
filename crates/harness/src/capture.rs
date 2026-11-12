@@ -96,6 +96,15 @@ pub struct Shot {
     /// it gets.
     #[serde(default)]
     pub heat: Option<(String, f32)>,
+    /// Rain, 0 to 1, with the ground as wet as long rain leaves it. None is dry.
+    #[serde(default)]
+    pub rain: Option<f32>,
+    /// How wet the world is, if not as the rain leaves it: after rain, for instance.
+    #[serde(default)]
+    pub wetness: Option<f32>,
+    /// A gust that writes one of the wind's sentences, by number, at its fullest.
+    #[serde(default)]
+    pub wind_sentence: Option<u32>,
     /// The vertical field of view in degrees, if not the usual.
     #[serde(default)]
     pub fov: Option<f32>,
@@ -414,6 +423,14 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 letters_step,
                 broken,
                 heat: &heat,
+                weather: {
+                    let rain = shot.rain.unwrap_or(0.0);
+                    vellmark_sim::Weather {
+                        rain,
+                        wetness: shot.wetness.unwrap_or(if rain > 0.0 { 1.0 } else { 0.0 }),
+                        ..Default::default()
+                    }
+                },
                 ui: None,
             };
             frames.push(offscreen.frame(&input));
