@@ -21,7 +21,10 @@
 **Done:** S02-T07, grass: patches in the one instance buffer, culled per view, four levels without popping; blades bent by the wind and by whoever walks through; each blade a line of its lexicon's words, and at arm's length nothing but them. Evidence: `docs/evidence/S02/grass.jpg`, `captures/s02_grass.ron`. Test: `crates/harness/tests/grass.rs`.
 **Not yet:** grass casts no shadows (S02-T11's rota); the wind wanders on its own until the weather drives it (S02-T10); density and cost to be judged on the Mac.
 **Done:** S02-T09, water: refraction through peaty water by depth, screen-space reflection with the sky behind it, sun glints, flow down the surface, foam at the edge and in fast water written as `.` and `,`, and the water's own letters on its ripple crests. Evidence: `docs/evidence/S02/water.jpg`, `captures/s02_water.ron`.
-**Current task:** S02-T10, rain and the wind that reads. Plan: weather (rain, wetness, wind) kept by the simulation and sent in its snapshot; overcast skies and wet, darkened surfaces with puddles in the hollows; rain streaks around each view, splashes that are `'` close by, runoff down walls as `|`, and rings on puddles and water that are `~`; and now and then a gust that bends the grass into one of six Ledger sentences from the canon, kept in `assets/text/en/wind.ron`.
+**Done:** S02-T10a, rain: weather kept by the rules (rain, wetness, wind) and sent in the snapshot; overcast skies; wet, darkened, glossy surfaces; puddles on roads, earth, and banks that ring in rain and are written as water; streaks around each view; splashes that are `'` close by; runoff down walls as `|`; rings on the river. Evidence: `docs/evidence/S02/rain.jpg`, `captures/s02_rain.ron`, `captures/s02_rain_wall.ron`. Console: `rain 0..1`.
+**In progress:** S02-T10b, the wind that reads. Built: six canon sentences in `assets/text/en/wind.ron`; a gust at most once in each 150 s, in a strong enough wind, laid where the gaze meets the grass; the blades in its strokes bow and shine, and the ground's grass with them. Not yet: it is not legible in a still capture on the software renderer (`captures/s02_wind.ron`). It must be judged in motion on the Mac (console `wind 0`..`wind 5`), and tuned there: strength, size, and where it is laid.
+**Next:** S02-T10b with the owner's eye; meanwhile S02-T11, caching the far shadow cascades.
+**Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
 
@@ -53,6 +56,8 @@ None.
 None.
 
 ## Known issues
+
+- The grass `letters` capture passes the glyph-off comparison with little room (max 0.008, limit 0.020). Where a near blade dissolves into letters against bright sky, the bloom carries the change a few pixels beyond the edge filter's three, and a small change in the blades' places once took it to 0.024. S02-T14 runs the comparison in every weather and must look at this; widening the band the comparison exempts would be the owner's decision.
 
 - The yard is built from boxes with generated materials. From afar it reads as a clean, lit place, not yet as a real one. Real textures (S01-T02b) and richer shapes are what is missing, and both are content, not renderer.
 - Full stops and commas in authored text are faint at reading distance: a small glyph cannot reach the weight its cell asks for.

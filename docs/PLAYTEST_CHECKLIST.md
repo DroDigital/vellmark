@@ -67,3 +67,6 @@ Added as each system is built.
 | Grass that moves well | S02-T07 | In the valley, walk through the pasture and the barley: the blades part around you and spring back, and the wind travels across the field in gusts. With the free camera (F2, Left Ctrl to go down), bring your eye to a blade: it is a line of words, `grass C6H12O6` |
 | Water inside 0.9 ms | S02-T09 | Stand on the river's north bank (about 0, -100) facing south and read the `water` line of the report |
 | Water that looks like water | S02-T09 | The river and the mill pond at noon and at dusk: does it read as a northern river, dark and mirroring? Kneel at the edge (F2, Left Ctrl): the foam is `.` and `,`, and letters gather on the ripples |
+| Rain that feels like rain | S02-T10a | In the valley, console `rain 1`. Watch the sky close, the road darken and puddle over a minute, splashes at your feet (`'` when you look close), and the river ringed. `rain 0`, and it dries over eight minutes |
+| The wind that reads | S02-T10b | Stand at the foot of Tithe Hill looking up it, or look out over open pasture, and type `wind 0` to `wind 5`. Can you read the sentence as the gust passes? Say what would make it readable: bigger, nearer, stronger, slower |
+| Rain inside its budget | S02-T10a | With `rain 1`, read the `rain` and `water` lines of the report |

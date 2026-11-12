@@ -100,6 +100,9 @@ pub struct ScenePass {
     cascade_bind_group: wgpu::BindGroup,
     post_buffer: wgpu::Buffer,
     grade: vellmark_content::Grade,
+    /// The sentences the wind writes, and the gust now writing one, if any.
+    wind_sentences: Vec<String>,
+    gust: Option<Gust>,
     post_sampler: wgpu::Sampler,
     shadow_sampler: wgpu::Sampler,
     shadow_layers: Vec<wgpu::TextureView>,
@@ -115,6 +118,57 @@ pub struct ScenePass {
     letters_sent: Option<(u64, usize)>,
     /// The grass patches last sent, after how many placed things.
     grass_sent: Option<(usize, Vec<crate::grass::Chosen>)>,
+}
+
+/// A gust that writes one of the wind's sentences across the grass: which, where its
+/// line starts, the way it runs, and its letters' width and depth, in metres.
+#[derive(Clone, Copy, Debug)]
+struct Gust {
+    window: u64,
+    sentence: u32,
+    origin: glam::Vec2,
+    along: glam::Vec2,
+    width: f32,
+    depth: f32,
+    start: f32,
+}
+
+/// Seconds a gust takes to write its sentence, hold it, and lift it away.
+const GUST_SECONDS: f32 = 3.2;
+/// Each stretch of this many seconds has at most one gust, and most have none.
+const GUST_WINDOW: f32 = 150.0;
+/// A sentence is written where the eye's gaze meets the grass, no nearer than this, and
+/// sized to be read there: its letters subtend about the same angle at any distance, and
+/// run long away from the eye as much as the eye looks across rather than down on them.
+const GUST_NEAREST: f32 = 14.0;
+
+/// A sentence laid across the grass where a view is looking, to run left to right as the
+/// view sees it, its letters' tops away from the eye. None if the view looks at no grass.
+fn gust_ahead(view: &crate::View, grass: &crate::grass::GrassField, sentence: u32, chars: usize, window: u64, start: f32) -> Option<Gust> {
+    let eye = view.camera.eye;
+    let forward = view.camera.rotation * glam::Vec3::NEG_Z;
+    let f = glam::Vec2::new(forward.x, forward.z).try_normalize()?;
+    let level = glam::Vec3::new(f.x, 0.0, f.y);
+    // Where the gaze meets the grass, a little below the middle of the view, where the
+    // eye rests on the ground ahead; if it meets none, the grass straight ahead.
+    let gaze = (view.camera.rotation * glam::Vec3::new(0.0, -(view.camera.fov_y * 0.18).tan(), -1.0)).normalize();
+    let hit = grass
+        .ground_hit(eye, gaze)
+        .or_else(|| grass.ground_hit(eye + level * GUST_NEAREST + glam::Vec3::Y * 50.0, -glam::Vec3::Y))?;
+    let mut centre = hit;
+    let mut distance = glam::Vec2::new(centre.x - eye.x, centre.z - eye.z).length();
+    if distance < GUST_NEAREST {
+        centre = grass.ground_hit(eye + level * GUST_NEAREST + glam::Vec3::Y * 50.0, -glam::Vec3::Y)?;
+        distance = GUST_NEAREST;
+    }
+    let along = glam::Vec2::new(-f.y, f.x);
+    let half = distance * (view.camera.fov_y * 0.5).tan() * 16.0 / 9.0;
+    let width = (distance * 0.09).min(half * 2.0 * 0.85 / chars.max(1) as f32).max(0.8);
+    let down = ((eye.y - centre.y) / distance.max(1.0)).max(0.07);
+    let depth = (width * 0.8 / down).min(40.0);
+    let length = chars as f32 * width;
+    let origin = glam::Vec2::new(centre.x, centre.z) - along * length * 0.5 - f * depth * 0.5;
+    Some(Gust { window, sentence, origin, along, width, depth, start })
 }
 
 fn aligned(size: u64, align: u64) -> u64 {
@@ -142,6 +196,7 @@ impl ScenePass {
         surface: &SurfaceResources,
         target_format: wgpu::TextureFormat,
         grade: vellmark_content::Grade,
+        wind_sentences: Vec<String>,
     ) -> Result<Self, String> {
         let device = &gpu.device;
         let align = device.limits().min_uniform_buffer_offset_alignment as u64;
@@ -467,6 +522,8 @@ impl ScenePass {
             cascade_bind_group,
             post_buffer,
             grade,
+            wind_sentences,
+            gust: None,
             post_sampler,
             shadow_sampler,
             shadow_layers,
@@ -1214,7 +1271,41 @@ impl ScenePass {
                 }
                 start += count;
             }
-            gpu.queue.write_buffer(&t.grass_uniform, 0, bytemuck::bytes_of(&t.grass.uniform(frame.seconds, &eyes, &frame.weather)));
+            gpu.queue.write_buffer(&t.grass_uniform, 0, bytemuck::bytes_of(&t.grass.uniform(frame.seconds, &eyes, &frame.weather, &self.wind_sentences)));
+        }
+        // The wind that reads. Now and then, in a strong enough wind over grass, a gust
+        // writes one of its sentences across the field ahead of the first view. Each
+        // stretch of time has at most one, at a time fixed by the clock, so a capture or
+        // a replay sees the same gusts. A tool may ask for one, written whole.
+        let mut reading: Option<(Gust, f32)> = None;
+        if let (Some(t), Some(first), false) = (terrain, views.first(), self.wind_sentences.is_empty()) {
+            let count = self.wind_sentences.len() as u32;
+            if let Some((n, progress)) = frame.wind_gust {
+                // Asked for by a tool: placed when it begins, then held where it is.
+                let n = n % count;
+                let stale = self.gust.is_none_or(|g| g.window != u64::MAX || g.sentence != n || progress < g.start);
+                if stale {
+                    self.gust = gust_ahead(first, &t.grass, n, self.wind_sentences[n as usize].len(), u64::MAX, progress);
+                }
+                if let Some(g) = self.gust.as_mut() {
+                    g.start = progress;
+                    reading = Some((*g, progress));
+                }
+            } else {
+                let window = (frame.seconds / GUST_WINDOW).floor().max(0.0) as u64;
+                let h = (window.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ 0x51ed_270b).wrapping_mul(0xff51_afd7_ed55_8ccd);
+                let start = window as f32 * GUST_WINDOW + 20.0 + ((h >> 20) % 100) as f32;
+                let windy = frame.weather.wind_strength > 0.3;
+                if h % 10 < 6 && windy && frame.seconds >= start && frame.seconds < start + GUST_SECONDS {
+                    if self.gust.is_none_or(|g| g.window != window) {
+                        let n = ((h >> 40) % count as u64) as u32;
+                        self.gust = gust_ahead(first, &t.grass, n, self.wind_sentences[n as usize].len(), window, start);
+                    }
+                    if let Some(g) = self.gust.filter(|g| g.window == window) {
+                        reading = Some((g, (frame.seconds - g.start) / GUST_SECONDS));
+                    }
+                }
+            }
         }
         for (i, view) in views.iter().enumerate() {
             let (_, _, w, h) = view.viewport.pixels(target_size);
@@ -1250,8 +1341,12 @@ impl ScenePass {
             );
             let mut uniform = uniform;
             let w = &frame.weather;
-            uniform.weather = [w.rain, w.wetness, w.wind_strength, -1.0];
+            uniform.weather = [w.rain, w.wetness, w.wind_strength, 0.0];
             uniform.wind = [w.wind[0], w.wind[1], 0.0, 0.0];
+            if let Some((g, progress)) = reading {
+                uniform.sentence = [g.origin.x, g.origin.y, g.along.x, g.along.y];
+                uniform.gust = [progress, g.sentence as f32, g.width, g.depth];
+            }
             if let Some(t) = terrain {
                 uniform.ground_tiles = t.tiles_around(view.camera.eye.x, view.camera.eye.z);
             }

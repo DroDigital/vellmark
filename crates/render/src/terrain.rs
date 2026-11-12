@@ -292,7 +292,7 @@ impl TerrainGpu {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        gpu.queue.write_buffer(&grass_uniform, 0, bytemuck::bytes_of(&grass.uniform(0.0, &[], &Default::default())));
+        gpu.queue.write_buffer(&grass_uniform, 0, bytemuck::bytes_of(&grass.uniform(0.0, &[], &Default::default(), &[])));
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("terrain"),
             layout,

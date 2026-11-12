@@ -24,6 +24,10 @@ pub enum Command {
     Break(String, f32),
     /// Heat or cool a thing, by its name: -1 frozen to 1 as hot as it gets.
     Heat(String, f32),
+    /// Ask for rain, 0 to 1.
+    Rain(f32),
+    /// A gust that writes one of the wind's sentences, by number.
+    Wind(u32),
     Quit,
 }
 
@@ -170,6 +174,14 @@ impl Overlay {
             (Some("heat"), Some(name)) => match words.next().map(str::parse::<f32>) {
                 Some(Ok(h)) if (-1.0..=1.0).contains(&h) => self.commands.push(Command::Heat(name.to_string(), h)),
                 _ => self.say("heat takes a name, then a number from -1 to 1"),
+            },
+            (Some("rain"), Some(v)) => match v.parse::<f32>() {
+                Ok(r) if (0.0..=1.0).contains(&r) => self.commands.push(Command::Rain(r)),
+                _ => self.say("rain takes a number from 0 (dry) to 1 (a downpour)"),
+            },
+            (Some("wind"), Some(v)) => match v.parse::<u32>() {
+                Ok(n) => self.commands.push(Command::Wind(n)),
+                _ => self.say("wind takes the number of a sentence, from 0"),
             },
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),

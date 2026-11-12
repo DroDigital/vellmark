@@ -2,6 +2,40 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-12: rain and the wind that reads (S02-T10)
+
+**Weather is the rules'.** `sim::weather` keeps the rain, how wet the world is, and the
+wind, steps them with the world's clock, and sends them in the snapshot, so every view
+sees one sky. Rain comes and eases at 8% a second; a downpour soaks the ground in about
+a minute, and it dries in eight. The wind wanders by the clock and blows harder in rain.
+
+**The sky in rain.** The hour's atmosphere is closed over: cloud cover rises, the sun is
+lost behind it (85% at full rain), the sky's light greys and dims, and the mist thickens.
+
+**Wet surfaces.** What sees the sky is darkened and glossed by the wetness, and nothing
+under an overhang is. Puddles lie on flat ground in the low places of a broad noise, on
+roads, bare earth, and banks; pasture and fields drink the rain and seldom hold any. A
+puddle is written as water (`~ - =`, `water`, `H2O`) and rings in rain, as the river does.
+
+**Rain.** Streaks in a square of 160 by 160 columns around each view, fixed to the
+ground so they do not swim as the eye moves, each column one drop falling at 7.5 m/s,
+slanted by the wind, never thinner than a pixel and fainter as it widens. Where it lands
+on the terrain, a splash for a sixth of a second: up close a `'`, further off a fleck.
+Down walls, rivulets in broken lengths of `|`. Rain is drawn after the water, blended,
+testing depth itself. It falls everywhere for now: shelter comes with the buildings in
+S04, as a map of what is overhead.
+
+**The wind's sentences.** Six, in `assets/text/en/wind.ron`, taken word for word from the
+canon's Ledger voice (the bible and the prologue) until the owner writes the Vale's own.
+
+**The wind that reads.** At most one gust in each 150 seconds, at a time fixed by the
+clock, while the wind is strong enough. It is laid where the first view's gaze meets
+the grass, no nearer than 14 m, its letters as wide as the view allows and long away
+from the eye as the eye looks across rather than down on them. Over 3.2 seconds it
+writes the line from start to end, holds it, and lifts it away in the same order.
+Inside its strokes the blades bow downwind and shine, and so does the ground's grass
+beneath them. The mechanism is in place; making it legible is S02-T10b, with the owner.
+
 ## 2026-11-12: water (S02-T09)
 
 **A pass of its own, after the opaque pass.** Water is drawn into the resolved scene,

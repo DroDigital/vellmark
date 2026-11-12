@@ -27,13 +27,15 @@ pub struct ViewUniform {
     pub effects: [f32; 4],
     pub moon_dir: [f32; 4],
     pub sky: [f32; 4],
-    /// x: rain, 0 to 1. y: how wet the world is. z: the wind's strength. w: how far the
-    /// wind's sentence has come, 0 to 1, or less than 0 for none.
+    /// x: rain, 0 to 1. y: how wet the world is. z: the wind's strength.
     pub weather: [f32; 4],
-    /// xy: the wind's direction over the ground. zw: where the wind's sentence starts.
+    /// xy: the wind's direction over the ground.
     pub wind: [f32; 4],
-    /// xy: the direction the sentence runs. z: its letters' height. w: which sentence.
+    /// The wind's sentence on the ground: xy where its line starts, zw the way it runs.
     pub sentence: [f32; 4],
+    /// x: how far the gust has come, 0 to 1, or less than 0 for none. y: which sentence.
+    /// z: the width of a letter, in metres. w: its depth, away from the eye.
+    pub gust: [f32; 4],
     /// The finest terrain tiles around the eye: corner x and z, layer, and 1 if present.
     pub ground_tiles: [[f32; 4]; 4],
 }
@@ -227,9 +229,10 @@ pub fn view_uniform(
         effects: [dive, lamps, tuning.look as f32, 0.0],
         moon_dir: atmosphere.moon_dir.extend(atmosphere.moon_lit).to_array(),
         sky: [atmosphere.cloud_cover, atmosphere.fog[0], atmosphere.fog[1], atmosphere.fog[2]],
-        weather: [0.0, 0.0, 0.0, -1.0],
+        weather: [0.0; 4],
         wind: [1.0, 0.0, 0.0, 0.0],
-        sentence: [1.0, 0.0, 1.0, 0.0],
+        sentence: [0.0, 0.0, 1.0, 0.0],
+        gust: [-1.0, 0.0, 1.0, 1.0],
         ground_tiles: [[0.0; 4]; 4],
     }
 }

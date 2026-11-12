@@ -62,6 +62,9 @@ pub struct FrameInput<'a> {
     pub heat: &'a [(u64, f32)],
     /// The rain, how wet the world is, and the wind.
     pub weather: vellmark_sim::Weather,
+    /// For tools: a gust writing a wind sentence, by number, and how far it has come, 0
+    /// to 1; at 0.4 the sentence is whole.
+    pub wind_gust: Option<(u32, f32)>,
     /// The interface, drawn over the finished frame.
     pub ui: Option<&'a Canvas>,
 }
@@ -72,6 +75,8 @@ pub struct RenderAssets<'a> {
     pub materials: &'a MaterialSet,
     /// The place's colour grade through the day. Neutral if the pack has none.
     pub grade: &'a vellmark_content::Grade,
+    /// The sentences the wind writes in the grass, from the string table.
+    pub wind: &'a [String],
 }
 
 /// The renderer's assets as read from a pack.
@@ -79,6 +84,7 @@ pub struct LoadedAssets {
     pub glyphs: GlyphAtlas,
     pub materials: MaterialSet,
     pub grade: vellmark_content::Grade,
+    pub wind: Vec<String>,
 }
 
 impl LoadedAssets {
@@ -99,12 +105,25 @@ impl LoadedAssets {
                 Some(bytes) => vellmark_content::Grade::from_bytes(bytes)?,
                 None => vellmark_content::Grade::default(),
             },
+            wind: wind_sentences(pack),
         })
     }
 
     pub fn borrow(&self) -> RenderAssets<'_> {
-        RenderAssets { glyphs: &self.glyphs, materials: &self.materials, grade: &self.grade }
+        RenderAssets { glyphs: &self.glyphs, materials: &self.materials, grade: &self.grade, wind: &self.wind }
     }
+}
+
+/// The Vale's wind sentences, `wind.vale.0` on, from the base language's string table.
+/// The Showcase is in one language; the full game reads the player's.
+fn wind_sentences(pack: &vellmark_content::Pack) -> Vec<String> {
+    use vellmark_content::{AssetId, AssetKind, StringId, StringTable};
+    let Some(table) = pack.get(AssetKind::StringTable, AssetId::from_key("strings.en")).and_then(|b| StringTable::from_bytes(b).ok()) else {
+        return Vec::new();
+    };
+    (0..crate::grass::MAX_SENTENCES)
+        .map_while(|i| table.get(StringId::from_key(&format!("wind.vale.{i}"))).map(str::to_owned))
+        .collect()
 }
 
 /// Reads a scene and its meshes from a pack. `key` is the scene's authored key, such as
@@ -172,7 +191,7 @@ impl Renderer {
         let atlas = AtlasGpu::new(gpu, assets.glyphs);
         let surface = SurfaceResources::new(gpu, assets.materials, assets.glyphs, &atlas)?;
         Ok(Self {
-            world: ScenePass::new(gpu, registry, shaders, &surface, target_format, assets.grade.clone())?,
+            world: ScenePass::new(gpu, registry, shaders, &surface, target_format, assets.grade.clone(), assets.wind.to_vec())?,
             ui: UiPass::new(gpu, registry, shaders, &atlas, target_format)?,
             surface,
             atlas,

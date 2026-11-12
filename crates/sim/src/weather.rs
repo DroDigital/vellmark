@@ -19,10 +19,15 @@ pub struct Weather {
 }
 
 impl Default for Weather {
+    /// Dry, with the wind as `WeatherState::step` has it at the clock's start.
     fn default() -> Self {
-        Self { rain: 0.0, wetness: 0.0, wind: [0.76, 0.65], wind_strength: 0.45 }
+        let angle = WIND_ANGLE;
+        Self { rain: 0.0, wetness: 0.0, wind: [angle.cos(), angle.sin()], wind_strength: 0.45 }
     }
 }
+
+/// The wind's direction at the clock's start, in radians from +x towards +z.
+const WIND_ANGLE: f32 = 0.7;
 
 /// How fast the rain comes on or eases, per second.
 const RAIN_RATE: f32 = 0.08;
@@ -52,7 +57,7 @@ impl WeatherState {
             w.wetness = (w.wetness - STEP_SECONDS / DRY_SECONDS).max(0.0);
         }
         let t = seconds as f32;
-        let angle = 0.7 + 0.35 * (t / 47.0).sin() + 0.1 * (t / 13.0).sin();
+        let angle = WIND_ANGLE + 0.35 * (t / 47.0).sin() + 0.1 * (t / 13.0).sin();
         w.wind = [angle.cos(), angle.sin()];
         w.wind_strength = (0.45 + 0.2 * (t / 23.0).sin() + 0.25 * w.rain).clamp(0.0, 1.0);
     }

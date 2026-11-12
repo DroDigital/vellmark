@@ -760,7 +760,10 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     let tangent_normal = map_normal * (1.0 - puddle) + glyphs.relief;
     let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
     var normal = normalize(tangent * tangent_normal.x + bitangent * tangent_normal.y + n * z);
-    var surface = wetted(Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a), wet);
+    // Where the wind writes, the grass the ground stands for bows and shines with the
+    // blades above it, so the strokes read whole where the blades thin out.
+    let bowed = sentence_press(in.world.xz) * clamp(weights[0] + weights[1], 0.0, 1.0);
+    var surface = wetted(Surface(colour_texel.rgb * glyphs.tone * (1.0 + 0.9 * bowed), normal, normal_texel.z, colour_texel.a), wet);
     if puddle > 0.0 {
         // Still water over the ground: dark, smooth, and ringed while it rains.
         let rings = rain_rings(in.world.xz, view.weather.x);
@@ -802,9 +805,47 @@ struct GrassUniform {
     pushers: array<vec4<f32>, 8>,
     // x: how many pushers. y: the blades a patch holds at full density.
     counts: vec4<u32>,
+    // The wind's sentences, 32 characters to each, four to a word.
+    sentences: array<vec4<u32>, 16>,
+    // Each sentence's length in characters.
+    lengths: array<vec4<u32>, 2>,
 }
 
 @group(3) @binding(4) var<uniform> grass: GrassUniform;
+
+fn sentence_char(sentence: u32, k: u32) -> u32 {
+    let c = sentence * 32u + k;
+    return (grass.sentences[c / 16u][(c / 4u) % 4u] >> ((c % 4u) * 8u)) & 0xffu;
+}
+
+// How hard the wind's sentence presses the grass at a place, 0 to 1: inside a letter's
+// strokes while the gust is writing it. The gust writes the line from its start to its
+// end, holds it a moment, and lifts it away in the same order.
+fn sentence_press(at: vec2<f32>) -> f32 {
+    let progress = view.gust.x;
+    if progress < 0.0 {
+        return 0.0;
+    }
+    let along = view.sentence.zw;
+    let away = vec2<f32>(along.y, -along.x);
+    let rel = at - view.sentence.xy;
+    let u = dot(rel, along) / view.gust.z;
+    let v = dot(rel, away) / view.gust.w;
+    let index = u32(view.gust.y);
+    let count = grass.lengths[index / 4u][index % 4u];
+    if u < 0.0 || u >= f32(count) || v < 0.0 || v >= 1.0 {
+        return 0.0;
+    }
+    let character = sentence_char(index, u32(u));
+    if character <= 32u {
+        return 0.0;
+    }
+    // The letter's strokes, softened: a gust is not a pen.
+    let d = textureSampleLevel(glyph_atlas, glyph_sampler, vec2<f32>(fract(u), 1.0 - v), character - 32u, 2.0).a;
+    let stroke = smoothstep(0.42, 0.56, d);
+    let x = progress * 3.0 - 0.2 - u / f32(count);
+    return stroke * smoothstep(-0.05, 0.05, x) * (1.0 - smoothstep(1.1, 1.6, x));
+}
 
 struct GrassVaryings {
     @builtin(position) @invariant position: vec4<f32>,
@@ -818,6 +859,8 @@ struct GrassVaryings {
     @location(5) @interpolate(flat) material: u32,
     // x: the share of the sky the root sees. y: the side of the blade's character cells.
     @location(6) @interpolate(flat) blade: vec2<f32>,
+    // How hard the wind's sentence presses this blade.
+    @location(7) @interpolate(flat) pressed: f32,
 }
 
 @vertex
@@ -831,6 +874,7 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     out.seed = 0u;
     out.material = 0u;
     out.blade = vec2<f32>(0.0);
+    out.pressed = 0.0;
 
     let object = instances[instance_of(index)];
     let origin = object.model[3].xyz;
@@ -931,6 +975,10 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
             lean += away / max(d, 1.0e-3) * push * (2.0 - push);
         }
     }
+    // The wind that reads: inside its letters the grass bows with the wind and turns
+    // its bright side up, as a gust shows on a field of grain.
+    let pressed = sentence_press(at);
+    lean += wind * pressed * 1.2;
     let amount = min(length(lean), 1.45);
     let towards = vec3<f32>(lean.x, 0.0, lean.y) / max(length(lean), 1.0e-5);
     let up = vec3<f32>(0.0, 1.0, 0.0);
@@ -962,6 +1010,7 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     out.seed = seed;
     out.material = terrain_material(select(0u, 1u, barley));
     out.blade = vec2<f32>(textureLoad(terrain_sky, nearest + 1, layer, 0).r, cell_side);
+    out.pressed = pressed;
     out.position = view.view_proj * vec4<f32>(out.world, 1.0);
     return out;
 }
@@ -1072,6 +1121,8 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
     var albedo = texel.rgb * (0.8 + 0.4 * unit(in.seed >> 9u));
     // Tips are drier and paler than the stem.
     albedo = mix(albedo, albedo * vec3<f32>(1.25, 1.18, 0.85), in.up * in.up * 0.6) * ao;
+    // Grass bowed by the wind shows its paler, shinier side.
+    albedo *= 1.0 + 1.0 * in.pressed;
     let surface = wetted(Surface(albedo * letters.tone, n, 0.6, 0.0), wet_at(in.blade.x, vec3<f32>(0.0, 1.0, 0.0)) * 0.8);
     let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0, 0u);
     var colour = light_surface(surface, as_surface, n, 0.0, in.blade.x);

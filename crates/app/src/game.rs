@@ -232,6 +232,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut glyph_layer = true;
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
     let mut world_hour_override: Option<f32> = None;
+    // A gust a tool asked for: which sentence, and when it began, in seconds since start.
+    #[allow(unused_mut)]
+    let mut forced_gust: Option<(u32, f32)> = None;
     let mut canvas = Canvas::new();
     let mut close_reading = 0.0f32;
     let mut lamps_lit = true;
@@ -306,6 +309,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                             None => log::line(&format!("nothing called `{name}` is left to break")),
                         }
                     }
+                    Command::Rain(r) => world.set_rain(r),
+                    Command::Wind(n) => forced_gust = Some((n, started.elapsed().as_secs_f32())),
                     Command::Quit => break 'frames,
                 }
             }
@@ -412,6 +417,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 broken: &current.broken,
                 heat: &current.heat,
                 weather: current.weather,
+                wind_gust: forced_gust.and_then(|(n, at)| {
+                    let progress = (started.elapsed().as_secs_f32() - at) / 3.2;
+                    (progress < 1.0).then_some((n, progress))
+                }),
                 ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());

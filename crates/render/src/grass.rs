@@ -30,6 +30,9 @@ pub const BLADE_VERTICES: u32 = 7;
 pub const BLADE_INDICES: u32 = 15;
 /// The most things that may push the grass aside at once.
 pub const MAX_PUSHERS: usize = 8;
+/// The most wind sentences, and the most characters in one.
+pub const MAX_SENTENCES: usize = 8;
+pub const SENTENCE_CHARS: usize = 32;
 
 /// How dense the grass is. The governor and the presets change these; the look holds.
 #[derive(Clone, Copy, Debug)]
@@ -104,6 +107,10 @@ pub struct GrassUniform {
     pub pushers: [[f32; 4]; MAX_PUSHERS],
     /// x: how many pushers. y: the blades at full density.
     pub counts: [u32; 4],
+    /// The wind's sentences, 32 characters to each, four to a word.
+    pub sentences: [[u32; 4]; MAX_SENTENCES * SENTENCE_CHARS / 16],
+    /// Each sentence's length in characters.
+    pub lengths: [[u32; 4]; MAX_SENTENCES / 4],
 }
 
 /// The grass of a terrain: which patches have any, and the shared blade indices.
@@ -203,6 +210,24 @@ impl GrassField {
         out
     }
 
+    /// Where a ray from `eye` along `dir` first meets grassy ground within reach, by the
+    /// patches' heights, or None.
+    pub fn ground_hit(&self, eye: Vec3, dir: Vec3) -> Option<Vec3> {
+        let mut t = 8.0;
+        while t < REACH - 6.0 {
+            let p = eye + dir * t;
+            let cell = ((p.x / PATCH).floor() as i32, (p.z / PATCH).floor() as i32);
+            if let Some(info) = self.patches.get(&cell) {
+                let ground = (info.low + info.high) * 0.5;
+                if p.y <= ground {
+                    return Some(Vec3::new(p.x, ground, p.z));
+                }
+            }
+            t += 1.0;
+        }
+        None
+    }
+
     /// The instances of the chosen patches, from instance `first` and batch
     /// `first_group` on, and how many fall in each level.
     pub fn instances(&self, chosen: &[Chosen], first: u32, first_group: u32) -> (Vec<InstanceGpu>, [u32; LEVELS]) {
@@ -240,8 +265,10 @@ impl GrassField {
     }
 
     /// This frame's wind and pushers.
-    pub fn uniform(&self, _seconds: f32, pushers: &[Vec3], weather: &vellmark_sim::Weather) -> GrassUniform {
+    pub fn uniform(&self, _seconds: f32, pushers: &[Vec3], weather: &vellmark_sim::Weather, sentences: &[String]) -> GrassUniform {
         let mut out = GrassUniform {
+            sentences: [[0; 4]; MAX_SENTENCES * SENTENCE_CHARS / 16],
+            lengths: [[0; 4]; MAX_SENTENCES / 4],
             wind: [weather.wind[0], weather.wind[1], weather.wind_strength, 3.5],
             shape: [self.tuning.near, self.tuning.density, PATCH, REACH],
             pushers: [[0.0; 4]; MAX_PUSHERS],
@@ -251,6 +278,14 @@ impl GrassField {
             *slot = [p.x, p.y, p.z, 0.55];
         }
         out.counts[0] = pushers.len().min(MAX_PUSHERS) as u32;
+        for (i, sentence) in sentences.iter().take(MAX_SENTENCES).enumerate() {
+            let bytes: Vec<u8> = sentence.bytes().filter(|b| (32..127).contains(b)).take(SENTENCE_CHARS).collect();
+            out.lengths[i / 4][i % 4] = bytes.len() as u32;
+            for (k, b) in bytes.iter().enumerate() {
+                let c = i * SENTENCE_CHARS + k;
+                out.sentences[c / 16][(c / 4) % 4] |= (*b as u32) << ((c % 4) * 8);
+            }
+        }
         out
     }
 }

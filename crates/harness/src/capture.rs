@@ -431,6 +431,7 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                         ..Default::default()
                     }
                 },
+                wind_gust: shot.wind_sentence.map(|n| (n, 0.4)),
                 ui: None,
             };
             frames.push(offscreen.frame(&input));
