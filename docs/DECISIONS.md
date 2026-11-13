@@ -2,6 +2,28 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: trees drawn (S02-T08c)
+
+**The level is chosen once, in culling.** Each tree's level comes from the share of the
+view its bounding sphere fills (`shaders/lod.wgsl`: below 9%, 4%, and 1.8% it goes one
+level coarser), and the culling pass writes it into that level's batch. A view's list
+keeps a place for every level of every tree, after the scene's own instances; the grass
+follows them. The shadows draw each tree once, from its third level.
+
+**Crossfades and cut-outs over the pixel's samples, not by discarding pixels.** Over the
+fifth above each share, a tree is in both levels' batches and the two share out the
+pixel's four samples, the coarser taking a run and the finer the rest. Leaf cards cover
+the samples their leaves do, and the far form those its picture does, with leaves too
+small to tell apart seen as their average cover. Whole-pixel screen doors were tried
+first; they crawl under a slow move. The depth pre-pass and the lit pass compute the
+same samples, so the pre-pass's equal test still holds.
+
+**Leaf cards are two-sided and never mirrored.** From behind, a card's anchor runs back
+along it and its normal and tangent turn, so its `^ A v` read the right way round. A card
+seen edge on fades out. Each card's side is carried as its vertices' thickness, and its
+number in its anchor (cards a hundred metres apart), so the shader cuts the same spray
+the bake painted into the far form's picture.
+
 ## 2026-11-13: trees grown in the bake (S02-T08a)
 
 **Grown, not modelled.** The kinds are data (`assets/trees/kinds.ron`: oak, ash, apple,

@@ -26,9 +26,9 @@
 **Done:** S02-T11: the far cascade drawn once and kept until the light, the eye's cell, or a still thing changes; three shadowed lights in a cube array, each cube kept until its surroundings change, at most one drawn a frame. Test: `crates/harness/tests/shadows.rs`.
 **Done:** S02-T12: the governor, giving up six things in order a tenth at a time and logging each step into the performance report, and the Low, Medium (default), and High presets (`--preset`, console `preset`). Tests: the governor's own, and `crates/harness/tests/governor.rs`. Evidence: `docs/evidence/S02/governor.jpg`.
 **Done:** S02-T14: fog as weather; the valley at dawn, noon, dusk, night, rain, and fog; the shimmer check across the barley passing in clear air, dusk, rain, and fog; the glyph-off comparison passing in every one. Evidence: `docs/evidence/S02/weathers.jpg`, `captures/s02_weathers.ron`.
-**In progress:** S02-T08c, trees drawn. Built: the level chosen in culling and crossfaded over the pixel's samples; leaf cards cut to their sprays, two-sided, their letters never mirrored; the far form cut to its picture; trees casting from their third level with leaf-shaped shadows. `captures/s02_trees.ron`: glyph-off passes in every shot, and the canopy's shimmer passes (p99 0.009). Not yet: the leaves' `^ A v` at arm's length checked in a capture; tests; evidence.
-**Found:** the pasture grass shimmers when seen almost edge-on (p99 0.034 looking east from x 160, z 120 at pitch 9); the trees in the same frame do not. The barley shots of S02-T14 did not catch it.
-**Next for Render:** finish S02-T08c, then the grass's grazing shimmer. S02-T10b waits for the owner's eye on the wind that reads; S02-T13 (ambience) and S02-T15 (the performance run on the Mac) are the Shell lane's.
+**Done:** S02-T08c, trees drawn: the level chosen in culling from each tree's size on screen and crossfaded over the pixel's samples; leaf cards cut to their sprays over the samples, two-sided, their `^ A v` never mirrored, fading out edge on; the far form cut to its picture; trees casting from their third level with leaf-shaped shadows. Evidence: `docs/evidence/S02/trees.jpg`, `captures/s02_trees.ron` (glyph-off passes in every shot; the canopy's shimmer p99 0.0085). Test: `crates/harness/tests/trees.rs`.
+**Found, now S02-T07b:** the pasture grass shimmers when seen almost edge on (p99 0.034 looking east from x 160, z 120 at pitch 9, and 0.022 looking west with no trees in view); the trees in the same frame do not. The barley shots of S02-T14 did not catch it.
+**Next for Render:** S02-T07b, the grass's grazing shimmer. S02-T10b waits for the owner's eye on the wind that reads; S02-T13 (ambience) and S02-T15 (the performance run on the Mac) are the Shell lane's.
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
@@ -37,7 +37,7 @@ Nothing yet.
 
 ## Lane: Content
 
-**Done:** S02-T08a, trees grown in the bake: oak, ash, apple, and hawthorn, three levels and a far form each, bark that carries a page, leaf cards, and an impostor material per kind. Evidence: `docs/evidence/S02/tree_far_forms.png`. **Done:** S02-T08b, 612 trees in the valley: the two woods (oak, ash, hawthorn on a jittered seven-metre grid), the Quiet Orchard's rows of apples, and hawthorn hedges along the roads, each an object with an ID from where it stands. **Next:** S02-T08d, the bark's age, once S02-T08c (Render, in progress) has drawn the trees.
+**Done:** S02-T08a, trees grown in the bake: oak, ash, apple, and hawthorn, three levels and a far form each, bark that carries a page, leaf cards, and an impostor material per kind. Evidence: `docs/evidence/S02/tree_far_forms.png`. **Done:** S02-T08b, 612 trees in the valley: the two woods (oak, ash, hawthorn on a jittered seven-metre grid), the Quiet Orchard's rows of apples, and hawthorn hedges along the roads, each an object with an ID from where it stands. **Next:** S02-T08d, the bark's age (S02-T08c has drawn the trees).
 
 **Asked by Render:** the brook's mouth into the River Quill (about x -12, z -106) is carved as a steep, pale gully that reads as a block from the north bank. Soften it.
 
