@@ -372,6 +372,10 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
 // blades. Pasture, then barley.
 const SWARD_SHADOW: f32 = 0.15;
 const BARLEY_SHADOW: f32 = 0.6;
+// What a blade about a pixel wide, shaded as the sward's average, is darkened by, and
+// the share of the sky it sees.
+const THIN_BLADE_SHADE: f32 = 0.92;
+const THIN_BLADE_SKY: f32 = 0.55;
 
 // A tree's coarsest level: the crossed cards of its far form.
 const FAR_LEVEL: u32 = 3u;
@@ -1167,7 +1171,12 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     // than the pixels cannot be drawn, and drawn anyway it flickers as the eye moves.
     out.seen = smoothstep(1.5, 4.0, 2.0 * max(wide * 0.5, pixel * 0.55) / pixel);
     let own = normalize(cross(across, tangent) + across * sign * 0.5 * out.seen);
-    out.normal = normalize(mix(own, slope, mix(0.7, 0.55, out.seen)));
+    // A blade too narrow to show its own facing faces as upright blades seen together do
+    // on average: towards the eye, and half up with the sward.
+    let to_eye_flat = vec3<f32>(eye.x - root.x, 0.0, eye.z - root.z);
+    let seen_together = normalize(to_eye_flat / max(length(to_eye_flat), 1.0e-3) * 0.8 + slope);
+    let as_sward = normalize(mix(own, slope, 0.55));
+    out.normal = normalize(mix(seen_together, as_sward, out.seen * out.seen));
     out.page = vec2<f32>(s * tall, sign * cell_side * widths[level] * 0.5);
     out.up = s;
     out.seed = seed;
@@ -1292,7 +1301,10 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
     let ao = mix(0.8, mix(0.5, 1.0, smoothstep(0.0, 0.8, in.up)), in.seen);
     let place = vec2<f32>(unit(in.seed), unit(in.seed >> 16u));
     let texel = textureSampleLevel(material_colour, material_sampler, place, in.material, 5.0);
-    var albedo = texel.rgb * (0.8 + 0.4 * unit(in.seed >> 9u));
+    // Turned to face the sky as the sward does, a thin blade would catch more light than
+    // its upright faces do on average; it is darkened to match, so that the field is as
+    // bright as when every blade showed its own light and shade.
+    var albedo = texel.rgb * (0.8 + 0.4 * unit(in.seed >> 9u)) * mix(THIN_BLADE_SHADE, 1.0, in.seen);
     // Tips are drier and paler than the stem.
     albedo = mix(albedo, albedo * vec3<f32>(1.25, 1.18, 0.85), in.up * in.up * 0.6) * ao;
     // Grass bowed by the wind shows its paler, shinier side.
@@ -1307,7 +1319,11 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
     // a low sun, a lit tip over a shaded root is finer than the pixels.
     let sward_height = select(SWARD_SHADOW, BARLEY_SHADOW, in.material == terrain_material(1u));
     let shadow_at = in.world + vec3<f32>(0.0, (sward_height - in.up * in.tall) * (1.0 - in.seen), 0.0);
-    var colour = light_surface_at(surface, as_surface, n, 0.0, in.blade.x, shadow_at);
+    // Inside a sward a blade sees less sky than its root's open ground does: its
+    // neighbours hide much of it. A blade wide enough to show its own facing shows that
+    // by itself, turned from the sky; one about a pixel wide takes the sward's share.
+    let sky = in.blade.x * mix(THIN_BLADE_SKY, 1.0, in.seen);
+    var colour = light_surface_at(surface, as_surface, n, 0.0, sky, shadow_at);
     // Light through the blade: a blade lit from behind glows.
     let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
     let l = view.light_dir_hour.xyz;
