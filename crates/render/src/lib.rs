@@ -4,6 +4,7 @@
 
 mod atlas;
 pub mod bark;
+pub mod magic;
 mod camera;
 mod contact;
 mod cull;
@@ -86,6 +87,8 @@ pub struct RenderAssets<'a> {
     pub wind: &'a [String],
     /// The words a tree's bark records itself in, from the string table.
     pub bark: &'a bark::BarkWords,
+    /// The words, for how their magic looks.
+    pub words: &'a vellmark_content::WordTable,
 }
 
 /// The renderer's assets as read from a pack.
@@ -95,6 +98,7 @@ pub struct LoadedAssets {
     pub grade: vellmark_content::Grade,
     pub wind: Vec<String>,
     pub bark: bark::BarkWords,
+    pub words: vellmark_content::WordTable,
 }
 
 impl LoadedAssets {
@@ -117,11 +121,15 @@ impl LoadedAssets {
             },
             wind: wind_sentences(pack),
             bark: bark_words(pack),
+            words: match pack.get(AssetKind::Table, AssetId::from_key(vellmark_content::WORDS_KEY)) {
+                Some(bytes) => vellmark_content::WordTable::from_bytes(bytes)?,
+                None => Default::default(),
+            },
         })
     }
 
     pub fn borrow(&self) -> RenderAssets<'_> {
-        RenderAssets { glyphs: &self.glyphs, materials: &self.materials, grade: &self.grade, wind: &self.wind, bark: &self.bark }
+        RenderAssets { glyphs: &self.glyphs, materials: &self.materials, grade: &self.grade, wind: &self.wind, bark: &self.bark, words: &self.words }
     }
 }
 
@@ -305,6 +313,7 @@ pub struct Renderer {
     target_format: wgpu::TextureFormat,
     bark_words: bark::BarkWords,
     bark: bark::Bark,
+    magic: magic::Magic,
 }
 
 impl Renderer {
@@ -329,6 +338,7 @@ impl Renderer {
             target_format,
             bark_words: assets.bark.clone(),
             bark: bark::Bark::default(),
+            magic: magic::Magic::new(assets.words),
         })
     }
 
@@ -391,6 +401,17 @@ impl Renderer {
         self.world.tree_levels_drawn_last_frame(gpu, &self.scene)
     }
 
+    /// Takes in the world as it is now, for the magic under way: the words in hand and in
+    /// flight, their landings, and what they hold on. `seconds` as in `FrameInput`.
+    pub fn observe(&mut self, snapshot: &vellmark_sim::Snapshot, seconds: f32) {
+        self.magic.observe(snapshot, seconds);
+    }
+
+    /// For tests: how many rewrite waves and particle emitters are under way.
+    pub fn magic_active(&self) -> (usize, usize) {
+        self.magic.active()
+    }
+
     pub fn scene_mut(&mut self) -> &mut SceneGpu {
         &mut self.scene
     }
@@ -431,7 +452,7 @@ impl Renderer {
             self.surface.set_generated_page(gpu, &written);
         }
         self.scene.set_generated(self.bark.pages());
-        self.world.render(gpu, encoder, target, target_size, frame, &self.scene, &self.surface, self.terrain.as_ref(), timers);
+        self.world.render(gpu, encoder, target, target_size, frame, &self.scene, &self.surface, self.terrain.as_ref(), &self.magic, timers);
 
         if let Some(canvas) = frame.ui.filter(|c| !c.quads.is_empty()) {
             self.ui.prepare(gpu, target_size, canvas);

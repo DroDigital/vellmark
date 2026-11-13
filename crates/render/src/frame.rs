@@ -42,7 +42,21 @@ pub struct ViewUniform {
     /// occlusion's strength, z the fog grid's share of its full size, w the share of
     /// particles drawn.
     pub quality: [f32; 4],
+    /// Magic: x how many rewrite waves, y how many emitters of glyph particles.
+    pub magic_counts: [u32; 4],
+    /// Each rewrite wave: where it started and when; its colour and the instance it
+    /// runs over (counted from 1, 0 for any surface); its speed, reach, and strength.
+    pub waves: [[[f32; 4]; 3]; MAX_WAVES],
+    /// Each emitter of glyph particles: where, which way and when, its colour and
+    /// brightness, and its kind, count, size, and seed. See `shaders/frame.wgsl`.
+    pub emitters: [[[f32; 4]; 4]; MAX_EMITTERS],
+    /// Each emitter's characters, four to a word, sixteen at most.
+    pub emitter_text: [[u32; 4]; MAX_EMITTERS],
 }
+
+/// The most rewrite waves and particle emitters a view draws at once.
+pub const MAX_WAVES: usize = 8;
+pub const MAX_EMITTERS: usize = 32;
 
 /// The most views drawn in one frame. Two is all the full game will ever ask for; four
 /// leaves room for tools.
@@ -260,6 +274,10 @@ pub fn view_uniform(
         gust: [-1.0, 0.0, 1.0, 1.0],
         ground_tiles: [[0.0; 4]; 4],
         quality: [1.0; 4],
+        magic_counts: [0; 4],
+        waves: [[[0.0; 4]; 3]; MAX_WAVES],
+        emitters: [[[0.0; 4]; 4]; MAX_EMITTERS],
+        emitter_text: [[0; 4]; MAX_EMITTERS],
     }
 }
 

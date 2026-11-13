@@ -21,6 +21,9 @@ const RAIN_DROPS: u32 = 160 * 160;
 
 const BLOOM_LEVELS: usize = 5;
 const CUBE_FACES: usize = 6;
+/// Particles one magic emitter may draw. Matches `PARTICLES_PER_EMITTER` in
+/// `shaders/frame.wgsl`.
+const PARTICLES_PER_EMITTER: u32 = 160;
 /// The level of detail a tree casts its shadows from.
 const SHADOW_LEVEL: usize = 2;
 /// The size of one cascade or cube-face uniform: a matrix and a row of flags.
@@ -72,6 +75,7 @@ struct Pipelines {
     tree_shadow: wgpu::RenderPipeline,
     tree_depth: wgpu::RenderPipeline,
     tree: wgpu::RenderPipeline,
+    sparks: wgpu::RenderPipeline,
     water: wgpu::RenderPipeline,
     rain: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
@@ -789,6 +793,33 @@ impl ScenePass {
                 cache: None,
             },
         );
+        // Magic's particles: light added over what is drawn, behind what is nearer.
+        let sparks = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("magic"),
+                layout: Some(&world_layout),
+                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_spark"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_spark"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: HDR_FORMAT,
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+                            alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+                        }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(depth_state(false, wgpu::CompareFunction::GreaterEqual)),
+                multisample,
+                multiview_mask: None,
+                cache: None,
+            },
+        );
         let letter_shadow_layout = layout("letter shadow", &[Some(cascade_layout)]);
         let letter_shadow = registry.render_pipeline(
             device,
@@ -1045,7 +1076,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, tree_shadow, tree_depth, tree, water, rain, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, tree_shadow, tree_depth, tree, sparks, water, rain, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -1371,6 +1402,7 @@ impl ScenePass {
         scene: &SceneGpu,
         surface: &SurfaceResources,
         terrain: Option<&crate::terrain::TerrainGpu>,
+        magic: &crate::magic::Magic,
         timers: &mut PassTimers,
     ) {
         // The scene is drawn at the governor's share of the target, in its top left
@@ -1405,7 +1437,7 @@ impl ScenePass {
 
         // The instances, with this frame's heat and breakage; the list of every one; and
         // where each batch starts in each list.
-        let instances = scene.instances(frame.heat, frame.broken);
+        let instances = scene.instances(frame.heat, frame.broken, magic.lasting());
         if !instances.is_empty() {
             gpu.queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
             // The shadows draw every placed thing; each view's own list is written by culling.
@@ -1570,6 +1602,7 @@ impl ScenePass {
             if let Some(t) = terrain {
                 uniform.ground_tiles = t.tiles_around(view.camera.eye.x, view.camera.eye.z);
             }
+            magic.fill(&mut uniform, &|id| scene.placed.iter().position(|p| p.key.0 == id).map(|i| i as u32 + 1));
             gpu.queue.write_buffer(&self.view_buffer, i as u64 * self.view_stride, bytemuck::bytes_of(&uniform));
         }
         // In the reveal mask nothing may bleed from one pixel to the next.
@@ -1590,7 +1623,7 @@ impl ScenePass {
                 w / h
             })
             .collect();
-        self.lights.update(gpu, &scene.lights, views, &aspects, generation, self.quality.shadowed_lights);
+        self.lights.update(gpu, &magic.lights(&scene.lights), views, &aspects, generation, self.quality.shadowed_lights);
         if let Some((_, position, radius)) = self.lights.draw {
             self.shadows_drawn.1 += 1;
             for face in 0..CUBE_FACES {
@@ -1764,6 +1797,12 @@ impl ScenePass {
                 pass.set_pipeline(&self.pipelines.sky);
                 pass.set_bind_group(2, &self.object_bind_group, &[0]);
                 pass.draw(0..3, 0..1);
+                // Magic, over everything drawn, behind whatever is nearer.
+                let emitters = magic.emitter_count() as u32;
+                if emitters > 0 {
+                    pass.set_pipeline(&self.pipelines.sparks);
+                    pass.draw(0..6, 0..emitters * PARTICLES_PER_EMITTER);
+                }
             }
         }
         // The water, over the scene it lies on, which it reads from a copy.

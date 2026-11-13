@@ -480,6 +480,62 @@ fn fs_tree(seen: Varyings, @builtin(front_facing) front: bool) -> TreeOut {
     return TreeOut(shade_mesh(in), mask);
 }
 
+// ---- magic on surfaces ----
+
+// The rewrite waves passing this point of this instance: rgb their light, a how much the
+// surface's print is revealed.
+fn rewrite_waves(world: vec3<f32>, instance: u32) -> vec4<f32> {
+    var out = vec4<f32>(0.0);
+    for (var i = 0u; i < min(view.magic_counts.x, MAX_WAVES); i++) {
+        let w = view.waves[i];
+        let over = u32(w[1].w + 0.5);
+        if over != 0u && over != instance + 1u {
+            continue;
+        }
+        let age = view.eye_time.w - w[0].w;
+        if age < 0.0 {
+            continue;
+        }
+        let d = distance(world, w[0].xyz);
+        let front = age * w[2].x;
+        // The front, bright and narrow, and behind it the rewritten print, sinking back.
+        let band = 1.0 - smoothstep(0.0, 0.45, abs(d - front));
+        let behind = select(0.0, exp(-(front - d) * 1.6), d < front);
+        let sinking = 1.0 - smoothstep(w[2].y / max(w[2].x, 0.1), w[2].y / max(w[2].x, 0.1) + 1.4, age);
+        let inside = 1.0 - smoothstep(w[2].y, w[2].y + 0.4, d);
+        let s = (band + 0.45 * behind) * sinking * inside * w[2].z;
+        out = vec4<f32>(out.rgb + w[1].rgb * band * sinking * inside * w[2].z, max(out.a, min(s, 1.0)));
+    }
+    return out;
+}
+
+// What a word holding on a thing shows: shining, opened, knitting, quieted, or edged, as
+// `crates/render/src/magic.rs` numbers them in the instance's state.
+fn lasting_light(code: f32, ink: f32, revealed: f32, world: vec3<f32>) -> vec3<f32> {
+    let kind = u32(code);
+    if kind == 0u {
+        return vec3<f32>(0.0);
+    }
+    let t = view.eye_time.w;
+    let flicker = 0.75 + 0.25 * sin(t * 3.1 + dot(world, vec3<f32>(5.3, 7.1, 6.7)));
+    var colour = vec3<f32>(0.0);
+    var at_any_distance = 0.0;
+    if kind == 1u {
+        // Shining: the thing gives off light, at any distance.
+        colour = vec3<f32>(1.0, 0.86, 0.58);
+        at_any_distance = 0.35;
+    } else if kind == 2u {
+        colour = vec3<f32>(1.0, 0.82, 0.42);
+    } else if kind == 3u {
+        colour = vec3<f32>(0.55, 1.0, 0.68);
+    } else if kind == 4u {
+        colour = vec3<f32>(0.66, 0.56, 1.0) * (0.6 + 0.4 * sin(t * 0.9));
+    } else {
+        colour = vec3<f32>(0.85, 0.92, 1.0) * step(0.93, fract(t * 0.7 + dot(world, vec3<f32>(1.3, 2.1, 0.7))));
+    }
+    return colour * (at_any_distance + ink * revealed * 1.6 * flicker) / view.viewport.z;
+}
+
 // A placed thing's surface, lit, with its fine print.
 fn shade_mesh(in: Varyings) -> vec4<f32> {
     let m = materials.entries[in.material];
@@ -509,9 +565,12 @@ fn shade_mesh(in: Varyings) -> vec4<f32> {
     // The fine print. Beyond the reveal distance this returns at once, having sampled
     // nothing, and the surface is exactly what it would be with the layer off.
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
+    let wave = rewrite_waves(in.world, in.instance);
+    wave_reveal = wave.a;
     if view.switches.x > 0.5 {
         glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light, instances[in.instance].state.x);
     }
+    wave_reveal = 0.0;
 
     if view.viewport.w > 0.5 {
         // A tool's view: white where the fine print is drawn, black beyond the reveal
@@ -532,6 +591,10 @@ fn shade_mesh(in: Varyings) -> vec4<f32> {
         var surface = wetted(Surface(colour_texel.rgb * glyphs.tone * (1.0 - 0.7 * streak), normal, normal_texel.z, colour_texel.a), wet);
         surface.roughness = mix(surface.roughness, 0.05, streak);
         colour = light_surface(surface, in, n, m.surface.w, in.sky);
+        // Magic: a rewrite wave passing, its print lit in the word's light; and what a
+        // word holding on the thing shows.
+        colour += wave.rgb * (0.12 + 2.4 * glyphs.ink) / view.viewport.z;
+        colour += lasting_light(instances[in.instance].state.z, glyphs.ink, glyphs.revealed, in.world);
         // Heat. A thing hot enough glows, as hot iron does, at any distance: that is the
         // world, not its letters. Up close, the strokes of the letters saying so glow
         // first, as embers in the grain.
@@ -1777,4 +1840,196 @@ fn fs_rain(in: RainVaryings) -> @location(0) vec4<f32> {
         discard;
     }
     return vec4<f32>(light * 1.5, cover * in.fade * 0.85);
+}
+
+// ---- the particles of magic: words gathering, flying, and bursting ----
+
+struct SparkVaryings {
+    @builtin(position) position: vec4<f32>,
+    // Within the particle's cell, 0 to 1, v down.
+    @location(0) uv: vec2<f32>,
+    @location(1) @interpolate(flat) character: u32,
+    // rgb: its light. a: how much of it there is now.
+    @location(2) @interpolate(flat) colour: vec4<f32>,
+    // How many pixels tall its cell is.
+    @location(3) @interpolate(flat) pixels: f32,
+}
+
+fn spark_hash(a: u32, b: u32) -> u32 {
+    var h = a * 0x9e3779b9u ^ (b + 0x7f4a7c15u) * 0x85ebca6bu;
+    h ^= h >> 15u;
+    h *= 0x2c1b3c6du;
+    h ^= h >> 12u;
+    return h;
+}
+
+// A direction on the sphere, from a hash.
+fn spark_direction(h: u32) -> vec3<f32> {
+    let z = unit(h) * 2.0 - 1.0;
+    let a = unit(h >> 9u) * 6.2831853;
+    let r = sqrt(max(1.0 - z * z, 0.0));
+    return vec3<f32>(r * cos(a), z, r * sin(a));
+}
+
+// The `k`th character of an emitter's word.
+fn spark_character(emitter: u32, k: u32) -> u32 {
+    let text = view.emitter_text[emitter];
+    var length = 0u;
+    for (var i = 0u; i < 16u; i++) {
+        if ((text[i / 4u] >> ((i % 4u) * 8u)) & 0xffu) == 0u {
+            break;
+        }
+        length = i + 1u;
+    }
+    if length == 0u {
+        return 42u;
+    }
+    let i = k % length;
+    return (text[i / 4u] >> ((i % 4u) * 8u)) & 0xffu;
+}
+
+@vertex
+fn vs_spark(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -> SparkVaryings {
+    var out: SparkVaryings;
+    out.position = NOWHERE;
+    out.uv = vec2<f32>(0.0);
+    out.character = 32u;
+    out.colour = vec4<f32>(0.0);
+    out.pixels = 0.0;
+    let emitter = index / PARTICLES_PER_EMITTER;
+    let k = index % PARTICLES_PER_EMITTER;
+    if emitter >= min(view.magic_counts.y, MAX_EMITTERS) {
+        return out;
+    }
+    let e = view.emitters[emitter];
+    let kind = u32(e[0].w + 0.5);
+    // The governor may thin the particles.
+    let count = u32(e[3].x * view.quality.w);
+    if k >= count {
+        return out;
+    }
+    let h = spark_hash(emitter * 977u + u32(e[3].z * 13.0), k);
+    let t = view.eye_time.w;
+    let centre = e[0].xyz;
+    let eye = view.eye_time.xyz;
+    let towards = normalize(centre - eye + vec3<f32>(1.0e-4));
+    let right = normalize(cross(towards, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1.0e-4, 0.0, 0.0));
+    let up = cross(right, towards);
+    var place = centre;
+    var size = e[3].y;
+    var amount = 1.0;
+    if kind == 0u {
+        // The charge: characters spiral in towards the hand, again and again.
+        let charge = e[3].w;
+        let phase = fract(t * (0.8 + 0.6 * unit(h >> 3u)) + unit(h));
+        let r = mix(0.16, 0.025, phase) * (0.6 + 0.6 * charge);
+        let a = unit(h >> 8u) * 6.2831853 + t * (2.0 + 3.0 * unit(h >> 5u)) + phase * 3.0;
+        place = centre + (right * cos(a) + up * sin(a)) * r + towards * (unit(h >> 14u) - 0.5) * 0.08;
+        amount = sin(phase * 3.14159265);
+        size *= 0.7 + 0.6 * unit(h >> 11u);
+    } else if kind == 1u {
+        // The flight: a bright head, and a trail behind it that scatters and fades.
+        let dir = e[1].xyz;
+        let length = min(1.1 + 0.6 * e[3].w, e[1].w);
+        let s = pow(unit(h), 1.7) * length;
+        let side = normalize(cross(dir, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1.0e-4, 0.0, 0.0));
+        let lift = cross(side, dir);
+        let wobble = vec2<f32>(sin(t * 9.0 + unit(h >> 6u) * 30.0), cos(t * 7.0 + unit(h >> 10u) * 30.0));
+        place = centre - dir * s + (side * wobble.x + lift * wobble.y) * s * 0.14;
+        amount = pow(1.0 - s / max(length, 0.01), 1.4);
+        if k < 6u {
+            // The head itself: the word's letters, larger and brighter.
+            place = centre + side * (f32(k) - 2.5) * size * 0.9;
+            size *= 1.8;
+            amount = 1.6;
+        }
+    } else if kind == 3u {
+        // Burning: embers rising off the thing, flickering, again and again.
+        let radius = e[1].w;
+        let phase = fract(t * (0.35 + 0.4 * unit(h >> 3u)) + unit(h));
+        let a = unit(h >> 8u) * 6.2831853;
+        let r = sqrt(unit(h >> 12u)) * radius * 0.8;
+        let start = centre + vec3<f32>(cos(a) * r, (unit(h >> 16u) - 0.6) * radius, sin(a) * r);
+        let sway = vec3<f32>(sin(t * 2.3 + unit(h >> 5u) * 20.0), 0.0, cos(t * 1.9 + unit(h >> 6u) * 20.0)) * 0.08 * phase;
+        place = start + vec3<f32>(0.0, phase * radius * 1.6, 0.0) + sway;
+        amount = sin(phase * 3.14159265) * (0.7 + 0.3 * sin(t * 13.0 + unit(h) * 40.0));
+        size *= 0.6 + 0.8 * unit(h >> 9u);
+    } else if kind == 4u {
+        // Frost: glitter over the thing, each point catching the light now and then.
+        let radius = e[1].w;
+        let d = spark_direction(h);
+        place = centre + d * radius * 0.85 - vec3<f32>(0.0, fract(t * 0.05 + unit(h)) * 0.1, 0.0);
+        amount = pow(max(sin(t * (1.0 + 2.0 * unit(h >> 4u)) + unit(h >> 7u) * 40.0), 0.0), 6.0);
+    } else {
+        // The impact: a burst shaped by the word's class.
+        let age = t - e[1].w;
+        let p = clamp(age / 0.9, 0.0, 1.0);
+        let ease = 1.0 - (1.0 - p) * (1.0 - p);
+        var d = spark_direction(h);
+        let shape = u32(e[3].w + 0.5);
+        if shape == 0u {
+            place = centre + d * 1.5 * ease;
+        } else if shape == 1u {
+            // Creeping: low, along the surface.
+            d.y *= 0.15;
+            place = centre + normalize(d) * 1.1 * p;
+        } else if shape == 2u {
+            // Knitting: drawn inward to the point.
+            place = centre + d * 1.3 * (1.0 - ease);
+        } else if shape == 3u {
+            // Cracking: flat lines out from the point.
+            d.y = 0.0;
+            place = centre + normalize(d) * (1.7 * ease) * (0.6 + 0.4 * unit(h >> 7u));
+        } else if shape == 4u {
+            // Drifting: rising slowly.
+            place = centre + d * 0.45 * p + vec3<f32>(0.0, 0.9 * p, 0.0);
+        } else if shape == 5u {
+            // Dropping.
+            place = centre + d * 0.7 * p - vec3<f32>(0.0, 1.4 * p * p, 0.0);
+        } else {
+            // A word refused: a few characters, falling away.
+            place = centre + d * 0.35 * ease - vec3<f32>(0.0, 0.5 * p * p, 0.0);
+        }
+        amount = pow(1.0 - p, 1.3) * smoothstep(0.0, 0.05, age);
+    }
+    let corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
+    );
+    let c = corners[vertex];
+    // Never smaller than about a pixel and a half, so that nothing sparkles.
+    let distance_to = max(distance(place, eye), 0.05);
+    let pixel = 1.3e-3 * 1080.0 / view.viewport.y * distance_to;
+    let half = max(size * 0.5, pixel * 0.75);
+    let world = place + (right * c.x + up * c.y) * half;
+    out.position = view.view_proj * vec4<f32>(world, 1.0);
+    out.uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+    out.character = spark_character(emitter, k);
+    out.colour = vec4<f32>(e[2].rgb * e[2].w, amount * min(size * 0.5 / max(half, 1.0e-5), 1.0));
+    out.pixels = half * 2.0 / pixel;
+    return out;
+}
+
+@fragment
+fn fs_spark(in: SparkVaryings) -> @location(0) vec4<f32> {
+    if view.viewport.w > 0.5 || in.colour.a <= 0.0 {
+        discard;
+    }
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    // A character at its designed weight, not thickened to a tone as print on a surface
+    // is: the pixel face while small, the printed face once it has room.
+    let h = in.pixels;
+    let k = ATLAS_RANGE * h / ATLAS_CELL;
+    let large = smoothstep(9.0, 12.5, h);
+    let small_d = textureSampleGrad(glyph_atlas, glyph_sampler, in.uv, in.character - 32u, du, dv).a;
+    let big = textureSampleGrad(glyph_atlas, glyph_sampler, in.uv, in.character - 32u + GLYPHS_PER_FACE, du, dv);
+    let median = max(min(big.r, big.g), min(max(big.r, big.g), big.b));
+    let d = mix(small_d, mix(big.a, median, smoothstep(24.0, 48.0, h)), large);
+    let letter = clamp((d - 0.5) * max(k, 1.0) + 0.5, 0.0, 1.0);
+    // Too small to read, a character is a soft point of its light.
+    let point = smoothstep(0.5, 0.0, length(in.uv - vec2<f32>(0.5)));
+    let cover = mix(point * 0.6, letter, smoothstep(3.0, 6.0, in.pixels));
+    let light = in.colour.rgb * cover * in.colour.a / view.viewport.z;
+    return vec4<f32>(light, 0.0);
 }

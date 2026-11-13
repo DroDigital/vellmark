@@ -52,7 +52,25 @@ struct ViewUniform {
     // occlusion's strength, z the fog grid's share of its full size, w the share of
     // particles drawn.
     quality: vec4<f32>,
+    // Magic: x how many rewrite waves, y how many particle emitters.
+    magic_counts: vec4<u32>,
+    // Each rewrite wave: [0] xyz where it began, w when (seconds); [1] rgb its colour, w
+    // the instance it runs over, counted from 1 (0 for any surface); [2] x its speed in
+    // metres a second, y how far it runs, z its strength.
+    waves: array<array<vec4<f32>, 3>, 8>,
+    // Each emitter: [0] xyz where it is, w its kind (0 a hand's charge, 1 a word in
+    // flight, 2 an impact); [1] xyz which way it goes, w when it began; [2] rgb its
+    // colour, w its brightness; [3] x how many particles, y their size in metres, z a
+    // seed, w how far along it is, 0 to 1.
+    emitters: array<array<vec4<f32>, 4>, 32>,
+    // Each emitter's characters: four bytes to a word, sixteen at most, 0 ending them.
+    emitter_text: array<vec4<u32>, 32>,
 }
+
+const MAX_WAVES: u32 = 8u;
+const MAX_EMITTERS: u32 = 32u;
+// Particles one emitter may draw at most.
+const PARTICLES_PER_EMITTER: u32 = 160u;
 
 // The fog grid at its full size, and the part of it in use.
 const FOG_GRID_MAX: vec3<u32> = vec3<u32>(160u, 90u, 64u);

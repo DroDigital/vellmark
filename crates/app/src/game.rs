@@ -509,6 +509,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
 
+        renderer.observe(&current, started.elapsed().as_secs_f32());
         if let Some(frame) = screen.acquire(&gpu) {
             let target = frame.texture.create_view(&Default::default());
             let views = [View::full(camera)];

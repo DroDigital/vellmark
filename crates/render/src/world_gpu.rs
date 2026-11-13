@@ -239,7 +239,8 @@ impl SceneGpu {
         }
     }
 
-    pub fn instances(&self, heat: &[(u64, f32)], broken: &[u64]) -> Vec<InstanceGpu> {
+    /// `lasting`: what words holding on things show, by ID, as `magic` numbers it.
+    pub fn instances(&self, heat: &[(u64, f32)], broken: &[u64], lasting: &[(u64, f32)]) -> Vec<InstanceGpu> {
         self.placed
             .iter()
             .enumerate()
@@ -251,7 +252,7 @@ impl SceneGpu {
                 let hidden = if broken.contains(&p.key.0) { 1.0 } else { 0.0 };
                 InstanceGpu {
                     model: p.transform.to_cols_array(),
-                    state: [heat, hidden, 0.0, self.generated.get(i).copied().unwrap_or(0) as f32],
+                    state: [heat, hidden, lasting.iter().find(|(id, _)| *id == p.key.0).map_or(0.0, |(_, l)| *l), self.generated.get(i).copied().unwrap_or(0) as f32],
                     bounds: [centre.x, centre.y, centre.z, mesh.radius * scale],
                     group: {
                         let g = &self.groups[p.group];

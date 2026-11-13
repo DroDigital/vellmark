@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T06, the five-part magic effect.
+**Current task:** S03-T07, typos, compounds, and the systemic chain.
 
 ## Lane: Render
 
@@ -26,6 +26,7 @@
 **Done:** S02-T14: fog as weather; the valley at dawn, noon, dusk, night, rain, and fog; the shimmer check across the barley passing in clear air, dusk, rain, and fog; the glyph-off comparison passing in every one. Evidence: `docs/evidence/S02/weathers.jpg`, `captures/s02_weathers.ron`.
 **Done:** S02-T08c, trees drawn: the level chosen in culling from each tree's size on screen and crossfaded over the pixel's samples; leaf cards cut to their sprays over the samples, two-sided, their `^ A v` never mirrored, fading out edge on; the far form cut to its picture; trees casting from their third level with leaf-shaped shadows. Evidence: `docs/evidence/S02/trees.jpg`, `captures/s02_trees.ron` (glyph-off passes in every shot; the canopy's shimmer p99 0.0085). Test: `crates/harness/tests/trees.rs`.
 **Done:** S02-T07b: grass about a pixel wide is shaded as the sward's average (its normal, shade, sky, and the sun's shadow partway up it), keeping its tint and tip, so that it no longer flickers; the ground under a sward glows against a low sun as its blades do. Every shimmer shot of `captures/s02_weathers.ron` passes, p99 0.0105 to 0.0147, including three new grazing pasture shots; the barley's shots were moved into the field, out of the road's hedges. Evidence: `docs/evidence/S02/grass_grazing.jpg`, `docs/evidence/S02/weathers.jpg`.
+**Done:** S03-T06, the five-part magic effect (`crates/render/src/magic.rs`): glyph particles worked out on the GPU from up to 32 emitters a frame (`vs_spark`), the word's own letters at their designed weight: a charge spiralling in at the hand with a light that grows; a word in flight with a bright head of its letters and a scattering trail, a real moving light; an impact shaped by the class (burst, creep, knit, crack, drift, drop) with a flash of light; the rewrite wave in the surface shader, revealing the target's coarser print in the word's light as it runs outward, then sinking back; and lasting states: shining things give off light at any distance, burning ones send up embers with a flickering light, frozen ones glitter, and opened, knitting, quieted, and edged things show it in their print. Words put lamps out. Evidence: `docs/evidence/S03/magic.jpg`. Test: `crates/harness/tests/magic.rs`.
 **Next for Render:** nothing unblocked in S02 (S02 is the integration session's until S02-T13 is done; then S03 starts while S02's gate waits on the owner). S02-T10b waits for the owner's eye on the wind that reads; S02-T13 (ambience) and S02-T15 (the performance run on the Mac) are the Shell lane's.
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
