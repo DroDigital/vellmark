@@ -168,6 +168,26 @@ impl World {
         self.refresh_targets();
     }
 
+    /// A blow lands on a player: a full charge in either hand smudges into its typo and
+    /// flies at whatever is in the gaze; a lesser charge is lost.
+    pub fn strike(&mut self, id: PlayerId) {
+        let Some(p) = self.players.iter_mut().find(|p| p.id == id) else { return };
+        let eye = p.body.feet + Vec3::Y * p.body.eye;
+        let (sy, cy) = p.yaw.sin_cos();
+        let (sp, cp) = p.pitch.sin_cos();
+        let gaze = Vec3::new(sy * cp, sp, -cy * cp);
+        let right = Vec3::new(cy, 0.0, sy);
+        for hand in [crate::hands::Hand::Main, crate::hands::Hand::Off] {
+            let full = p.caster.hands.charging(hand).is_some_and(|t| t >= crate::emendation::CHARGE_FULL);
+            if let (true, crate::casting::Holding::Word(w)) = (full, p.caster.holds(hand)) {
+                let stroke = crate::emendation::Stroke { charge: 1.0, typo: true, ..Default::default() };
+                crate::casting::send(p.id.0, &mut p.caster, w, Some(hand), stroke, &self.rules, &self.targets, eye, gaze, right, &mut self.flights);
+            }
+        }
+        p.caster.hands.interrupt();
+        p.caster.typed.clear();
+    }
+
     /// A player learns a word, by its spelling. Returns whether there is such a word.
     pub fn learn(&mut self, id: PlayerId, spelling: &str) -> bool {
         let Some(w) = self.rules.word(spelling) else { return false };
@@ -401,6 +421,16 @@ impl World {
             let gaze = Vec3::new(sy * cp, sp, -cy * cp);
             let right = Vec3::new(cy, 0.0, sy);
             crate::casting::take_aim(&mut p.caster, eye, gaze, &self.targets);
+            // Typing while a word charges.
+            let charging = p.caster.hands.charging(crate::hands::Hand::Main).is_some() || p.caster.hands.charging(crate::hands::Hand::Off).is_some() || p.caster.hands.both().is_some();
+            if charging {
+                for k in 0..4 {
+                    let c = (input.typed >> (k * 8)) & 0xff;
+                    if c != 0 && p.caster.typed.len() < 16 {
+                        p.caster.typed.push((c as u8 as char).to_ascii_uppercase());
+                    }
+                }
+            }
             // While reading, the hands are still.
             let reading = p.reading != Reading::None;
             p.caster.hands.step(input.held(buttons::ATTACK_MAIN) && !reading, input.held(buttons::ATTACK_OFF) && !reading, &mut hand_events);
@@ -409,6 +439,19 @@ impl World {
         }
         let landed_before = self.landings.len();
         crate::casting::fly(&mut self.flights, &mut self.targets, &self.rules, dt, self.seconds, &mut self.landings);
+        // The chain: twice a second, fire spreads to what is near it.
+        if self.step % 30 == 0 && !self.targets.is_empty() {
+            let mut rng = self.rng;
+            let mut roll = || {
+                rng = rng.wrapping_add(0x9e37_79b9_7f4a_7c15);
+                let mut z = rng;
+                z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+                ((z ^ (z >> 31)) >> 40) as f32 / (1u64 << 24) as f32
+            };
+            crate::casting::spread(&mut self.targets, &self.rules, self.seconds, 0.35 * self.pace, &mut roll, &mut self.landings);
+            self.rng = rng;
+        }
         let faded = crate::casting::fade_all(&mut self.targets, self.seconds);
         if faded || self.landings.len() > landed_before {
             self.refresh_targets();
@@ -487,7 +530,14 @@ impl World {
             flights: self
                 .flights
                 .iter()
-                .map(|f| crate::snapshot::FlightSnap { word: self.rules.words[f.word].spelling.clone(), from: f.from, at: f.at, target: f.target, charge: f.charge })
+                .map(|f| crate::snapshot::FlightSnap {
+                    word: self.rules.words[f.word].spelling.clone(),
+                    from: f.from,
+                    at: f.at,
+                    target: f.target,
+                    charge: f.charge,
+                    typo: if f.typo { self.rules.words[f.word].typo.clone() } else { String::new() },
+                })
                 .collect(),
             landings: self.landings.clone(),
         })
@@ -552,6 +602,7 @@ mod tests {
             look_yaw: ((r & 0xff) as f32 / 255.0 - 0.5) * 0.05,
             look_pitch: (((r >> 8) & 0xff) as f32 / 255.0 - 0.5) * 0.02,
             buttons: if step % 90 < 30 { buttons::SPRINT } else { 0 },
+            typed: 0,
         }
     }
 

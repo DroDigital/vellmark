@@ -94,6 +94,10 @@ impl DevTools {
     }
 
     /// Opens or closes the console. Returns whether it is now open.
+    pub fn console_open(&self) -> bool {
+        self.overlay.console
+    }
+
     pub fn toggle_console(&mut self) -> bool {
         self.overlay.console = !self.overlay.console;
         self.overlay.console

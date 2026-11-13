@@ -107,11 +107,19 @@ pub struct Magic {
 
 impl Magic {
     pub fn new(words: &WordTable) -> Self {
-        let looks = words
+        let mut looks: Vec<Look> = words
             .words
             .iter()
             .map(|w| Look { word: w.word.clone(), colour: w.look.colour, charge_glyphs: w.look.charge_glyphs, impact: shape(&w.look.impact), wave_speed: w.look.wave_speed })
             .collect();
+        // A typo lands as its word would, in a soured light.
+        looks.extend(words.words.iter().map(|w| Look {
+            word: w.typo.word.clone(),
+            colour: [0.75, 0.5, 0.45],
+            charge_glyphs: w.look.charge_glyphs,
+            impact: shape(&w.look.impact),
+            wave_speed: w.look.wave_speed,
+        }));
         Self { looks, ..Default::default() }
     }
 
@@ -132,6 +140,10 @@ impl Magic {
                 let strength = if took { 1.0 + 0.6 * l.charge + if l.both { 0.5 } else { 0.0 } } else { 0.35 };
                 let colour = if took { look.colour } else { [0.62, 0.6, 0.56] };
                 self.bursts.push(Burst { centre: l.at, began: seconds, colour, shape: if took { look.impact } else { 6.0 }, seed: (l.target % 997) as f32, text: pack(&l.word), strength });
+                // A compound: a second burst, larger, in gold, written with its name.
+                if let Some((name, Landing::Took { .. })) = &l.compound {
+                    self.bursts.push(Burst { centre: l.at, began: seconds, colour: [1.0, 0.82, 0.35], shape: 0.0, seed: (l.target % 991) as f32 + 0.5, text: pack(&name.to_ascii_uppercase()), strength: 2.2 });
+                }
                 if took {
                     self.waves.push(Wave { centre: l.at, began: seconds, colour: look.colour, target: l.target, speed: look.wave_speed, reach, strength });
                 }
@@ -170,9 +182,14 @@ impl Magic {
             let to = snap.targets.iter().find(|t| t.id == f.target).map_or(f.at, |t| t.centre);
             let dir = (to - f.from).normalize_or_zero();
             let gone = f.at.distance(f.from);
+            // A typo goes visibly wrong halfway: its letters turn into the typo's, and its
+            // light sours.
+            let wrong = !f.typo.is_empty() && gone > to.distance(f.from) * 0.5;
+            let colour = if wrong { [0.75, 0.5, 0.45] } else { look.colour };
+            let text = if wrong { pack(&f.typo) } else { pack(&look.word) };
             self.emitters.push((
-                [[f.at.x, f.at.y, f.at.z, 1.0], [dir.x, dir.y, dir.z, gone], [look.colour[0], look.colour[1], look.colour[2], 3.0 + 2.0 * f.charge], [90.0, 0.03 + 0.015 * f.charge, i as f32 * 7.31, f.charge]],
-                pack(&look.word),
+                [[f.at.x, f.at.y, f.at.z, 1.0], [dir.x, dir.y, dir.z, gone], [colour[0], colour[1], colour[2], 3.0 + 2.0 * f.charge], [90.0, 0.03 + 0.015 * f.charge, i as f32 * 7.31, f.charge]],
+                text,
             ));
             self.lights.push(Light { key: AssetId(0), position: f.at.into(), colour: look.colour.map(|c| c * (3.5 + 3.0 * f.charge)), radius: 7.0, casts_shadow: false });
         }

@@ -47,6 +47,8 @@ pub struct FlightSnap {
     pub at: Vec3,
     pub target: u64,
     pub charge: f32,
+    /// It will come out as its word's typo, and goes wrong halfway.
+    pub typo: String,
 }
 
 /// One camera. There is one for each player, and the renderer draws the whole list.

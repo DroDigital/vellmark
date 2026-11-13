@@ -97,7 +97,7 @@ fn player_input(actions: &ActionState, bindings: &Bindings, dt: f32, first_step:
             held |= bit;
         }
     }
-    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held }
+    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held, typed: 0 }
 }
 
 // `strings` is reloaded here and read once the interface shows text (Phase S03).
@@ -272,6 +272,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     log::line(&format!("preset {preset:?}"));
 
     let mut sound = crate::sound::Sound::start(&platform, &scene);
+    // Letters typed while a word charges, waiting for the next step.
+    let mut typing = false;
+    let mut typed = String::new();
     // Doors that words have opened swing on their hinges: each door's place as built, and
     // how far open it is now, 0 to 1.
     let door_places: Vec<(vellmark_content::AssetId, glam::Mat4)> = scene
@@ -449,10 +452,29 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         let lamp_ease = (frame_time.as_secs_f32() / 0.6).min(1.0);
         lamps += (if lamps_lit { 1.0 } else { 0.0 } - lamps).clamp(-lamp_ease, lamp_ease);
 
+        // While a word charges, letters typed are read by the rules: the word for a
+        // bonus, or its typo on purpose.
+        let charging = current.players.first().is_some_and(|p| p.charge.iter().any(|&c| c > 0.0));
+        #[cfg(feature = "dev")]
+        let charging = charging && !dev_tools.console_open();
+        if charging != typing {
+            typing = charging;
+            platform.text_entry(&window, typing);
+            typed.clear();
+        }
+        if typing {
+            typed.extend(raw.iter().filter_map(|r| match r {
+                RawInput::Text(c) if c.is_ascii_alphabetic() => Some(*c),
+                _ => None,
+            }));
+        }
+
         // Simulation: whole fixed steps, then draw between the last two snapshots.
         let plan = clock.advance(frame_time.as_nanos() as u64);
         for step in 0..plan.steps {
-            let input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
+            let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
+            let take: String = typed.drain(..typed.len().min(4)).collect();
+            input.typed = PlayerInput::pack_typed(&take);
             world.step(&[input]);
             previous = current;
             current = world.snapshot();

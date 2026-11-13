@@ -21,6 +21,12 @@ pub const CAST_REACH: f32 = 40.0;
 pub const HOLD_TAP: f32 = 45.0;
 pub const HOLD_CHARGED: f32 = 120.0;
 pub const BOTH_HANDS_HOLD: f32 = 1.5;
+/// A typo holds only this long.
+pub const TYPO_HOLD: f32 = 12.0;
+/// A compound's effect holds this long.
+pub const COMPOUND_HOLD: f32 = 20.0;
+/// Typing the word in hand while it charges makes it this much stronger.
+pub const TYPED_BONUS: f32 = 1.25;
 /// Both hands together: how much stronger, and how much dearer.
 pub const BOTH_HANDS_STRENGTH: f32 = 1.5;
 pub const BOTH_HANDS_COST: f32 = 1.6;
@@ -136,6 +142,10 @@ pub struct Target {
     pub effects: Vec<ActiveEffect>,
     /// Staggered or unaware: it resists one tier less.
     pub off_guard: bool,
+    /// How many links of a chain of reactions led to its last change: 0 by hand.
+    pub link: u32,
+    /// Burnt: it cannot catch fire from a neighbour again until this time.
+    pub burnt_until: f64,
 }
 
 impl Target {
@@ -149,6 +159,8 @@ impl Target {
             words: words.iter().map(|(s, c)| InscribedWord { spelling: s.clone(), class: c.clone(), fades_at: None, replaced: None }).collect(),
             effects: Vec::new(),
             off_guard: false,
+            link: 0,
+            burnt_until: 0.0,
         }
     }
 
@@ -213,21 +225,45 @@ pub enum Landing {
     Sealed,
 }
 
+/// How a word is written: its charge, whether by both hands, typed, or as its typo.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Stroke {
+    pub charge: f32,
+    pub both: bool,
+    /// The word was typed while it charged.
+    pub typed: bool,
+    /// It came out as its typo.
+    pub typo: bool,
+}
+
 /// Writes `word` on `target`: changes its Inscription and starts its effect, or not.
 pub fn write(rules: &WordRules, word: usize, target: &mut Target, charge: f32, both: bool, now: f64) -> Landing {
+    write_stroke(rules, word, target, Stroke { charge, both, ..Default::default() }, now)
+}
+
+/// As `write`, with everything about how it was written.
+pub fn write_stroke(rules: &WordRules, word: usize, target: &mut Target, stroke: Stroke, now: f64) -> Landing {
     let rule = &rules.words[word];
-    let (effect, strength) = match &rule.outcomes[target.class] {
+    let Stroke { charge, both, typed, typo } = stroke;
+    let outcomes = if typo { &rule.typo_outcomes } else { &rule.outcomes };
+    let (effect, strength) = match &outcomes[target.class] {
         RuleOutcome::Refusal(line) => return Landing::Refused(*line),
         RuleOutcome::Effect { effect, strength, .. } => (effect.clone(), *strength),
     };
+    // A typo obeys resistance as its word does.
     match preview(rules, word, target, charge, both) {
         Preview::Sealed => return Landing::Sealed,
         Preview::NeedsCharge(_) => return Landing::Resisted,
+        Preview::Refusal(_) if !typo => return Landing::Resisted,
         _ => {}
     }
-    let hold = (HOLD_TAP + (HOLD_CHARGED - HOLD_TAP) * charge.clamp(0.0, 1.0)) * if both { BOTH_HANDS_HOLD } else { 1.0 };
+    if target.resists() == Resistance::Sealed {
+        return Landing::Sealed;
+    }
+    let hold = if typo { TYPO_HOLD } else { (HOLD_TAP + (HOLD_CHARGED - HOLD_TAP) * charge.clamp(0.0, 1.0)) * if both { BOTH_HANDS_HOLD } else { 1.0 } };
     let until = now + hold as f64;
-    let strength = strength * (1.0 + 0.5 * charge) * if both { BOTH_HANDS_STRENGTH } else { 1.0 };
+    let strength = strength * (1.0 + 0.5 * charge) * if both { BOTH_HANDS_STRENGTH } else { 1.0 } * if typed { TYPED_BONUS } else { 1.0 };
+    let spelling = if typo { rule.typo.clone() } else { rule.spelling.clone() };
     // The word of its class goes, and this one takes its place; or it joins the others.
     let replaced = target.words.iter().position(|w| w.class == rule.class).map(|i| target.words.remove(i));
     if replaced.is_none() && target.words.len() >= 3 {
@@ -244,9 +280,29 @@ pub fn write(rules: &WordRules, word: usize, target: &mut Target, charge: f32, b
         target.effects.retain(|e| e.by != r.spelling);
     }
     let original = replaced.map(|r| r.replaced.unwrap_or((r.spelling, r.class)));
-    target.words.push(InscribedWord { spelling: rule.spelling.clone(), class: rule.class.clone(), fades_at: Some(until), replaced: original });
-    target.effects.push(ActiveEffect { effect: effect.clone(), strength, by: rule.spelling.clone(), until: Some(until) });
+    target.words.push(InscribedWord { spelling: spelling.clone(), class: rule.class.clone(), fades_at: Some(until), replaced: original });
+    target.effects.push(ActiveEffect { effect: effect.clone(), strength, by: spelling, until: Some(until) });
     Landing::Took { effect, strength }
+}
+
+/// A compound the word just written completes on its target, if any: the two words of a
+/// compound standing on one thing at once. It fires once, now. Returns the compound and
+/// what it did.
+pub fn complete_compound(rules: &WordRules, word: usize, target: &mut Target, now: f64) -> Option<(usize, Landing)> {
+    let others: Vec<usize> = target.words.iter().filter_map(|w| rules.word(&w.spelling)).filter(|&w| w != word).collect();
+    let (index, c) = rules.compounds.iter().enumerate().find(|(_, c)| (c.words[0] == word && others.contains(&c.words[1])) || (c.words[1] == word && others.contains(&c.words[0])))?;
+    // Compounds obey resistance and never touch Sealed words.
+    if target.resists() == Resistance::Sealed {
+        return Some((index, Landing::Sealed));
+    }
+    let landing = match &c.outcomes[target.class] {
+        RuleOutcome::Refusal(line) => Landing::Refused(*line),
+        RuleOutcome::Effect { effect, strength, .. } => {
+            target.effects.push(ActiveEffect { effect: effect.clone(), strength: *strength, by: c.name.clone(), until: Some(now + COMPOUND_HOLD as f64) });
+            Landing::Took { effect: effect.clone(), strength: *strength }
+        }
+    };
+    Some((index, landing))
 }
 
 /// Lets written words fade whose time is up, bringing back what they replaced.
@@ -281,6 +337,10 @@ pub struct Flight {
     pub speed: f32,
     pub charge: f32,
     pub both: bool,
+    /// Typed as it charged.
+    pub typed: bool,
+    /// It will come out as its typo.
+    pub typo: bool,
 }
 
 /// Where a ray from `from` along `dir` first comes within `radius` of `centre`, if it

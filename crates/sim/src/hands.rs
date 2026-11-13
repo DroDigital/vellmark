@@ -37,6 +37,8 @@ struct One {
     /// Seconds since pressed, while down.
     held: f32,
     holding: bool,
+    /// Interrupted: letting go does nothing.
+    spent: bool,
 }
 
 /// The hands' state between steps.
@@ -61,6 +63,17 @@ impl Hands {
         h.holding.then_some(h.held - HOLD_SECONDS)
     }
 
+    /// A blow lands: whatever the hands were charging is lost, and letting go of the
+    /// buttons does nothing until they are pressed again.
+    pub fn interrupt(&mut self) {
+        for h in [&mut self.main, &mut self.off] {
+            if h.down {
+                *h = One { down: true, held: 0.0, holding: false, spent: true };
+            }
+        }
+        self.both = None;
+    }
+
     /// How long both hands have been acting together, if they are.
     pub fn both(&self) -> Option<f32> {
         self.both
@@ -80,8 +93,8 @@ impl Hands {
                 || (pressing(&self.off, off_down) && early(&self.main, main_down));
             if together {
                 self.both = Some(0.0);
-                self.main = One { down: true, held: 0.0, holding: true };
-                self.off = One { down: true, held: 0.0, holding: true };
+                self.main = One { down: true, held: 0.0, holding: true, spent: false };
+                self.off = One { down: true, held: 0.0, holding: true, spent: false };
                 out.push(HandEvent::BothBegin);
                 return;
             }
@@ -94,22 +107,24 @@ impl Hands {
             // Letting go of either ends it; the other must be pressed again to act.
             out.push(HandEvent::BothEnd(t));
             self.both = None;
-            self.main = One { down: main_down, held: 0.0, holding: main_down };
-            self.off = One { down: off_down, held: 0.0, holding: off_down };
+            self.main = One { down: main_down, held: 0.0, holding: false, spent: main_down };
+            self.off = One { down: off_down, held: 0.0, holding: false, spent: off_down };
             return;
         }
         for (hand, h, down) in [(Hand::Main, &mut self.main, main_down), (Hand::Off, &mut self.off, off_down)] {
             match (h.down, down) {
-                (false, true) => *h = One { down: true, held: 0.0, holding: false },
+                (false, true) => *h = One { down: true, held: 0.0, holding: false, spent: false },
                 (true, true) => {
                     h.held += dt;
-                    if !h.holding && h.held >= HOLD_SECONDS {
+                    if !h.holding && !h.spent && h.held >= HOLD_SECONDS {
                         h.holding = true;
                         out.push(HandEvent::HoldBegin(hand));
                     }
                 }
                 (true, false) => {
-                    if h.holding {
+                    if h.spent {
+                        // Interrupted, or the end of both hands' act: nothing.
+                    } else if h.holding {
                         out.push(HandEvent::HoldEnd(hand, (h.held - HOLD_SECONDS).max(0.0)));
                     } else {
                         out.push(HandEvent::Tap(hand));
