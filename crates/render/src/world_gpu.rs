@@ -2,8 +2,10 @@
 
 use bytemuck::{Pod, Zeroable};
 use glam::Mat4;
-use vellmark_content::{AssetId, GlyphAtlas, MaterialSet, Mesh, Scene, TextPages, Vertex, GLYPHS_PER_FACE, TONE_STEPS};
-use vellmark_gpu::{wgpu, Gpu};
+use vellmark_content::{
+    AssetId, GLYPHS_PER_FACE, GlyphAtlas, MaterialSet, Mesh, Scene, TONE_STEPS, TextPages, Vertex,
+};
+use vellmark_gpu::{Gpu, wgpu};
 
 /// The most instances in a frame, placed things and grass patches together, and the most
 /// batches they are drawn in.
@@ -11,8 +13,7 @@ pub const MAX_INSTANCES: usize = 8192;
 pub const MAX_GROUPS: usize = 256;
 pub const MAX_MATERIALS: usize = 32;
 
-pub const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 8] =
-    wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Uint32, 5 => Uint32, 6 => Float32, 7 => Float32];
+pub const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Uint32, 5 => Uint32, 6 => Float32, 7 => Float32];
 
 pub fn vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
@@ -101,6 +102,8 @@ pub struct SceneGpu {
     pub generated: Vec<u32>,
     /// What is true of the scene's trees, for their bark.
     pub records: vellmark_content::TreeRecords,
+    /// Counts the times a placed thing has moved.
+    moves: u64,
 }
 
 fn bounds_of(mesh: &Mesh) -> (glam::Vec3, f32) {
@@ -114,13 +117,23 @@ fn bounds_of(mesh: &Mesh) -> (glam::Vec3, f32) {
         hi = hi.max(p);
     }
     let centre = (lo + hi) * 0.5;
-    let radius = mesh.vertices.iter().map(|v| glam::Vec3::from(v.position).distance(centre)).fold(0.0, f32::max);
+    let radius = mesh
+        .vertices
+        .iter()
+        .map(|v| glam::Vec3::from(v.position).distance(centre))
+        .fold(0.0, f32::max);
     (centre, radius)
 }
 
 impl SceneGpu {
     /// `mesh_of` returns a mesh by its ID, from the pack.
-    pub fn new(gpu: &Gpu, scene: &Scene, pages: TextPages, levels: &vellmark_content::MeshLevels, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
+    pub fn new(
+        gpu: &Gpu,
+        scene: &Scene,
+        pages: TextPages,
+        levels: &vellmark_content::MeshLevels,
+        mesh_of: &dyn Fn(AssetId) -> Option<Mesh>,
+    ) -> Result<Self, String> {
         // Every distinct mesh once, in the pool; a mesh with levels of detail is followed
         // by its coarser levels.
         let mut ids: Vec<AssetId> = vec![scene.static_mesh];
@@ -157,7 +170,10 @@ impl SceneGpu {
             indices.extend_from_slice(&mesh.indices);
         }
         if meshes.len() > MAX_GROUPS {
-            return Err(format!("the scene has {} meshes; the limit is {MAX_GROUPS}", meshes.len()));
+            return Err(format!(
+                "the scene has {} meshes; the limit is {MAX_GROUPS}",
+                meshes.len()
+            ));
         }
         // Every placed thing, kept together by mesh.
         let mut by_mesh: Vec<Vec<(AssetId, Mat4)>> = vec![Vec::new(); meshes.len()];
@@ -165,7 +181,8 @@ impl SceneGpu {
         for object in &scene.objects {
             let t = object.transform;
             let transform = Mat4::from_cols_array(&[
-                t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7], t[11], 1.0,
+                t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7],
+                t[11], 1.0,
             ]);
             let m = ids.iter().position(|id| *id == object.mesh).unwrap();
             by_mesh[m].push((object.key, transform));
@@ -174,9 +191,19 @@ impl SceneGpu {
         let mut placed = Vec::new();
         for (m, list) in by_mesh.into_iter().enumerate() {
             let first = placed.len() as u32;
-            groups.push(Group { mesh: m, first_instance: first, count: list.len() as u32, list_base: first, levels: chain_len[m] });
+            groups.push(Group {
+                mesh: m,
+                first_instance: first,
+                count: list.len() as u32,
+                list_base: first,
+                levels: chain_len[m],
+            });
             for (key, transform) in list {
-                placed.push(Placed { key, group: m, transform });
+                placed.push(Placed {
+                    key,
+                    group: m,
+                    transform,
+                });
             }
         }
         // A coarser level holds as many as its finest might send it, in its own part of
@@ -194,7 +221,9 @@ impl SceneGpu {
             }
         }
         if list_end as usize > MAX_INSTANCES {
-            return Err(format!("the scene needs {list_end} places in a list; the limit is {MAX_INSTANCES}"));
+            return Err(format!(
+                "the scene needs {list_end} places in a list; the limit is {MAX_INSTANCES}"
+            ));
         }
         let make = |label, bytes: &[u8], usage| {
             let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -207,8 +236,16 @@ impl SceneGpu {
             buffer
         };
         Ok(Self {
-            vertices: Some(make("mesh pool vertices", bytemuck::cast_slice(&vertices), wgpu::BufferUsages::VERTEX)),
-            indices: Some(make("mesh pool indices", bytemuck::cast_slice(&indices), wgpu::BufferUsages::INDEX)),
+            vertices: Some(make(
+                "mesh pool vertices",
+                bytemuck::cast_slice(&vertices),
+                wgpu::BufferUsages::VERTEX,
+            )),
+            indices: Some(make(
+                "mesh pool indices",
+                bytemuck::cast_slice(&indices),
+                wgpu::BufferUsages::INDEX,
+            )),
             meshes,
             groups,
             placed,
@@ -217,14 +254,23 @@ impl SceneGpu {
             list_end,
             generated: Vec::new(),
             records: Default::default(),
+            moves: 0,
         })
     }
 
     /// Moves a placed thing. The simulation's snapshot will drive this once doors open.
     pub fn set_transform(&mut self, key: AssetId, transform: Mat4) {
         if let Some(p) = self.placed.iter_mut().find(|p| p.key == key) {
-            p.transform = transform;
+            if p.transform != transform {
+                p.transform = transform;
+                self.moves = self.moves.wrapping_add(1);
+            }
         }
+    }
+
+    /// Changes whenever a placed thing moves, so that the shadows it casts are drawn again.
+    pub fn moves(&self) -> u64 {
+        self.moves
     }
 
     /// Every instance as the GPU reads it, with this frame's heat and breakage.
@@ -240,24 +286,55 @@ impl SceneGpu {
     }
 
     /// `lasting`: what words holding on things show, by ID, as `magic` numbers it.
-    pub fn instances(&self, heat: &[(u64, f32)], broken: &[u64], lasting: &[(u64, f32)]) -> Vec<InstanceGpu> {
+    pub fn instances(
+        &self,
+        heat: &[(u64, f32)],
+        broken: &[u64],
+        lasting: &[(u64, f32)],
+    ) -> Vec<InstanceGpu> {
         self.placed
             .iter()
             .enumerate()
             .map(|(i, p)| {
                 let mesh = &self.meshes[p.group];
                 let centre = p.transform.transform_point3(mesh.centre);
-                let scale = p.transform.x_axis.truncate().length().max(p.transform.y_axis.truncate().length()).max(p.transform.z_axis.truncate().length());
-                let heat = heat.iter().find(|(id, _)| *id == p.key.0).map_or(0.0, |(_, h)| *h);
+                let scale = p
+                    .transform
+                    .x_axis
+                    .truncate()
+                    .length()
+                    .max(p.transform.y_axis.truncate().length())
+                    .max(p.transform.z_axis.truncate().length());
+                let heat = heat
+                    .iter()
+                    .find(|(id, _)| *id == p.key.0)
+                    .map_or(0.0, |(_, h)| *h);
                 let hidden = if broken.contains(&p.key.0) { 1.0 } else { 0.0 };
                 InstanceGpu {
                     model: p.transform.to_cols_array(),
-                    state: [heat, hidden, lasting.iter().find(|(id, _)| *id == p.key.0).map_or(0.0, |(_, l)| *l), self.generated.get(i).copied().unwrap_or(0) as f32],
+                    state: [
+                        heat,
+                        hidden,
+                        lasting
+                            .iter()
+                            .find(|(id, _)| *id == p.key.0)
+                            .map_or(0.0, |(_, l)| *l),
+                        self.generated.get(i).copied().unwrap_or(0) as f32,
+                    ],
                     bounds: [centre.x, centre.y, centre.z, mesh.radius * scale],
                     group: {
                         let g = &self.groups[p.group];
-                        let coarser = if g.levels > 1 { self.groups[p.group + 1].list_base } else { 0 };
-                        [p.group as u32, g.list_base, g.levels.max(1) | (g.count << 8), coarser]
+                        let coarser = if g.levels > 1 {
+                            self.groups[p.group + 1].list_base
+                        } else {
+                            0
+                        };
+                        [
+                            p.group as u32,
+                            g.list_base,
+                            g.levels.max(1) | (g.count << 8),
+                            coarser,
+                        ]
                     },
                 }
             })
@@ -302,10 +379,21 @@ pub struct SurfaceResources {
     pub leaves: u32,
 }
 
-fn array_texture(gpu: &Gpu, label: &str, size: u32, mips: u32, layers: u32, format: wgpu::TextureFormat) -> wgpu::Texture {
+fn array_texture(
+    gpu: &Gpu,
+    label: &str,
+    size: u32,
+    mips: u32,
+    layers: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::Texture {
     gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
-        size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: layers },
+        size: wgpu::Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: layers,
+        },
         mip_level_count: mips,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -315,30 +403,88 @@ fn array_texture(gpu: &Gpu, label: &str, size: u32, mips: u32, layers: u32, form
     })
 }
 
-fn write_level(gpu: &Gpu, texture: &wgpu::Texture, level: u32, side: u32, layers: u32, bytes: &[u8]) {
+fn write_level(
+    gpu: &Gpu,
+    texture: &wgpu::Texture,
+    level: u32,
+    side: u32,
+    layers: u32,
+    bytes: &[u8],
+) {
     gpu.queue.write_texture(
-        wgpu::TexelCopyTextureInfo { texture, mip_level: level, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: level,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
         bytes,
-        wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(side * 4), rows_per_image: Some(side) },
-        wgpu::Extent3d { width: side, height: side, depth_or_array_layers: layers },
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(side * 4),
+            rows_per_image: Some(side),
+        },
+        wgpu::Extent3d {
+            width: side,
+            height: side,
+            depth_or_array_layers: layers,
+        },
     );
 }
 
 impl SurfaceResources {
-    pub fn new(gpu: &Gpu, set: &MaterialSet, glyphs: &GlyphAtlas, atlas: &crate::atlas::AtlasGpu) -> Result<Self, String> {
+    pub fn new(
+        gpu: &Gpu,
+        set: &MaterialSet,
+        glyphs: &GlyphAtlas,
+        atlas: &crate::atlas::AtlasGpu,
+    ) -> Result<Self, String> {
         let count = set.materials.len() as u32;
         if count == 0 || count as usize > MAX_MATERIALS {
-            return Err(format!("{count} materials; there must be between 1 and {MAX_MATERIALS}"));
+            return Err(format!(
+                "{count} materials; there must be between 1 and {MAX_MATERIALS}"
+            ));
         }
-        let colour = array_texture(gpu, "material colour", set.size, set.mips, count, wgpu::TextureFormat::Rgba8UnormSrgb);
-        let normal = array_texture(gpu, "material normal", set.size, set.mips, count, wgpu::TextureFormat::Rgba8Unorm);
+        let colour = array_texture(
+            gpu,
+            "material colour",
+            set.size,
+            set.mips,
+            count,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        );
+        let normal = array_texture(
+            gpu,
+            "material normal",
+            set.size,
+            set.mips,
+            count,
+            wgpu::TextureFormat::Rgba8Unorm,
+        );
         for level in 0..set.mips {
             let side = set.size >> level;
-            write_level(gpu, &colour, level, side, count, &set.texels[set.level_range(level, 0)]);
-            write_level(gpu, &normal, level, side, count, &set.texels[set.level_range(level, 1)]);
+            write_level(
+                gpu,
+                &colour,
+                level,
+                side,
+                count,
+                &set.texels[set.level_range(level, 0)],
+            );
+            write_level(
+                gpu,
+                &normal,
+                level,
+                side,
+                count,
+                &set.texels[set.level_range(level, 1)],
+            );
         }
         let array_view = |t: &wgpu::Texture| {
-            t.create_view(&wgpu::TextureViewDescriptor { dimension: Some(wgpu::TextureViewDimension::D2Array), ..Default::default() })
+            t.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            })
         };
         let (colour_view, normal_view) = (array_view(&colour), array_view(&normal));
         let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
@@ -355,7 +501,12 @@ impl SurfaceResources {
         let mut table = [MaterialParams::zeroed(); MAX_MATERIALS];
         for (slot, m) in table.iter_mut().zip(&set.materials) {
             slot.surface = [m.tile_metres, m.contrast, m.relief, m.emissive];
-            slot.info = [m.family.len() as u32, m.lexicon.elements.len() as u32, m.lexicon.hot.len() as u32, m.lexicon.cold.len() as u32];
+            slot.info = [
+                m.family.len() as u32,
+                m.lexicon.elements.len() as u32,
+                m.lexicon.hot.len() as u32,
+                m.lexicon.cold.len() as u32,
+            ];
             for (word, letters) in slot.words.iter_mut().zip(m.lexicon.slots()) {
                 for (i, chunk) in letters.chunks_exact(4).enumerate() {
                     word[i] = u32::from_le_bytes(chunk.try_into().unwrap());
@@ -371,7 +522,8 @@ impl SurfaceResources {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        gpu.queue.write_buffer(&table_buffer, 0, bytemuck::cast_slice(&table));
+        gpu.queue
+            .write_buffer(&table_buffer, 0, bytemuck::cast_slice(&table));
 
         // One row for each glyph: sixteen thresholds, then the least and most coverage
         // the glyph can reach, then its mean distance.
@@ -386,7 +538,11 @@ impl SurfaceResources {
         }
         let tone_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("glyph tone"),
-            size: wgpu::Extent3d { width, height: rows, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width,
+                height: rows,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -397,8 +553,16 @@ impl SurfaceResources {
         gpu.queue.write_texture(
             tone_texture.as_image_copy(),
             bytemuck::cast_slice(&tone),
-            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width * 4), rows_per_image: Some(rows) },
-            wgpu::Extent3d { width, height: rows, depth_or_array_layers: 1 },
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(rows),
+            },
+            wgpu::Extent3d {
+                width,
+                height: rows,
+                depth_or_array_layers: 1,
+            },
         );
         let tone_view = tone_texture.create_view(&Default::default());
 
@@ -410,7 +574,11 @@ impl SurfaceResources {
         });
         let page_sheet = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("text pages"),
-            size: wgpu::Extent3d { width: PAGE_SHEET, height: PAGE_SHEET, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: PAGE_SHEET,
+                height: PAGE_SHEET,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -437,66 +605,117 @@ impl SurfaceResources {
             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
             count: None,
         };
-        let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("surface"),
-            entries: &[
-                texture_array(0),
-                texture_array(1),
-                sampler_entry(2),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
-                    count: None,
-                },
-                texture_array(4),
-                sampler_entry(5),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 6,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
+        let layout = gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("surface"),
+                entries: &[
+                    texture_array(0),
+                    texture_array(1),
+                    sampler_entry(2),
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 7,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 8,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Uint,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
+                    texture_array(4),
+                    sampler_entry(5),
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 6,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-            ],
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 7,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 8,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Uint,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                ],
+            });
         let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("surface"),
             layout: &layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&colour_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&normal_view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&sampler) },
-                wgpu::BindGroupEntry { binding: 3, resource: table_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&atlas.view) },
-                wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::Sampler(&atlas.sampler) },
-                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&tone_view) },
-                wgpu::BindGroupEntry { binding: 7, resource: page_table.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(&page_view) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&colour_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: table_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&atlas.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::Sampler(&atlas.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&tone_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: page_table.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 8,
+                    resource: wgpu::BindingResource::TextureView(&page_view),
+                },
             ],
         });
-        let glowing = set.materials.iter().enumerate().filter(|(_, m)| m.emissive > 0.0).fold(0u32, |bits, (i, _)| bits | 1 << i);
-        let leaves = set.index_of(AssetId::from_key("material.leaves")).map_or(0, |i| i + 1);
-        let resources = Self { layout, bind_group, page_table, page_sheet, glowing, leaves };
+        let glowing = set
+            .materials
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.emissive > 0.0)
+            .fold(0u32, |bits, (i, _)| bits | 1 << i);
+        let leaves = set
+            .index_of(AssetId::from_key("material.leaves"))
+            .map_or(0, |i| i + 1);
+        let resources = Self {
+            layout,
+            bind_group,
+            page_table,
+            page_sheet,
+            glowing,
+            leaves,
+        };
         resources.set_pages(gpu, &TextPages::default());
         Ok(resources)
     }
@@ -505,15 +724,39 @@ impl SurfaceResources {
     /// characters at the bottom of the sheet.
     pub fn set_generated_page(&self, gpu: &Gpu, written: &crate::bark::Written) {
         let e = &written.entry;
-        let params = PageParams { place: [e.left, e.top, e.width as i32, e.height as i32], sheet_level: [e.sheet_x, e.sheet_y, e.level, 0] };
+        let params = PageParams {
+            place: [e.left, e.top, e.width as i32, e.height as i32],
+            sheet_level: [e.sheet_x, e.sheet_y, e.level, 0],
+        };
         let index = crate::bark::FIRST_ENTRY + written.slot;
-        gpu.queue.write_buffer(&self.page_table, (index * std::mem::size_of::<PageParams>()) as u64, bytemuck::bytes_of(&params));
+        gpu.queue.write_buffer(
+            &self.page_table,
+            (index * std::mem::size_of::<PageParams>()) as u64,
+            bytemuck::bytes_of(&params),
+        );
         let side = crate::bark::SIDE;
         gpu.queue.write_texture(
-            wgpu::TexelCopyTextureInfo { texture: &self.page_sheet, mip_level: 0, origin: wgpu::Origin3d { x: e.sheet_x, y: e.sheet_y, z: 0 }, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.page_sheet,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: e.sheet_x,
+                    y: e.sheet_y,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
             &written.chars,
-            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(side), rows_per_image: Some(side) },
-            wgpu::Extent3d { width: side, height: side, depth_or_array_layers: 1 },
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(side),
+                rows_per_image: Some(side),
+            },
+            wgpu::Extent3d {
+                width: side,
+                height: side,
+                depth_or_array_layers: 1,
+            },
         );
     }
 
@@ -525,13 +768,22 @@ impl SurfaceResources {
             slot.place = [e.left, e.top, e.width as i32, e.height as i32];
             slot.sheet_level = [e.sheet_x, e.sheet_y, e.level, 0];
         }
-        gpu.queue.write_buffer(&self.page_table, 0, bytemuck::cast_slice(&table));
+        gpu.queue
+            .write_buffer(&self.page_table, 0, bytemuck::cast_slice(&table));
         if pages.sheet_size == PAGE_SHEET && !pages.sheet.is_empty() {
             gpu.queue.write_texture(
                 self.page_sheet.as_image_copy(),
                 &pages.sheet,
-                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(PAGE_SHEET), rows_per_image: Some(PAGE_SHEET) },
-                wgpu::Extent3d { width: PAGE_SHEET, height: PAGE_SHEET, depth_or_array_layers: 1 },
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(PAGE_SHEET),
+                    rows_per_image: Some(PAGE_SHEET),
+                },
+                wgpu::Extent3d {
+                    width: PAGE_SHEET,
+                    height: PAGE_SHEET,
+                    depth_or_array_layers: 1,
+                },
             );
         }
     }

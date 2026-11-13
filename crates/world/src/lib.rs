@@ -48,7 +48,9 @@ impl Terrain {
 
     /// The finest tile that holds a point.
     fn finest_at(&self, x: f32, z: f32) -> Option<&TerrainTile> {
-        self.levels.iter().find_map(|&level| self.tiles.get(&TileCoord::containing(x, z, level)))
+        self.levels
+            .iter()
+            .find_map(|&level| self.tiles.get(&TileCoord::containing(x, z, level)))
     }
 
     /// The height of the ground at a point, from the finest tile that holds it.
@@ -60,8 +62,10 @@ impl Terrain {
     pub fn water_at(&self, x: f32, z: f32) -> Option<f32> {
         let tile = self.finest_at(x, z)?;
         let (x0, z0) = tile.coord.origin();
-        let i = (((x - x0) / tile.spacing).round() as usize).min(vellmark_content::TILE_SAMPLES - 1);
-        let j = (((z - z0) / tile.spacing).round() as usize).min(vellmark_content::TILE_SAMPLES - 1);
+        let i =
+            (((x - x0) / tile.spacing).round() as usize).min(vellmark_content::TILE_SAMPLES - 1);
+        let j =
+            (((z - z0) / tile.spacing).round() as usize).min(vellmark_content::TILE_SAMPLES - 1);
         let w = tile.water[TerrainTile::index(i, j)];
         (!w.is_nan()).then_some(w)
     }
@@ -84,8 +88,14 @@ impl vellmark_sim::Ground for Terrain {
 
     /// The finest level's tiles: the ground a body walks on.
     fn patches(&self) -> Vec<vellmark_sim::HeightPatch> {
-        let Some(&finest) = self.levels.first() else { return Vec::new() };
-        let mut tiles: Vec<&TerrainTile> = self.tiles.values().filter(|t| t.coord.level == finest).collect();
+        let Some(&finest) = self.levels.first() else {
+            return Vec::new();
+        };
+        let mut tiles: Vec<&TerrainTile> = self
+            .tiles
+            .values()
+            .filter(|t| t.coord.level == finest)
+            .collect();
         tiles.sort_by_key(|t| (t.coord.x, t.coord.z));
         tiles
             .into_iter()
@@ -109,9 +119,17 @@ mod tests {
     #[test]
     fn the_finest_tile_answers() {
         let mut terrain = Terrain::default();
-        let mut coarse = TerrainTile::new(TileCoord { level: 3, x: 0, z: 0 });
+        let mut coarse = TerrainTile::new(TileCoord {
+            level: 3,
+            x: 0,
+            z: 0,
+        });
         coarse.heights.iter_mut().for_each(|h| *h = 10.0);
-        let mut fine = TerrainTile::new(TileCoord { level: 0, x: 0, z: 0 });
+        let mut fine = TerrainTile::new(TileCoord {
+            level: 0,
+            x: 0,
+            z: 0,
+        });
         fine.heights.iter_mut().for_each(|h| *h = 2.0);
         terrain.insert(coarse);
         terrain.insert(fine);

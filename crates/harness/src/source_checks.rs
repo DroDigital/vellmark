@@ -11,7 +11,9 @@
 use std::path::{Path, PathBuf};
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(read) = std::fs::read_dir(dir) else { return };
+    let Ok(read) = std::fs::read_dir(dir) else {
+        return;
+    };
     let mut entries: Vec<PathBuf> = read.filter_map(|e| e.ok().map(|e| e.path())).collect();
     entries.sort();
     for path in entries {
@@ -24,8 +26,18 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 /// The crates whose code runs in the shipped game.
-pub const GAME_CRATES: &[&str] =
-    &["app", "platform", "storefront", "gpu", "render", "world", "sim", "ui", "audio", "content"];
+pub const GAME_CRATES: &[&str] = &[
+    "app",
+    "platform",
+    "storefront",
+    "gpu",
+    "render",
+    "world",
+    "sim",
+    "ui",
+    "audio",
+    "content",
+];
 
 pub struct KeyUse {
     pub key: String,
@@ -40,7 +52,9 @@ pub fn string_keys_in_code(repo: &Path) -> Vec<KeyUse> {
         let mut files = Vec::new();
         rust_files(&repo.join("crates").join(name).join("src"), &mut files);
         for file in files {
-            let Ok(text) = std::fs::read_to_string(&file) else { continue };
+            let Ok(text) = std::fs::read_to_string(&file) else {
+                continue;
+            };
             for (i, line) in text.lines().enumerate() {
                 // Unit tests sit at the end of a file and may use keys that do not exist.
                 if line.trim() == "#[cfg(test)]" {
@@ -50,7 +64,11 @@ pub fn string_keys_in_code(repo: &Path) -> Vec<KeyUse> {
                 while let Some(at) = rest.find("sid!(\"") {
                     rest = &rest[at + 6..];
                     if let Some(end) = rest.find('"') {
-                        uses.push(KeyUse { key: rest[..end].to_owned(), file: file.clone(), line: i + 1 });
+                        uses.push(KeyUse {
+                            key: rest[..end].to_owned(),
+                            file: file.clone(),
+                            line: i + 1,
+                        });
                         rest = &rest[end..];
                     }
                 }
@@ -72,7 +90,9 @@ pub fn dev_text_outside_dev_modules(repo: &Path) -> Vec<(PathBuf, usize)> {
             if in_dev {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&file) else { continue };
+            let Ok(text) = std::fs::read_to_string(&file) else {
+                continue;
+            };
             for (i, line) in text.lines().enumerate() {
                 let code = line.split("//").next().unwrap_or("");
                 // The definition itself lives in the interface crate, behind the `dev` feature.

@@ -33,10 +33,14 @@ impl Args {
                 "--size" => {
                     let v = value("--size")?;
                     let (w, h) = v.split_once('x').ok_or("--size takes WIDTHxHEIGHT")?;
-                    args.windowed_size =
-                        Some((w.parse().map_err(|_| "bad width")?, h.parse().map_err(|_| "bad height")?));
+                    args.windowed_size = Some((
+                        w.parse().map_err(|_| "bad width")?,
+                        h.parse().map_err(|_| "bad height")?,
+                    ));
                 }
-                "--frames" => args.frames = Some(value("--frames")?.parse().map_err(|_| "bad frame count")?),
+                "--frames" => {
+                    args.frames = Some(value("--frames")?.parse().map_err(|_| "bad frame count")?)
+                }
                 "--perf-run" => args.perf_run = true,
                 "--out" => args.out = Some(value("--out")?.into()),
                 "--capture" => args.capture = Some(value("--capture")?.into()),

@@ -57,8 +57,14 @@ impl TreeRecords {
             let years = u32::from_le_bytes(take(&mut at, 4)?.try_into().unwrap());
             let girth = f32::from_le_bytes(take(&mut at, 4)?.try_into().unwrap());
             let n = u32::from_le_bytes(take(&mut at, 4)?.try_into().unwrap()) as usize;
-            let kind = String::from_utf8(take(&mut at, n)?.to_vec()).map_err(|_| "a tree's kind is not text".to_string())?;
-            trees.push(TreeRecord { tree, kind, years, girth });
+            let kind = String::from_utf8(take(&mut at, n)?.to_vec())
+                .map_err(|_| "a tree's kind is not text".to_string())?;
+            trees.push(TreeRecord {
+                tree,
+                kind,
+                years,
+                girth,
+            });
         }
         Ok(Self { trees })
     }
@@ -72,8 +78,18 @@ mod tests {
     fn records_round_trip() {
         let t = TreeRecords {
             trees: vec![
-                TreeRecord { tree: AssetId(7), kind: "oak".into(), years: 143, girth: 1.9 },
-                TreeRecord { tree: AssetId(9), kind: "hawthorn".into(), years: 38, girth: 0.6 },
+                TreeRecord {
+                    tree: AssetId(7),
+                    kind: "oak".into(),
+                    years: 143,
+                    girth: 1.9,
+                },
+                TreeRecord {
+                    tree: AssetId(9),
+                    kind: "hawthorn".into(),
+                    years: 38,
+                    girth: 0.6,
+                },
             ],
         };
         assert_eq!(TreeRecords::from_bytes(&t.to_bytes()).unwrap(), t);

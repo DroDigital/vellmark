@@ -2,11 +2,11 @@
 //! large on paper over the dimmed view, with the hidden lines the reader sees beneath it
 //! in a different ink. Close reading is drawn by the renderer itself.
 
-use vellmark_content::{sid, GlyphAtlas, StringId, StringTable};
-use vellmark_platform::{prompts, ActionState, Bindings};
-use vellmark_sim::reading::ReadingSnap;
-use vellmark_sim::PlayerSnap;
 use crate::{Canvas, Shown, TextStyle};
+use vellmark_content::{GlyphAtlas, StringId, StringTable, sid};
+use vellmark_platform::{ActionState, Bindings, prompts};
+use vellmark_sim::PlayerSnap;
+use vellmark_sim::reading::ReadingSnap;
 
 const PAPER: [f32; 4] = [0.86, 0.82, 0.72, 0.97];
 const INK: [f32; 4] = [0.11, 0.09, 0.07, 1.0];
@@ -23,7 +23,14 @@ pub struct ReadingView<'a> {
 }
 
 impl ReadingView<'_> {
-    pub fn draw(&self, canvas: &mut Canvas, player: &PlayerSnap, actions: &ActionState, bindings: &Bindings, style: prompts::PadStyle) {
+    pub fn draw(
+        &self,
+        canvas: &mut Canvas,
+        player: &PlayerSnap,
+        actions: &ActionState,
+        bindings: &Bindings,
+        style: prompts::PadStyle,
+    ) {
         let (w, h) = (self.size.0 as f32, self.size.1 as f32);
         let d = self.density.max(1.0);
         match &player.reading {
@@ -35,11 +42,29 @@ impl ReadingView<'_> {
                 // As large as fits on the screen: set off screen to learn the height, a
                 // size smaller each time, then on the paper.
                 let fits = |size: f32| {
-                    let body = TextStyle { face: vellmark_content::Face::Large, size, colour: INK };
+                    let body = TextStyle {
+                        face: vellmark_content::Face::Large,
+                        size,
+                        colour: INK,
+                    };
                     let mut measure = Canvas::new();
-                    let mut height = measure.paragraph(self.atlas, 0.0, 0.0, width, &body, &Shown::from_table(self.strings, StringId(*text)));
+                    let mut height = measure.paragraph(
+                        self.atlas,
+                        0.0,
+                        0.0,
+                        width,
+                        &body,
+                        &Shown::from_table(self.strings, StringId(*text)),
+                    );
                     for line in hidden {
-                        height += measure.paragraph(self.atlas, 0.0, 0.0, width, &body, &Shown::from_table(self.strings, StringId(*line))) + size * 0.6;
+                        height += measure.paragraph(
+                            self.atlas,
+                            0.0,
+                            0.0,
+                            width,
+                            &body,
+                            &Shown::from_table(self.strings, StringId(*line)),
+                        ) + size * 0.6;
                     }
                     (body, height)
                 };
@@ -49,23 +74,54 @@ impl ReadingView<'_> {
                     size -= 2.0 * d;
                     (body, height) = fits(size);
                 }
-                let hidden_style = TextStyle { colour: HIDDEN_INK, ..body };
+                let hidden_style = TextStyle {
+                    colour: HIDDEN_INK,
+                    ..body
+                };
                 let top = ((h - height) * 0.5 - pad).max(pad);
                 canvas.rect([x - pad, top, width + pad * 2.0, height + pad * 2.0], PAPER);
                 let mut y = top + pad;
-                y += canvas.paragraph(self.atlas, x, y, width, &body, &Shown::from_table(self.strings, StringId(*text)));
+                y += canvas.paragraph(
+                    self.atlas,
+                    x,
+                    y,
+                    width,
+                    &body,
+                    &Shown::from_table(self.strings, StringId(*text)),
+                );
                 for line in hidden {
                     y += body.size * 0.6;
-                    y += canvas.paragraph(self.atlas, x, y, width, &hidden_style, &Shown::from_table(self.strings, StringId(*line)));
+                    y += canvas.paragraph(
+                        self.atlas,
+                        x,
+                        y,
+                        width,
+                        &hidden_style,
+                        &Shown::from_table(self.strings, StringId(*line)),
+                    );
                 }
             }
             ReadingSnap::None if player.in_focus.is_some() => {
-                let Some(key) = prompts::prompt_key(vellmark_platform::Action::Read, actions.last_device, style, bindings) else { return };
-                let small = TextStyle { face: vellmark_content::Face::Small, size: (18.0 * d).round(), colour: PROMPT };
-                let button = Shown::from_table(self.strings, vellmark_content::StringId::from_key(&key));
+                let Some(key) = prompts::prompt_key(
+                    vellmark_platform::Action::Read,
+                    actions.last_device,
+                    style,
+                    bindings,
+                ) else {
+                    return;
+                };
+                let small = TextStyle {
+                    face: vellmark_content::Face::Small,
+                    size: (18.0 * d).round(),
+                    colour: PROMPT,
+                };
+                let button =
+                    Shown::from_table(self.strings, vellmark_content::StringId::from_key(&key));
                 let verb = Shown::from_table(self.strings, sid!("ui.read"));
                 let gap = small.size * 0.5;
-                let total = Canvas::measure(self.atlas, &small, &button) + gap + Canvas::measure(self.atlas, &small, &verb);
+                let total = Canvas::measure(self.atlas, &small, &button)
+                    + gap
+                    + Canvas::measure(self.atlas, &small, &verb);
                 let x = (w - total) * 0.5;
                 let y = h * 0.62;
                 for (dx, colour) in [(1.5 * d, SHADOW), (0.0, PROMPT)] {

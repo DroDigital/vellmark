@@ -21,20 +21,21 @@ pub trait Ground: Send + Sync + std::fmt::Debug {
         Vec::new()
     }
 }
-pub mod character;
-pub mod hands;
-pub mod reading;
-pub mod emendation;
 pub mod casting;
+pub mod character;
+pub mod emendation;
+pub mod hands;
 mod hash;
 mod input;
+pub mod props;
+pub mod reading;
 mod snapshot;
 mod world;
 
-pub use clock::{FixedClock, StepPlan, STEP_HZ, STEP_SECONDS};
+pub use character::{Body, HeightPatch, Trunk};
+pub use clock::{FixedClock, STEP_HZ, STEP_SECONDS, StepPlan};
 pub use hash::Fnv64;
-pub use input::{buttons, PlayerInput};
+pub use input::{PlayerInput, buttons};
 pub use snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
 pub use weather::Weather;
-pub use world::{BreakableThing, PlayerId, World, WorldConfig, EYE_HEIGHT};
-pub use character::{Body, HeightPatch, Trunk};
+pub use world::{BreakableThing, EYE_HEIGHT, PlayerId, World, WorldConfig};

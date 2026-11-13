@@ -48,7 +48,10 @@ pub struct Smooth {
 impl Smooth {
     /// `seconds`: how long it takes to get most of the way there.
     pub fn new(value: f32, seconds: f32) -> Self {
-        Self { value, k: 1.0 - (-1.0 / (seconds.max(1.0e-4) * SAMPLE_RATE as f32)).exp() }
+        Self {
+            value,
+            k: 1.0 - (-1.0 / (seconds.max(1.0e-4) * SAMPLE_RATE as f32)).exp(),
+        }
     }
 
     pub fn next(&mut self, target: f32) -> f32 {
@@ -70,7 +73,10 @@ pub struct Pink {
 
 impl Pink {
     pub fn new(seed: u32) -> Self {
-        Self { rng: Rng::new(seed), b: [0.0; 3] }
+        Self {
+            rng: Rng::new(seed),
+            b: [0.0; 3],
+        }
     }
 
     pub fn next(&mut self) -> f32 {
@@ -98,7 +104,10 @@ pub struct SvfOut {
 impl Svf {
     /// `frequency` in hertz; `q` above about 0.5.
     pub fn next(&mut self, input: f32, frequency: f32, q: f32) -> SvfOut {
-        let f = 2.0 * (std::f32::consts::PI * frequency.clamp(10.0, SAMPLE_RATE as f32 * 0.24) / SAMPLE_RATE as f32).sin();
+        let f = 2.0
+            * (std::f32::consts::PI * frequency.clamp(10.0, SAMPLE_RATE as f32 * 0.24)
+                / SAMPLE_RATE as f32)
+                .sin();
         let damp = 1.0 / q.max(0.5);
         self.low += f * self.band;
         let high = input - self.low - damp * self.band;
@@ -108,7 +117,11 @@ impl Svf {
             self.low = 0.0;
             self.band = 0.0;
         }
-        SvfOut { low: self.low, band: self.band, high }
+        SvfOut {
+            low: self.low,
+            band: self.band,
+            high,
+        }
     }
 }
 

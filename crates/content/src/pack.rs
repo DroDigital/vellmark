@@ -10,7 +10,7 @@
 //! are never reordered, and nothing is compressed as a whole, so that a patch touches
 //! only the bytes around the asset that changed.
 
-use crate::id::{fnv1a64, AssetId, AssetKind};
+use crate::id::{AssetId, AssetKind, fnv1a64};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -153,7 +153,10 @@ impl Pack {
             if (offset as usize) < HEADER_LEN || end as usize > toc_offset {
                 return Err(PackError::BadTable);
             }
-            if entries.insert((kind, id), Entry { offset, len, hash }).is_some() {
+            if entries
+                .insert((kind, id), Entry { offset, len, hash })
+                .is_some()
+            {
                 return Err(PackError::Duplicate(kind, id));
             }
         }
@@ -169,7 +172,12 @@ impl Pack {
     pub fn of_kind(&self, kind: AssetKind) -> impl Iterator<Item = (AssetId, &[u8])> {
         self.entries
             .range((kind, AssetId(0))..=(kind, AssetId(u64::MAX)))
-            .map(|((_, id), e)| (*id, &self.bytes[e.offset as usize..(e.offset + e.len) as usize]))
+            .map(|((_, id), e)| {
+                (
+                    *id,
+                    &self.bytes[e.offset as usize..(e.offset + e.len) as usize],
+                )
+            })
     }
 
     pub fn len(&self) -> usize {
@@ -199,9 +207,21 @@ mod tests {
 
     fn sample(order_reversed: bool) -> Vec<u8> {
         let mut items = vec![
-            (AssetKind::Mesh, AssetId::from_key("mesh.wall"), vec![1u8, 2, 3]),
-            (AssetKind::StringTable, AssetId::from_key("en"), b"hello".to_vec()),
-            (AssetKind::Mesh, AssetId::from_key("mesh.door"), vec![9u8; 40]),
+            (
+                AssetKind::Mesh,
+                AssetId::from_key("mesh.wall"),
+                vec![1u8, 2, 3],
+            ),
+            (
+                AssetKind::StringTable,
+                AssetId::from_key("en"),
+                b"hello".to_vec(),
+            ),
+            (
+                AssetKind::Mesh,
+                AssetId::from_key("mesh.door"),
+                vec![9u8; 40],
+            ),
         ];
         if order_reversed {
             items.reverse();
@@ -217,8 +237,14 @@ mod tests {
     fn round_trip() {
         let p = Pack::from_bytes(sample(false)).unwrap();
         assert_eq!(p.len(), 3);
-        assert_eq!(p.get(AssetKind::Mesh, AssetId::from_key("mesh.wall")), Some(&[1u8, 2, 3][..]));
-        assert_eq!(p.get(AssetKind::StringTable, AssetId::from_key("en")), Some(&b"hello"[..]));
+        assert_eq!(
+            p.get(AssetKind::Mesh, AssetId::from_key("mesh.wall")),
+            Some(&[1u8, 2, 3][..])
+        );
+        assert_eq!(
+            p.get(AssetKind::StringTable, AssetId::from_key("en")),
+            Some(&b"hello"[..])
+        );
         assert_eq!(p.get(AssetKind::Texture, AssetId::from_key("en")), None);
         assert_eq!(p.of_kind(AssetKind::Mesh).count(), 2);
         p.verify().unwrap();
@@ -233,13 +259,19 @@ mod tests {
     fn duplicate_ids_are_refused() {
         let mut w = PackWriter::new();
         w.add(AssetKind::Mesh, AssetId(5), vec![]).unwrap();
-        assert_eq!(w.add(AssetKind::Mesh, AssetId(5), vec![]), Err(PackError::Duplicate(AssetKind::Mesh, AssetId(5))));
+        assert_eq!(
+            w.add(AssetKind::Mesh, AssetId(5), vec![]),
+            Err(PackError::Duplicate(AssetKind::Mesh, AssetId(5)))
+        );
     }
 
     #[test]
     fn damage_is_detected() {
         let mut bytes = sample(false);
-        assert_eq!(Pack::from_bytes(bytes[..10].to_vec()).err(), Some(PackError::TooShort));
+        assert_eq!(
+            Pack::from_bytes(bytes[..10].to_vec()).err(),
+            Some(PackError::TooShort)
+        );
         let mut wrong = bytes.clone();
         wrong[8] = 99;
         assert_eq!(Pack::from_bytes(wrong).err(), Some(PackError::Version(99)));
@@ -252,7 +284,8 @@ mod tests {
     fn changing_one_asset_leaves_earlier_bytes_alone() {
         let build = |door: u8| {
             let mut w = PackWriter::new();
-            w.add(AssetKind::StringTable, AssetId(1), vec![7; 100]).unwrap();
+            w.add(AssetKind::StringTable, AssetId(1), vec![7; 100])
+                .unwrap();
             w.add(AssetKind::Mesh, AssetId(2), vec![door; 100]).unwrap();
             w.finish()
         };

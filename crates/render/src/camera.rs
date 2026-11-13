@@ -11,7 +11,12 @@ pub struct Viewport {
 }
 
 impl Viewport {
-    pub const FULL: Self = Self { x: 0.0, y: 0.0, width: 1.0, height: 1.0 };
+    pub const FULL: Self = Self {
+        x: 0.0,
+        y: 0.0,
+        width: 1.0,
+        height: 1.0,
+    };
 
     /// The rectangle in pixels: x, y, width, height.
     pub fn pixels(&self, target: (u32, u32)) -> (f32, f32, f32, f32) {
@@ -39,7 +44,12 @@ impl Camera {
     pub const DEFAULT_NEAR: f32 = 0.05;
 
     pub fn from_view(view: &ViewSnap) -> Self {
-        Self { eye: view.eye, rotation: view.rotation(), fov_y: Self::DEFAULT_FOV_Y, near: Self::DEFAULT_NEAR }
+        Self {
+            eye: view.eye,
+            rotation: view.rotation(),
+            fov_y: Self::DEFAULT_FOV_Y,
+            near: Self::DEFAULT_NEAR,
+        }
     }
 
     /// Yaw turns right, pitch looks up, both in radians, as in the simulation.
@@ -61,10 +71,22 @@ impl Camera {
     pub fn projection(&self, aspect: f32) -> Mat4 {
         let f = 1.0 / (self.fov_y * 0.5).tan();
         Mat4::from_cols_array(&[
-            f / aspect, 0.0, 0.0, 0.0,
-            0.0, f, 0.0, 0.0,
-            0.0, 0.0, 0.0, -1.0,
-            0.0, 0.0, self.near, 0.0,
+            f / aspect,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            f,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            self.near,
+            0.0,
         ])
     }
 
@@ -79,10 +101,22 @@ pub fn look_at(eye: Vec3, target: Vec3, up: Vec3) -> Mat4 {
     let s = f.cross(up).normalize();
     let u = s.cross(f);
     Mat4::from_cols_array(&[
-        s.x, u.x, -f.x, 0.0,
-        s.y, u.y, -f.y, 0.0,
-        s.z, u.z, -f.z, 0.0,
-        -s.dot(eye), -u.dot(eye), f.dot(eye), 1.0,
+        s.x,
+        u.x,
+        -f.x,
+        0.0,
+        s.y,
+        u.y,
+        -f.y,
+        0.0,
+        s.z,
+        u.z,
+        -f.z,
+        0.0,
+        -s.dot(eye),
+        -u.dot(eye),
+        f.dot(eye),
+        1.0,
     ])
 }
 
@@ -90,10 +124,22 @@ pub fn look_at(eye: Vec3, target: Vec3, up: Vec3) -> Mat4 {
 pub fn orthographic(left: f32, right: f32, bottom: f32, top: f32, near: f32, far: f32) -> Mat4 {
     let (w, h, d) = (right - left, top - bottom, far - near);
     Mat4::from_cols_array(&[
-        2.0 / w, 0.0, 0.0, 0.0,
-        0.0, 2.0 / h, 0.0, 0.0,
-        0.0, 0.0, -1.0 / d, 0.0,
-        -(right + left) / w, -(top + bottom) / h, -near / d, 1.0,
+        2.0 / w,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.0 / h,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0 / d,
+        0.0,
+        -(right + left) / w,
+        -(top + bottom) / h,
+        -near / d,
+        1.0,
     ])
 }
 
@@ -106,7 +152,10 @@ pub struct View {
 
 impl View {
     pub fn full(camera: Camera) -> Self {
-        Self { camera, viewport: Viewport::FULL }
+        Self {
+            camera,
+            viewport: Viewport::FULL,
+        }
     }
 }
 
@@ -143,7 +192,12 @@ mod tests {
 
     #[test]
     fn viewport_pixels() {
-        let left = Viewport { x: 0.0, y: 0.0, width: 0.5, height: 1.0 };
+        let left = Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: 0.5,
+            height: 1.0,
+        };
         assert_eq!(left.pixels((1920, 1080)), (0.0, 0.0, 960.0, 1080.0));
     }
 }

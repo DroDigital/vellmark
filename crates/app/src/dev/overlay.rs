@@ -4,7 +4,7 @@ use std::time::Duration;
 use vellmark_content::{Face, GlyphAtlas};
 use vellmark_gpu::{PassTiming, PipelineRegistry};
 use vellmark_platform::RawInput;
-use vellmark_ui::{dev_text, Canvas, TextStyle};
+use vellmark_ui::{Canvas, TextStyle, dev_text};
 
 /// What the console can ask of the game.
 #[derive(Clone, Debug, PartialEq)]
@@ -111,17 +111,26 @@ impl Overlay {
                 }
                 false
             }
-            RawInput::Key { key: Key::Enter, down: true } => {
+            RawInput::Key {
+                key: Key::Enter,
+                down: true,
+            } => {
                 let line = std::mem::take(&mut self.line);
                 self.run(&line);
                 false
             }
-            RawInput::Key { key: Key::Backspace, down: true } => {
+            RawInput::Key {
+                key: Key::Backspace,
+                down: true,
+            } => {
                 self.line.pop();
                 false
             }
             // The key that closes the console, and Escape, still get through.
-            RawInput::Key { key: Key::Grave | Key::Escape, .. } => true,
+            RawInput::Key {
+                key: Key::Grave | Key::Escape,
+                ..
+            } => true,
             RawInput::Key { .. } => false,
             _ => true,
         });
@@ -219,17 +228,33 @@ impl Overlay {
     }
 
     /// The tuning panel's keys: down picks a row, left and right change its value.
-    pub fn tune(&mut self, tuning: &mut vellmark_render::GlyphTuning, next: bool, less: bool, more: bool) {
+    pub fn tune(
+        &mut self,
+        tuning: &mut vellmark_render::GlyphTuning,
+        next: bool,
+        less: bool,
+        more: bool,
+    ) {
         if !self.tuning {
             return;
         }
         if next {
             self.tuning_row = (self.tuning_row + 1) % 2;
         }
-        let step = if more { 1.0 } else if less { -1.0 } else { 0.0 };
+        let step = if more {
+            1.0
+        } else if less {
+            -1.0
+        } else {
+            0.0
+        };
         if step != 0.0 {
             // Steps of a twentieth, so that a value can be read back and written down.
-            let value = if self.tuning_row == 0 { &mut tuning.reveal } else { &mut tuning.contrast };
+            let value = if self.tuning_row == 0 {
+                &mut tuning.reveal
+            } else {
+                &mut tuning.contrast
+            };
             *value = ((*value + step * 0.05) * 20.0).round() / 20.0;
             *value = value.clamp(0.1, 8.0);
         }
@@ -259,7 +284,11 @@ impl Overlay {
             self.worst_ms = ms;
             self.worst_age = 0;
         }
-        let style = TextStyle { face: Face::Small, size: (14.0 * density.max(1.0)).round(), colour: WHITE };
+        let style = TextStyle {
+            face: Face::Small,
+            size: (14.0 * density.max(1.0)).round(),
+            colour: WHITE,
+        };
         let line = Canvas::line_height(atlas, &style).round();
         let pad = (8.0 * density.max(1.0)).round();
 
@@ -269,13 +298,24 @@ impl Overlay {
             canvas.rect([pad, pad, width, rows * line + pad * 2.0], PANEL);
             let mut y = pad * 2.0 + line * 0.75;
             let mut put = |canvas: &mut Canvas, text: &str, colour: [f32; 4]| {
-                canvas.text(atlas, pad * 2.0, y, &TextStyle { colour, ..style }, &dev_text(text));
+                canvas.text(
+                    atlas,
+                    pad * 2.0,
+                    y,
+                    &TextStyle { colour, ..style },
+                    &dev_text(text),
+                );
                 y += line;
             };
             let over = self.smoothed_ms > 16.7;
             put(
                 canvas,
-                &format!("FRAME {:5.2} ms  {:5.1} fps  worst {:5.2}", self.smoothed_ms, 1000.0 / self.smoothed_ms.max(0.01), self.worst_ms),
+                &format!(
+                    "FRAME {:5.2} ms  {:5.1} fps  worst {:5.2}",
+                    self.smoothed_ms,
+                    1000.0 / self.smoothed_ms.max(0.01),
+                    self.worst_ms
+                ),
                 if over { RED } else { GOLD },
             );
             for pass in passes {
@@ -283,15 +323,35 @@ impl Overlay {
                 let cells = ((pass.milliseconds * 4.0).round() as usize).min(20);
                 let mark = budget_ms(pass.name).map(|b| ((b * 4.0).round() as usize).min(20));
                 let bar: String = (0..20)
-                    .map(|i| if Some(i + 1) == mark { '|' } else if i < cells { '#' } else { '.' })
+                    .map(|i| {
+                        if Some(i + 1) == mark {
+                            '|'
+                        } else if i < cells {
+                            '#'
+                        } else {
+                            '.'
+                        }
+                    })
                     .collect();
                 let over = budget_ms(pass.name).is_some_and(|b| pass.milliseconds > b);
-                put(canvas, &format!("{:<10} {bar} {:5.2}", pass.name, pass.milliseconds), if over { RED } else { WHITE });
+                put(
+                    canvas,
+                    &format!("{:<10} {bar} {:5.2}", pass.name, pass.milliseconds),
+                    if over { RED } else { WHITE },
+                );
             }
             if passes.is_empty() {
                 put(canvas, "this graphics card cannot time passes", DIM);
             }
-            put(canvas, &format!("pipelines {}  made in play {}", registry.created(), registry.created_during_play()), DIM);
+            put(
+                canvas,
+                &format!(
+                    "pipelines {}  made in play {}",
+                    registry.created(),
+                    registry.created_during_play()
+                ),
+                DIM,
+            );
             if let Some(ms) = last_reload_ms {
                 put(canvas, &format!("last reload {ms:.1} ms"), DIM);
             }
@@ -304,13 +364,34 @@ impl Overlay {
             let rows = [
                 ("TUNING   down: next   left, right: change".to_owned(), GOLD),
                 // 6 m is where the first trace of letters shows at the brief's setting.
-                (format!("{} reveal    {:4.2}  first trace {:4.1} m", if self.tuning_row == 0 { '>' } else { ' ' }, tuning.reveal, 6.0 * tuning.reveal), WHITE),
-                (format!("{} contrast  {:4.2}", if self.tuning_row == 1 { '>' } else { ' ' }, tuning.contrast), WHITE),
+                (
+                    format!(
+                        "{} reveal    {:4.2}  first trace {:4.1} m",
+                        if self.tuning_row == 0 { '>' } else { ' ' },
+                        tuning.reveal,
+                        6.0 * tuning.reveal
+                    ),
+                    WHITE,
+                ),
+                (
+                    format!(
+                        "{} contrast  {:4.2}",
+                        if self.tuning_row == 1 { '>' } else { ' ' },
+                        tuning.contrast
+                    ),
+                    WHITE,
+                ),
                 ("write the values down for the Look Gate".to_owned(), DIM),
             ];
             let mut y = pad * 2.0 + line * 0.75;
             for (text, colour) in rows {
-                canvas.text(atlas, x + pad, y, &TextStyle { colour, ..style }, &dev_text(&text));
+                canvas.text(
+                    atlas,
+                    x + pad,
+                    y,
+                    &TextStyle { colour, ..style },
+                    &dev_text(&text),
+                );
                 y += line;
             }
         }
@@ -322,10 +403,28 @@ impl Overlay {
             canvas.rect([pad, top, target.0 as f32 - pad * 2.0, height], PANEL);
             let mut y = top + pad + line * 0.75;
             for text in &self.history {
-                canvas.text(atlas, pad * 2.0, y, &TextStyle { colour: DIM, ..style }, &dev_text(text));
+                canvas.text(
+                    atlas,
+                    pad * 2.0,
+                    y,
+                    &TextStyle {
+                        colour: DIM,
+                        ..style
+                    },
+                    &dev_text(text),
+                );
                 y += line;
             }
-            canvas.text(atlas, pad * 2.0, y, &TextStyle { colour: GOLD, ..style }, &dev_text(&format!("> {}_", self.line)));
+            canvas.text(
+                atlas,
+                pad * 2.0,
+                y,
+                &TextStyle {
+                    colour: GOLD,
+                    ..style
+                },
+                &dev_text(&format!("> {}_", self.line)),
+            );
         }
     }
 }
@@ -337,7 +436,10 @@ mod tests {
 
     fn typed(overlay: &mut Overlay, text: &str) {
         let mut raw: Vec<RawInput> = text.chars().map(RawInput::Text).collect();
-        raw.push(RawInput::Key { key: Key::Enter, down: true });
+        raw.push(RawInput::Key {
+            key: Key::Enter,
+            down: true,
+        });
         overlay.console_input(&mut raw);
         assert!(raw.is_empty(), "the console consumes what is typed into it");
     }
@@ -353,31 +455,51 @@ mod tests {
         typed(&mut overlay, "nonsense");
         assert_eq!(
             overlay.take_commands(),
-            vec![Command::Hour(Some(18.5)), Command::GlyphLayer(false), Command::Hour(None)]
+            vec![
+                Command::Hour(Some(18.5)),
+                Command::GlyphLayer(false),
+                Command::Hour(None)
+            ]
         );
         typed(&mut overlay, "reveal 1.5");
         typed(&mut overlay, "contrast 9");
         assert_eq!(overlay.take_commands(), vec![Command::Reveal(1.5)]);
         let mut tuning = vellmark_render::GlyphTuning::default();
         overlay.tune(&mut tuning, false, false, true);
-        assert_eq!(tuning.reveal, 1.0, "the panel does nothing while it is closed");
+        assert_eq!(
+            tuning.reveal, 1.0,
+            "the panel does nothing while it is closed"
+        );
         overlay.tuning = true;
         overlay.tune(&mut tuning, false, false, true);
         overlay.tune(&mut tuning, true, false, false);
         overlay.tune(&mut tuning, false, true, false);
-        assert_eq!((tuning.reveal, tuning.contrast), (1.05, 0.95)
+        assert_eq!((tuning.reveal, tuning.contrast), (1.05, 0.95));
+        assert!(
+            overlay
+                .history
+                .iter()
+                .any(|l| l.contains("unknown command"))
         );
-        assert!(overlay.history.iter().any(|l| l.contains("unknown command")));
     }
 
     #[test]
     fn a_closed_console_leaves_input_alone() {
         let mut overlay = Overlay::new();
-        let mut raw = vec![RawInput::Text('x'), RawInput::Key { key: Key::W, down: true }];
+        let mut raw = vec![
+            RawInput::Text('x'),
+            RawInput::Key {
+                key: Key::W,
+                down: true,
+            },
+        ];
         overlay.console_input(&mut raw);
         assert_eq!(raw.len(), 2);
         overlay.console = true;
         overlay.console_input(&mut raw);
-        assert!(raw.is_empty(), "movement keys do not reach the game while typing");
+        assert!(
+            raw.is_empty(),
+            "movement keys do not reach the game while typing"
+        );
     }
 }

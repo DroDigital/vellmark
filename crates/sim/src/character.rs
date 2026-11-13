@@ -10,9 +10,12 @@
 use glam::{Vec2, Vec3};
 use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterController};
 use rapier3d::math::{Pose, Vector};
-use rapier3d::prelude::{Array2, ColliderBuilder, HeightField, HeightFieldCellStatus, PhysicsWorld, QueryFilter, Ray, SharedShape};
+use rapier3d::prelude::{
+    Array2, ColliderBuilder, HeightField, HeightFieldCellStatus, PhysicsWorld, QueryFilter, Ray,
+    SharedShape,
+};
 
-use crate::input::{buttons, PlayerInput};
+use crate::input::{PlayerInput, buttons};
 
 // The body's measures, in metres.
 pub const RADIUS: f32 = 0.32;
@@ -77,6 +80,8 @@ pub struct Trunk {
 /// The world's still shapes, built once.
 pub struct Statics {
     world: PhysicsWorld,
+    /// The colliders of things that can break, by the thing's permanent ID.
+    things: Vec<(u64, Vec<rapier3d::prelude::ColliderHandle>)>,
 }
 
 impl std::fmt::Debug for Statics {
@@ -93,51 +98,102 @@ fn g(p: Vector) -> Vec3 {
     Vec3::new(p.x, p.y, p.z)
 }
 
+/// Adds the still things to a physics world: the ground's patches, boxes, and trunks.
+pub(crate) fn add_still(
+    world: &mut PhysicsWorld,
+    patches: &[HeightPatch],
+    solids: &[crate::debris::Solid],
+    trunks: &[Trunk],
+) {
+    for p in patches {
+        let n = p.samples;
+        // Rapier's heights run down the rows along z and across the columns along x,
+        // column by column; ours run along x, row by row.
+        let mut data = vec![0.0; n * n];
+        for z in 0..n {
+            for x in 0..n {
+                data[z + x * n] = p.heights[x + z * n];
+            }
+        }
+        let side = p.spacing * (n - 1) as f32;
+        let centre = Vec3::new(p.origin.x + side * 0.5, 0.0, p.origin.y + side * 0.5);
+        // Each cell is split from its least corner to its greatest, as the terrain is
+        // drawn and as `TerrainTile::height_at` reads it.
+        let mut field = HeightField::new(Array2::new(n, n, data), Vector::new(side, 1.0, side));
+        for i in 0..n - 1 {
+            for j in 0..n - 1 {
+                field.set_cell_status(i, j, HeightFieldCellStatus::ZIGZAG_SUBDIVISION);
+            }
+        }
+        world.insert_collider(
+            ColliderBuilder::new(SharedShape::new(field)).translation(v(centre)),
+            None,
+        );
+    }
+    for s in solids {
+        let half = (s.max - s.min) * 0.5;
+        if half.min_element() <= 0.0 {
+            continue;
+        }
+        world.insert_collider(
+            ColliderBuilder::cuboid(half.x, half.y, half.z).translation(v(s.min + half)),
+            None,
+        );
+    }
+    for t in trunks {
+        let half = (t.height * 0.5 - t.radius).max(0.05);
+        world.insert_collider(
+            ColliderBuilder::capsule_y(half, t.radius)
+                .translation(v(t.foot + Vec3::Y * (t.height * 0.5))),
+            None,
+        );
+    }
+}
+
 impl Statics {
     pub fn new(patches: &[HeightPatch], solids: &[crate::debris::Solid], trunks: &[Trunk]) -> Self {
         let mut world = PhysicsWorld::new();
-        for p in patches {
-            let n = p.samples;
-            // Rapier's heights run down the rows along z and across the columns along x,
-            // column by column; ours run along x, row by row.
-            let mut data = vec![0.0; n * n];
-            for z in 0..n {
-                for x in 0..n {
-                    data[z + x * n] = p.heights[x + z * n];
-                }
-            }
-            let side = p.spacing * (n - 1) as f32;
-            let centre = Vec3::new(p.origin.x + side * 0.5, 0.0, p.origin.y + side * 0.5);
-            // Each cell is split from its least corner to its greatest, as the terrain is
-            // drawn and as `TerrainTile::height_at` reads it.
-            let mut field = HeightField::new(Array2::new(n, n, data), Vector::new(side, 1.0, side));
-            for i in 0..n - 1 {
-                for j in 0..n - 1 {
-                    field.set_cell_status(i, j, HeightFieldCellStatus::ZIGZAG_SUBDIVISION);
-                }
-            }
-            world.insert_collider(ColliderBuilder::new(SharedShape::new(field)).translation(v(centre)), None);
-        }
-        for s in solids {
-            let half = (s.max - s.min) * 0.5;
-            if half.min_element() <= 0.0 {
-                continue;
-            }
-            world.insert_collider(ColliderBuilder::cuboid(half.x, half.y, half.z).translation(v(s.min + half)), None);
-        }
-        for t in trunks {
-            let half = (t.height * 0.5 - t.radius).max(0.05);
-            world.insert_collider(ColliderBuilder::capsule_y(half, t.radius).translation(v(t.foot + Vec3::Y * (t.height * 0.5))), None);
-        }
+        add_still(&mut world, patches, solids, trunks);
         // Once, so that the queries know where everything is.
         world.step();
-        Self { world }
+        Self {
+            world,
+            things: Vec::new(),
+        }
+    }
+
+    /// Sets the boxes a breakable thing stands in now: none while it is broken, some
+    /// while it is being mended, all once it is whole.
+    pub fn set_thing(&mut self, id: u64, solids: &[crate::debris::Solid]) {
+        if let Some(at) = self.things.iter().position(|(t, _)| *t == id) {
+            let (_, handles) = self.things.swap_remove(at);
+            for h in handles {
+                self.world.remove_collider(h);
+            }
+        }
+        let handles: Vec<_> = solids
+            .iter()
+            .filter(|s| (s.max - s.min).min_element() > 0.0)
+            .map(|s| {
+                let half = (s.max - s.min) * 0.5;
+                self.world.insert_collider(
+                    ColliderBuilder::cuboid(half.x, half.y, half.z).translation(v(s.min + half)),
+                    None,
+                )
+            })
+            .collect();
+        if !handles.is_empty() {
+            self.things.push((id, handles));
+        }
+        self.world.step();
     }
 
     /// The first still thing a ray meets, within `reach`: how far along, and the normal.
     pub fn ray(&self, from: Vec3, dir: Vec3, reach: f32) -> Option<(f32, Vec3)> {
         let ray = Ray::new(v(from), v(dir));
-        self.world.cast_ray_and_get_normal(&ray, reach, true, QueryFilter::default()).map(|(_, hit)| (hit.time_of_impact, g(hit.normal)))
+        self.world
+            .cast_ray_and_get_normal(&ray, reach, true, QueryFilter::default())
+            .map(|(_, hit)| (hit.time_of_impact, g(hit.normal)))
     }
 
     /// Whether a capsule of the body's radius and this height, standing on `feet`, would
@@ -146,7 +202,10 @@ impl Statics {
         let half = height * 0.5 - RADIUS;
         let shape = SharedShape::capsule_y(half, RADIUS - 0.02);
         let pose = Pose::from_translation(v(feet + Vec3::Y * (height * 0.5 + 0.03)));
-        self.world.intersect_shape(pose, shape.as_ref(), QueryFilter::default()).next().is_some()
+        self.world
+            .intersect_shape(pose, shape.as_ref(), QueryFilter::default())
+            .next()
+            .is_some()
     }
 }
 
@@ -221,12 +280,27 @@ impl Body {
     }
 
     fn height(&self) -> f32 {
-        if self.crouching { CROUCHED_HEIGHT } else { STANDING_HEIGHT }
+        if self.crouching {
+            CROUCHED_HEIGHT
+        } else {
+            STANDING_HEIGHT
+        }
     }
 
     /// The bits of `state_hash` that make a body what it is.
     pub fn hash(&self, h: &mut crate::Fnv64) {
-        for x in [self.feet.x, self.feet.y, self.feet.z, self.velocity.x, self.velocity.y, self.velocity.z, self.eye, self.since_ground, self.jump_wanted, self.rest] {
+        for x in [
+            self.feet.x,
+            self.feet.y,
+            self.feet.z,
+            self.velocity.x,
+            self.velocity.y,
+            self.velocity.z,
+            self.eye,
+            self.since_ground,
+            self.jump_wanted,
+            self.rest,
+        ] {
             h.f32(x);
         }
         h.u32(self.grounded as u32 | (self.crouching as u32) << 1 | (self.swimming as u32) << 2);
@@ -246,7 +320,14 @@ impl Body {
 
     /// One fixed step of `dt` seconds of the world's time: a full step, or less while
     /// time is slowed. `yaw` is the body's facing.
-    pub fn step(&mut self, input: &PlayerInput, yaw: f32, statics: Option<&Statics>, around: &dyn Surroundings, dt: f32) {
+    pub fn step(
+        &mut self,
+        input: &PlayerInput,
+        yaw: f32,
+        statics: Option<&Statics>,
+        around: &dyn Surroundings,
+        dt: f32,
+    ) {
         let pressed = input.buttons & !self.last_buttons;
         self.last_buttons = input.buttons;
         let (sin, cos) = yaw.sin_cos();
@@ -274,7 +355,11 @@ impl Body {
             let up = (t / 0.6).min(1.0);
             let over = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
             let ease = |x: f32| x * x * (3.0 - 2.0 * x);
-            self.feet = Vec3::new(m.from.x + (m.to.x - m.from.x) * ease(over), m.from.y + (m.to.y - m.from.y) * ease(up), m.from.z + (m.to.z - m.from.z) * ease(over));
+            self.feet = Vec3::new(
+                m.from.x + (m.to.x - m.from.x) * ease(over),
+                m.from.y + (m.to.y - m.from.y) * ease(up),
+                m.from.z + (m.to.z - m.from.z) * ease(over),
+            );
             self.mantle = if m.t >= 1.0 { None } else { Some(m) };
             if self.mantle.is_none() {
                 self.velocity = wish_dir * JOG * 0.5;
@@ -302,13 +387,25 @@ impl Body {
         }
 
         // The sidestep: a quick step in the direction of movement, or back when still.
-        if pressed & buttons::SIDESTEP != 0 && self.sidestep.is_none() && self.rest == 0.0 && !self.swimming {
-            let dir = if wish_dir.length_squared() > 0.01 { wish_dir.normalize() } else { -forward };
+        if pressed & buttons::SIDESTEP != 0
+            && self.sidestep.is_none()
+            && self.rest == 0.0
+            && !self.swimming
+        {
+            let dir = if wish_dir.length_squared() > 0.01 {
+                wish_dir.normalize()
+            } else {
+                -forward
+            };
             self.sidestep = Some(Sidestep { dir, t: 0.0 });
         }
 
         let speed = if self.swimming {
-            if input.held(buttons::SPRINT) { SWIM_SPRINT } else { SWIM }
+            if input.held(buttons::SPRINT) {
+                SWIM_SPRINT
+            } else {
+                SWIM
+            }
         } else if self.crouching {
             CROUCH_SPEED
         } else if input.held(buttons::SPRINT) {
@@ -317,14 +414,28 @@ impl Body {
             JOG
         };
         // Wading slows the legs.
-        let wading = if self.swimming { 1.0 } else { 1.0 - (depth / SWIM_DEPTH).clamp(0.0, 1.0) * 0.45 };
+        let wading = if self.swimming {
+            1.0
+        } else {
+            1.0 - (depth / SWIM_DEPTH).clamp(0.0, 1.0) * 0.45
+        };
         let target = wish_dir * speed * wading;
-        let accel = if self.swimming { WATER_ACCEL } else if self.grounded { GROUND_ACCEL } else { AIR_ACCEL };
+        let accel = if self.swimming {
+            WATER_ACCEL
+        } else if self.grounded {
+            GROUND_ACCEL
+        } else {
+            AIR_ACCEL
+        };
         let flat = Vec2::new(self.velocity.x, self.velocity.z);
         let to = Vec2::new(target.x, target.z);
         let change = to - flat;
         let step = accel * dt;
-        let flat = if change.length() <= step { to } else { flat + change.normalize() * step };
+        let flat = if change.length() <= step {
+            to
+        } else {
+            flat + change.normalize() * step
+        };
         self.velocity.x = flat.x;
         self.velocity.z = flat.y;
 
@@ -363,7 +474,8 @@ impl Body {
             } else {
                 self.since_ground += dt;
             }
-            if self.jump_wanted <= JUMP_GRACE && self.since_ground <= JUMP_GRACE && !self.crouching {
+            if self.jump_wanted <= JUMP_GRACE && self.since_ground <= JUMP_GRACE && !self.crouching
+            {
                 self.velocity.y = JUMP_SPEED;
                 self.jump_wanted = f32::MAX;
                 self.since_ground = f32::MAX;
@@ -386,9 +498,17 @@ impl Body {
         };
 
         // A ledge ahead, while pushing at it in the air or jumping at it: mantle.
-        if !self.swimming && wish.y > 0.5 && (!self.grounded || pressed & buttons::JUMP != 0) && self.sidestep.is_none() {
+        if !self.swimming
+            && wish.y > 0.5
+            && (!self.grounded || pressed & buttons::JUMP != 0)
+            && self.sidestep.is_none()
+        {
             if let Some(top) = self.ledge(statics, forward) {
-                self.mantle = Some(Mantle { from: self.feet, to: top, t: 0.0 });
+                self.mantle = Some(Mantle {
+                    from: self.feet,
+                    to: top,
+                    t: 0.0,
+                });
                 self.velocity = Vec3::ZERO;
                 self.ease_eye(dt);
                 return;
@@ -403,13 +523,28 @@ impl Body {
             up: Vector::Y,
             offset: CharacterLength::Absolute(0.02),
             slide: true,
-            autostep: Some(CharacterAutostep { max_height: CharacterLength::Absolute(0.38), min_width: CharacterLength::Absolute(0.2), include_dynamic_bodies: false }),
+            autostep: Some(CharacterAutostep {
+                max_height: CharacterLength::Absolute(0.38),
+                min_width: CharacterLength::Absolute(0.2),
+                include_dynamic_bodies: false,
+            }),
             max_slope_climb_angle: MAX_SLOPE,
             min_slope_slide_angle: MAX_SLOPE,
-            snap_to_ground: if self.velocity.y <= 0.0 && !self.swimming { Some(CharacterLength::Absolute(0.3)) } else { None },
+            snap_to_ground: if self.velocity.y <= 0.0 && !self.swimming {
+                Some(CharacterLength::Absolute(0.3))
+            } else {
+                None
+            },
             normal_nudge_factor: 1.0e-4,
         };
-        let moved = controller.move_shape(dt, &statics.world.query_pipeline(), shape.as_ref(), &pose, v(desired), |_| {});
+        let moved = controller.move_shape(
+            dt,
+            &statics.world.query_pipeline(),
+            shape.as_ref(),
+            &pose,
+            v(desired),
+            |_| {},
+        );
         let moved_by = g(moved.translation);
         self.feet += moved_by;
         self.grounded = moved.grounded && !self.swimming;
@@ -431,7 +566,11 @@ impl Body {
     }
 
     fn ease_eye(&mut self, dt: f32) {
-        let target = if self.crouching { EYE_CROUCHED } else { EYE_STANDING };
+        let target = if self.crouching {
+            EYE_CROUCHED
+        } else {
+            EYE_STANDING
+        };
         self.eye += (target - self.eye) * (1.0 - (-dt * 14.0).exp());
     }
 

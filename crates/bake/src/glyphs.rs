@@ -2,7 +2,7 @@
 //! chain of smaller levels, and each glyph's lookup from tone to threshold.
 
 use crate::sha256::{hex, sha256};
-use crate::{err, BakeError};
+use crate::{BakeError, err};
 use fdsm::bezier::scanline::FillRule;
 use fdsm::bezier::{Point, Segment};
 use fdsm::generate::generate_mtsdf;
@@ -39,12 +39,17 @@ struct Outline {
 impl Outline {
     fn point(&self, x: f32, y: f32) -> Point {
         // Font units have y up; the image has y down.
-        Point::new(self.origin.0 + x as f64 * self.scale * self.squeeze, self.origin.1 - y as f64 * self.scale)
+        Point::new(
+            self.origin.0 + x as f64 * self.scale * self.squeeze,
+            self.origin.1 - y as f64 * self.scale,
+        )
     }
 
     fn finish_contour(&mut self) {
         if !self.current.is_empty() {
-            self.contours.push(Contour { segments: std::mem::take(&mut self.current) });
+            self.contours.push(Contour {
+                segments: std::mem::take(&mut self.current),
+            });
         }
     }
 }
@@ -110,11 +115,20 @@ fn raster_field(contours: &[Contour]) -> Vec<u8> {
     let mut lines: Vec<(f64, f64, f64, f64)> = Vec::new();
     for contour in contours {
         for segment in &contour.segments {
-            let steps = if matches!(segment.order(), fdsm::bezier::Order::Linear) { 1 } else { 16 };
+            let steps = if matches!(segment.order(), fdsm::bezier::Order::Linear) {
+                1
+            } else {
+                16
+            };
             let mut a = segment.get(0.0);
             for i in 1..=steps {
                 let b = segment.get(i as f64 / steps as f64);
-                lines.push((a.x * SUPER as f64, a.y * SUPER as f64, b.x * SUPER as f64, b.y * SUPER as f64));
+                lines.push((
+                    a.x * SUPER as f64,
+                    a.y * SUPER as f64,
+                    b.x * SUPER as f64,
+                    b.y * SUPER as f64,
+                ));
                 a = b;
             }
         }
@@ -152,7 +166,11 @@ fn raster_field(contours: &[Contour]) -> Vec<u8> {
             for sy in 0..SUPER {
                 for sx in 0..SUPER {
                     let i = (ty * SUPER + sy) * n + tx * SUPER + sx;
-                    sum += if inside[i] { to_outside[i] - 0.5 } else { 0.5 - to_inside[i] };
+                    sum += if inside[i] {
+                        to_outside[i] - 0.5
+                    } else {
+                        0.5 - to_inside[i]
+                    };
                 }
             }
             let texels = sum / (SUPER * SUPER) as f64 / SUPER as f64;
@@ -176,7 +194,8 @@ fn distance_to(inside: &[bool], n: usize, target: bool) -> Vec<f64> {
         for q in 1..n {
             loop {
                 let p = v[k];
-                let s = ((f[q] + (q * q) as f64) - (f[p] + (p * p) as f64)) / (2.0 * q as f64 - 2.0 * p as f64);
+                let s = ((f[q] + (q * q) as f64) - (f[p] + (p * p) as f64))
+                    / (2.0 * q as f64 - 2.0 * p as f64);
                 if s <= z[k] && k > 0 {
                     k -= 1;
                 } else {
@@ -197,7 +216,10 @@ fn distance_to(inside: &[bool], n: usize, target: bool) -> Vec<f64> {
             *slot = (q as f64 - p as f64).powi(2) + f[p];
         }
     }
-    let mut grid: Vec<f64> = inside.iter().map(|&i| if i == target { 0.0 } else { FAR }).collect();
+    let mut grid: Vec<f64> = inside
+        .iter()
+        .map(|&i| if i == target { 0.0 } else { FAR })
+        .collect();
     let (mut f, mut d) = (vec![0.0; n], vec![0.0; n]);
     let (mut v, mut z) = (vec![0usize; n], vec![0.0; n + 1]);
     for x in 0..n {
@@ -245,46 +267,58 @@ fn bake_face(bytes: &[u8], name: &str, method: Method) -> Result<BakedFace, Bake
     let baseline = (CELL as f64 + (top + bottom) * scale) * 0.5;
 
     use rayon::prelude::*;
-    let baked: Vec<(GlyphInfo, Vec<u8>)> = (32u8..=126).into_par_iter().map(|code| {
-        // Each worker parses the face for itself; parsing only reads the table directory.
-        let face = ttf_parser::Face::parse(bytes, 0).expect("parsed above");
-        let id = face.glyph_index(code as char).unwrap();
-        let advance = face.glyph_hor_advance(id).unwrap_or(0) as f64;
-        // Centred by its inked box, which is what the eye centres on.
-        let (x_min, x_max) = match face.glyph_bounding_box(id) {
-            Some(b) => (b.x_min as f64, b.x_max as f64),
-            None => (0.0, advance),
-        };
-        let squeeze = (widest_allowed / ((x_max - x_min) * scale).max(1.0)).min(1.0);
-        let origin_x = CELL as f64 * 0.5 - (x_min + x_max) * 0.5 * scale * squeeze;
-        let mut outline = Outline {
-            contours: Vec::new(),
-            current: Vec::new(),
-            start: Point::new(0.0, 0.0),
-            at: Point::new(0.0, 0.0),
-            scale,
-            squeeze,
-            origin: (origin_x, baseline),
-        };
-        let has_outline = face.outline_glyph(id, &mut outline).is_some();
-        outline.finish_contour();
+    let baked: Vec<(GlyphInfo, Vec<u8>)> = (32u8..=126)
+        .into_par_iter()
+        .map(|code| {
+            // Each worker parses the face for itself; parsing only reads the table directory.
+            let face = ttf_parser::Face::parse(bytes, 0).expect("parsed above");
+            let id = face.glyph_index(code as char).unwrap();
+            let advance = face.glyph_hor_advance(id).unwrap_or(0) as f64;
+            // Centred by its inked box, which is what the eye centres on.
+            let (x_min, x_max) = match face.glyph_bounding_box(id) {
+                Some(b) => (b.x_min as f64, b.x_max as f64),
+                None => (0.0, advance),
+            };
+            let squeeze = (widest_allowed / ((x_max - x_min) * scale).max(1.0)).min(1.0);
+            let origin_x = CELL as f64 * 0.5 - (x_min + x_max) * 0.5 * scale * squeeze;
+            let mut outline = Outline {
+                contours: Vec::new(),
+                current: Vec::new(),
+                start: Point::new(0.0, 0.0),
+                at: Point::new(0.0, 0.0),
+                scale,
+                squeeze,
+                origin: (origin_x, baseline),
+            };
+            let has_outline = face.outline_glyph(id, &mut outline).is_some();
+            outline.finish_contour();
 
-        // An empty glyph (the space) is all zero: fully outside.
-        let texels = if !has_outline || outline.contours.is_empty() {
-            vec![0u8; (CELL * CELL * 4) as usize]
-        } else if method == Method::Raster {
-            raster_field(&outline.contours)
-        } else {
-            let mut image = RgbaImage::new(CELL, CELL);
-            let shape = Shape { contours: outline.contours };
-            let coloured = Shape::edge_coloring_simple(shape, 0.03, 0x5eed_0000 + code as u64);
-            let prepared = coloured.prepare();
-            generate_mtsdf(&prepared, RANGE, &mut image);
-            correct_sign_mtsdf(&mut image, &prepared, FillRule::Nonzero);
-            image.into_raw()
-        };
-        (glyph_info((advance / em) as f32, ((x_min + x_max) * 0.5 * squeeze / em) as f32, &texels), texels)
-    }).collect();
+            // An empty glyph (the space) is all zero: fully outside.
+            let texels = if !has_outline || outline.contours.is_empty() {
+                vec![0u8; (CELL * CELL * 4) as usize]
+            } else if method == Method::Raster {
+                raster_field(&outline.contours)
+            } else {
+                let mut image = RgbaImage::new(CELL, CELL);
+                let shape = Shape {
+                    contours: outline.contours,
+                };
+                let coloured = Shape::edge_coloring_simple(shape, 0.03, 0x5eed_0000 + code as u64);
+                let prepared = coloured.prepare();
+                generate_mtsdf(&prepared, RANGE, &mut image);
+                correct_sign_mtsdf(&mut image, &prepared, FillRule::Nonzero);
+                image.into_raw()
+            };
+            (
+                glyph_info(
+                    (advance / em) as f32,
+                    ((x_min + x_max) * 0.5 * squeeze / em) as f32,
+                    &texels,
+                ),
+                texels,
+            )
+        })
+        .collect();
     let (infos, glyphs): (Vec<GlyphInfo>, Vec<Vec<u8>>) = baked.into_iter().unzip();
 
     Ok(BakedFace {
@@ -325,12 +359,23 @@ fn glyph_info(advance: f32, centre: f32, texels: &[u8]) -> GlyphInfo {
         let (mut lo, mut hi) = (heaviest, lightest);
         for _ in 0..20 {
             let mid = 0.5 * (lo + hi);
-            if coverage_at(&alpha, mid) > target { lo = mid } else { hi = mid }
+            if coverage_at(&alpha, mid) > target {
+                lo = mid
+            } else {
+                hi = mid
+            }
         }
         *slot = 0.5 * (lo + hi);
     }
     let mean_distance = alpha.iter().map(|&a| a as f32 / 255.0).sum::<f32>() / alpha.len() as f32;
-    GlyphInfo { advance, centre, min_cover, max_cover, mean_distance, tone }
+    GlyphInfo {
+        advance,
+        centre,
+        min_cover,
+        max_cover,
+        mean_distance,
+        tone,
+    }
 }
 
 /// Halves a square RGBA image by averaging blocks of four. Distances average well, so
@@ -341,7 +386,9 @@ fn halve(texels: &[u8], side: u32) -> Vec<u8> {
     for y in 0..half {
         for x in 0..half {
             for c in 0..4 {
-                let at = |dx: u32, dy: u32| texels[(((y * 2 + dy) * side + x * 2 + dx) * 4 + c) as usize] as u32;
+                let at = |dx: u32, dy: u32| {
+                    texels[(((y * 2 + dy) * side + x * 2 + dx) * 4 + c) as usize] as u32
+                };
                 out.push(((at(0, 0) + at(1, 0) + at(0, 1) + at(1, 1) + 2) / 4) as u8);
             }
         }
@@ -356,7 +403,8 @@ pub const LARGE_FACE: &str = "fonts/imfellenglish/IMFeENrm28P.ttf";
 /// Bakes the atlas, or returns the cached bytes if the fonts and the bake are unchanged.
 pub fn bake_atlas(third_party: &Path, cache: Option<&Path>) -> Result<Vec<u8>, BakeError> {
     let read = |rel: &str| {
-        std::fs::read(third_party.join(rel)).map_err(|e| BakeError(format!("third_party/{rel}: {e}")))
+        std::fs::read(third_party.join(rel))
+            .map_err(|e| BakeError(format!("third_party/{rel}: {e}")))
     };
     let (small, large) = (read(SMALL_FACE)?, read(LARGE_FACE)?);
 
@@ -364,7 +412,8 @@ pub fn bake_atlas(third_party: &Path, cache: Option<&Path>) -> Result<Vec<u8>, B
     key_input.extend_from_slice(VERSION.as_bytes());
     key_input.extend_from_slice(&sha256(&small));
     key_input.extend_from_slice(&sha256(&large));
-    let cache_file = cache.map(|dir| dir.join(format!("atlas-{}.bin", &hex(&sha256(&key_input))[..16])));
+    let cache_file =
+        cache.map(|dir| dir.join(format!("atlas-{}.bin", &hex(&sha256(&key_input))[..16])));
     if let Some(file) = &cache_file {
         if let Ok(bytes) = std::fs::read(file) {
             if GlyphAtlas::from_bytes(&bytes).is_ok() {
@@ -373,7 +422,10 @@ pub fn bake_atlas(third_party: &Path, cache: Option<&Path>) -> Result<Vec<u8>, B
         }
     }
 
-    let faces = [bake_face(&small, SMALL_FACE, Method::Raster)?, bake_face(&large, LARGE_FACE, Method::Edges)?];
+    let faces = [
+        bake_face(&small, SMALL_FACE, Method::Raster)?,
+        bake_face(&large, LARGE_FACE, Method::Edges)?,
+    ];
     let mut texels = Vec::new();
     let mut levels: Vec<Vec<Vec<u8>>> = faces.iter().map(|f| f.glyphs.clone()).collect();
     for level in 0..MIPS {
@@ -421,7 +473,9 @@ pub fn preview_sheet(atlas: &GlyphAtlas, px: u32, threshold: f32) -> (Vec<u8>, u
         let (x0, y0) = (x.floor() as usize, y.floor() as usize);
         let (x1, y1) = ((x0 + 1).min(cell - 1), (y0 + 1).min(cell - 1));
         let (fx, fy) = (x - x0 as f32, y - y0 as f32);
-        let at = |xx: usize, yy: usize, c: usize| level0[layer * cell * cell * 4 + (yy * cell + xx) * 4 + c] as f32 / 255.0;
+        let at = |xx: usize, yy: usize, c: usize| {
+            level0[layer * cell * cell * 4 + (yy * cell + xx) * 4 + c] as f32 / 255.0
+        };
         let mut r = [0.0; 4];
         for (c, slot) in r.iter_mut().enumerate() {
             *slot = (at(x0, y0, c) * (1.0 - fx) + at(x1, y0, c) * fx) * (1.0 - fy)
@@ -434,7 +488,11 @@ pub fn preview_sheet(atlas: &GlyphAtlas, px: u32, threshold: f32) -> (Vec<u8>, u
         let (cx, cy) = (layer as u32 % columns, layer as u32 / columns);
         for y in 0..px {
             for x in 0..px {
-                let s = sample(layer, (x as f32 + 0.5) / px as f32, (y as f32 + 0.5) / px as f32);
+                let s = sample(
+                    layer,
+                    (x as f32 + 0.5) / px as f32,
+                    (y as f32 + 0.5) / px as f32,
+                );
                 let median = s[0].max(s[1]).min(s[0].min(s[1]).max(s[2]));
                 let d = if texels_per_px > 2.0 { s[3] } else { median };
                 let cover = ((d - threshold) * atlas.range / texels_per_px + 0.5).clamp(0.0, 1.0);
@@ -465,18 +523,25 @@ mod tests {
         let info = glyph_info(0.5, 0.25, &texels);
         assert!(info.min_cover < 0.26 && info.max_cover > 0.36, "{info:?}");
         for pair in info.tone.windows(2) {
-            assert!(pair[1] <= pair[0] + 1e-4, "heavier targets need lower thresholds");
+            assert!(
+                pair[1] <= pair[0] + 1e-4,
+                "heavier targets need lower thresholds"
+            );
         }
         let alpha: Vec<u8> = texels.chunks_exact(4).map(|t| t[3]).collect();
         let target = 0.30f32;
         let i = target * (TONE_STEPS - 1) as f32;
-        let t = info.tone[i.floor() as usize] + (info.tone[i.ceil() as usize] - info.tone[i.floor() as usize]) * i.fract();
+        let t = info.tone[i.floor() as usize]
+            + (info.tone[i.ceil() as usize] - info.tone[i.floor() as usize]) * i.fract();
         assert!((coverage_at(&alpha, t) - target).abs() < 0.01);
     }
 
     #[test]
     fn halving_averages() {
-        let texels: Vec<u8> = [10u8, 20, 30, 40].iter().flat_map(|&v| [v, v, v, v]).collect();
+        let texels: Vec<u8> = [10u8, 20, 30, 40]
+            .iter()
+            .flat_map(|&v| [v, v, v, v])
+            .collect();
         assert_eq!(halve(&texels, 2), vec![25, 25, 25, 25]);
     }
 }

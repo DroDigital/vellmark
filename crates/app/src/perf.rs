@@ -29,7 +29,12 @@ pub struct PerfRun {
 
 /// Where the camera is, or that the run has ended.
 pub enum PerfStep {
-    Camera { eye: [f32; 3], yaw: f32, pitch: f32, hour: f32 },
+    Camera {
+        eye: [f32; 3],
+        yaw: f32,
+        pitch: f32,
+        hour: f32,
+    },
     Finished,
 }
 
@@ -51,7 +56,12 @@ impl PerfRun {
     }
 
     /// Call once a frame with the time the previous frame took.
-    pub fn frame(&mut self, frame_time: Duration, passes: &[PassTiming], scene_scale: f32) -> PerfStep {
+    pub fn frame(
+        &mut self,
+        frame_time: Duration,
+        passes: &[PassTiming],
+        scene_scale: f32,
+    ) -> PerfStep {
         let now = Instant::now();
         let started = *self.started.get_or_insert(now);
         self.frame_ms.push(frame_time.as_secs_f32() * 1000.0);
@@ -62,7 +72,9 @@ impl PerfRun {
             self.passes.entry(p.name).or_default().push(p.milliseconds);
         }
         self.min_scene_scale = self.min_scene_scale.min(scene_scale);
-        if now.duration_since(self.last_memory_sample) > Duration::from_secs(2) || self.peak_memory_mb.is_none() {
+        if now.duration_since(self.last_memory_sample) > Duration::from_secs(2)
+            || self.peak_memory_mb.is_none()
+        {
             self.last_memory_sample = now;
             if let Some(mb) = memory_in_use_mb() {
                 self.peak_memory_mb = Some(self.peak_memory_mb.unwrap_or(0.0).max(mb));
@@ -75,15 +87,39 @@ impl PerfRun {
             return PerfStep::Finished;
         }
         match self.path.at(elapsed % lap) {
-            Some(k) => PerfStep::Camera { eye: k.eye, yaw: k.yaw, pitch: k.pitch, hour: k.hour },
+            Some(k) => PerfStep::Camera {
+                eye: k.eye,
+                yaw: k.yaw,
+                pitch: k.pitch,
+                hour: k.hour,
+            },
             None => PerfStep::Finished,
         }
     }
 
-    pub fn write_report(&self, adapter: &str, software: bool, resolution: (u32, u32), present_mode: &str, pipelines_during_play: u32, preset: &str, governor: &[String]) -> PathBuf {
-        let mut report = self.report(adapter, software, resolution, present_mode, pipelines_during_play);
+    pub fn write_report(
+        &self,
+        adapter: &str,
+        software: bool,
+        resolution: (u32, u32),
+        present_mode: &str,
+        pipelines_during_play: u32,
+        preset: &str,
+        governor: &[String],
+    ) -> PathBuf {
+        let mut report = self.report(
+            adapter,
+            software,
+            resolution,
+            present_mode,
+            pipelines_during_play,
+        );
         use std::fmt::Write;
-        let _ = writeln!(report, "preset {preset}; lowest scene resolution {:.0}%", self.min_scene_scale * 100.0);
+        let _ = writeln!(
+            report,
+            "preset {preset}; lowest scene resolution {:.0}%",
+            self.min_scene_scale * 100.0
+        );
         if governor.is_empty() {
             let _ = writeln!(report, "nothing was given up");
         }
@@ -100,48 +136,125 @@ impl PerfRun {
         self.out.clone()
     }
 
-    fn report(&self, adapter: &str, software: bool, resolution: (u32, u32), present_mode: &str, pipelines_during_play: u32) -> String {
+    fn report(
+        &self,
+        adapter: &str,
+        software: bool,
+        resolution: (u32, u32),
+        present_mode: &str,
+        pipelines_during_play: u32,
+    ) -> String {
         let mut frames: Vec<f32> = self.frame_ms.iter().skip(WARM_UP_FRAMES).copied().collect();
         let count = frames.len().max(1);
         let total: f32 = frames.iter().sum();
         let average = total / count as f32;
         let longest = frames.iter().copied().fold(0.0f32, f32::max);
         frames.sort_by(|a, b| a.total_cmp(b));
-        let percentile = |p: f32| frames.get(((count as f32 * p) as usize).min(count - 1)).copied().unwrap_or(0.0);
+        let percentile = |p: f32| {
+            frames
+                .get(((count as f32 * p) as usize).min(count - 1))
+                .copied()
+                .unwrap_or(0.0)
+        };
         let p99 = percentile(0.99);
 
         let mut r = String::new();
         let verdict = |ok: bool| if ok { "ok" } else { "OVER" };
         let _ = writeln!(r, "Vellmark performance report");
         let _ = writeln!(r, "version: {}", env!("CARGO_PKG_VERSION"));
-        let _ = writeln!(r, "build: {}", if cfg!(debug_assertions) { "development (not for measuring)" } else { "release" });
+        let _ = writeln!(
+            r,
+            "build: {}",
+            if cfg!(debug_assertions) {
+                "development (not for measuring)"
+            } else {
+                "release"
+            }
+        );
         let _ = writeln!(r, "graphics: {adapter}");
         if software {
-            let _ = writeln!(r, "NOT EVIDENCE: this run used a software renderer. Only the owner's Mac proves speed.");
+            let _ = writeln!(
+                r,
+                "NOT EVIDENCE: this run used a software renderer. Only the owner's Mac proves speed."
+            );
         }
         let _ = writeln!(r, "resolution: {}x{}", resolution.0, resolution.1);
         let _ = writeln!(r, "present mode: {present_mode}");
-        let _ = writeln!(r, "frames measured: {} over {:.1} s, after {WARM_UP_FRAMES} warm-up frames", frames.len(), total / 1000.0);
+        let _ = writeln!(
+            r,
+            "frames measured: {} over {:.1} s, after {WARM_UP_FRAMES} warm-up frames",
+            frames.len(),
+            total / 1000.0
+        );
         let _ = writeln!(r);
-        let _ = writeln!(r, "[targets]                          measured     target       ");
-        let _ = writeln!(r, "average frame rate               : {:>8.1} fps  >= 60 fps    {}", 1000.0 / average.max(0.001), verdict(average <= 1000.0 / 60.0));
-        let _ = writeln!(r, "slowest 1% of frames             : {:>8.2} ms   <= 20 ms     {}", p99, verdict(p99 <= 20.0));
-        let _ = writeln!(r, "longest frame after loading      : {:>8.2} ms   <= 33 ms     {}", longest, verdict(longest <= 33.0));
-        let _ = writeln!(r, "lowest scene resolution          : {:>8.0} %    >= 85 %      {}", self.min_scene_scale * 100.0, verdict(self.min_scene_scale >= 0.85));
+        let _ = writeln!(
+            r,
+            "[targets]                          measured     target       "
+        );
+        let _ = writeln!(
+            r,
+            "average frame rate               : {:>8.1} fps  >= 60 fps    {}",
+            1000.0 / average.max(0.001),
+            verdict(average <= 1000.0 / 60.0)
+        );
+        let _ = writeln!(
+            r,
+            "slowest 1% of frames             : {:>8.2} ms   <= 20 ms     {}",
+            p99,
+            verdict(p99 <= 20.0)
+        );
+        let _ = writeln!(
+            r,
+            "longest frame after loading      : {:>8.2} ms   <= 33 ms     {}",
+            longest,
+            verdict(longest <= 33.0)
+        );
+        let _ = writeln!(
+            r,
+            "lowest scene resolution          : {:>8.0} %    >= 85 %      {}",
+            self.min_scene_scale * 100.0,
+            verdict(self.min_scene_scale >= 0.85)
+        );
         match self.peak_memory_mb {
             Some(mb) => {
-                let _ = writeln!(r, "peak memory in use               : {:>8.0} MB   <= 4096 MB   {}", mb, verdict(mb <= 4096.0));
+                let _ = writeln!(
+                    r,
+                    "peak memory in use               : {:>8.0} MB   <= 4096 MB   {}",
+                    mb,
+                    verdict(mb <= 4096.0)
+                );
             }
             None => {
-                let _ = writeln!(r, "peak memory in use               : not measured on this system");
+                let _ = writeln!(
+                    r,
+                    "peak memory in use               : not measured on this system"
+                );
             }
         }
-        let _ = writeln!(r, "launch to first frame            : {:>8.2} s    <= 8 s to the title", self.launch_to_first_frame.as_secs_f32());
-        let _ = writeln!(r, "title to play                    : not built yet (Phase S06)");
-        let _ = writeln!(r, "pipelines created during play    : {:>8}      0            {}", pipelines_during_play, verdict(pipelines_during_play == 0));
+        let _ = writeln!(
+            r,
+            "launch to first frame            : {:>8.2} s    <= 8 s to the title",
+            self.launch_to_first_frame.as_secs_f32()
+        );
+        let _ = writeln!(
+            r,
+            "title to play                    : not built yet (Phase S06)"
+        );
+        let _ = writeln!(
+            r,
+            "pipelines created during play    : {:>8}      0            {}",
+            pipelines_during_play,
+            verdict(pipelines_during_play == 0)
+        );
         let _ = writeln!(r);
         let _ = writeln!(r, "[frame time]");
-        for (name, p) in [("median", 0.5), ("90%", 0.9), ("95%", 0.95), ("99%", 0.99), ("99.9%", 0.999)] {
+        for (name, p) in [
+            ("median", 0.5),
+            ("90%", 0.9),
+            ("95%", 0.95),
+            ("99%", 0.99),
+            ("99.9%", 0.999),
+        ] {
             let _ = writeln!(r, "{name:<8}: {:.2} ms", percentile(p));
         }
         let _ = writeln!(r);
@@ -162,7 +275,9 @@ impl PerfRun {
 }
 
 fn default_report_path() -> PathBuf {
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from);
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
     match home {
         Some(h) if h.join("Desktop").is_dir() => h.join("Desktop/vellmark-perf-report.txt"),
         _ => crate::paths::user_data_dir().join("vellmark-perf-report.txt"),

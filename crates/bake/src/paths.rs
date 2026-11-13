@@ -1,6 +1,6 @@
 //! Camera paths: `assets/paths/<name>.ron`, baked under the key `path.<name>`.
 
-use crate::{err, sorted_files, BakeError};
+use crate::{BakeError, err, sorted_files};
 use serde::Deserialize;
 use std::path::Path;
 use vellmark_content::{CameraPath, Keyframe};
@@ -26,11 +26,20 @@ struct Authored {
 pub fn bake_all(dir: &Path) -> Result<Vec<(String, Vec<u8>)>, BakeError> {
     let mut out = Vec::new();
     for file in sorted_files(dir, "ron")? {
-        let name = file.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_owned();
-        let text = std::fs::read_to_string(&file).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
-        let authored: Authored = ron::from_str(&text).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
+        let name = file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .to_owned();
+        let text = std::fs::read_to_string(&file)
+            .map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
+        let authored: Authored =
+            ron::from_str(&text).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
         if authored.keys.len() < 2 {
-            return err(format!("{}: a camera path needs at least two keyframes", file.display()));
+            return err(format!(
+                "{}: a camera path needs at least two keyframes",
+                file.display()
+            ));
         }
         let keys = authored
             .keys

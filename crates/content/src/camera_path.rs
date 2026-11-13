@@ -32,7 +32,9 @@ impl CameraPath {
         out.extend_from_slice(MAGIC);
         out.extend_from_slice(&(self.keys.len() as u32).to_le_bytes());
         for k in &self.keys {
-            for v in [k.eye[0], k.eye[1], k.eye[2], k.yaw, k.pitch, k.hour, k.seconds] {
+            for v in [
+                k.eye[0], k.eye[1], k.eye[2], k.yaw, k.pitch, k.hour, k.seconds,
+            ] {
                 out.extend_from_slice(&v.to_le_bytes());
             }
         }
@@ -78,7 +80,11 @@ impl CameraPath {
                 let s = if a.seconds > 0.0 { t / a.seconds } else { 1.0 };
                 let mix = |x: f32, y: f32| x + (y - x) * s;
                 return Some(Keyframe {
-                    eye: [mix(a.eye[0], b.eye[0]), mix(a.eye[1], b.eye[1]), mix(a.eye[2], b.eye[2])],
+                    eye: [
+                        mix(a.eye[0], b.eye[0]),
+                        mix(a.eye[1], b.eye[1]),
+                        mix(a.eye[2], b.eye[2]),
+                    ],
                     yaw: mix(a.yaw, b.yaw),
                     pitch: mix(a.pitch, b.pitch),
                     hour: mix(a.hour, b.hour),
@@ -96,19 +102,29 @@ mod tests {
     use super::*;
 
     fn key(x: f32, seconds: f32) -> Keyframe {
-        Keyframe { eye: [x, 0.0, 0.0], yaw: 0.0, pitch: 0.0, hour: 12.0, seconds }
+        Keyframe {
+            eye: [x, 0.0, 0.0],
+            yaw: 0.0,
+            pitch: 0.0,
+            hour: 12.0,
+            seconds,
+        }
     }
 
     #[test]
     fn round_trip() {
-        let path = CameraPath { keys: vec![key(0.0, 2.0), key(4.0, 1.0), key(5.0, 0.0)] };
+        let path = CameraPath {
+            keys: vec![key(0.0, 2.0), key(4.0, 1.0), key(5.0, 0.0)],
+        };
         assert_eq!(CameraPath::from_bytes(&path.to_bytes()).unwrap(), path);
         assert!(CameraPath::from_bytes(&path.to_bytes()[..20]).is_err());
     }
 
     #[test]
     fn moves_at_a_steady_rate_and_holds_the_end() {
-        let path = CameraPath { keys: vec![key(0.0, 2.0), key(4.0, 1.0), key(5.0, 0.0)] };
+        let path = CameraPath {
+            keys: vec![key(0.0, 2.0), key(4.0, 1.0), key(5.0, 0.0)],
+        };
         assert_eq!(path.duration(), 3.0);
         assert_eq!(path.at(1.0).unwrap().eye[0], 2.0);
         assert_eq!(path.at(2.5).unwrap().eye[0], 4.5);

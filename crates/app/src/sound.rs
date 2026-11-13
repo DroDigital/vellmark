@@ -25,7 +25,8 @@ impl Sound {
     pub fn start(platform: &Platform, scene: &vellmark_content::Scene) -> Self {
         let controls = Controls::new();
         let mut mixer = Mixer::new(controls.clone(), 0x5eed);
-        let out = match platform.open_audio(SAMPLE_RATE as i32, move |buffer| mixer.render(buffer)) {
+        let out = match platform.open_audio(SAMPLE_RATE as i32, move |buffer| mixer.render(buffer))
+        {
             Ok(out) => Some(out),
             Err(e) => {
                 crate::log::line(&format!("no sound: {e}"));
@@ -33,20 +34,42 @@ impl Sound {
             }
         };
         // Where the trees stand, from the scene: their keys say what they are.
-        let trees = scene.objects.iter().filter(|o| tree_key(o.mesh)).map(|o| Vec2::new(o.transform[3], o.transform[11])).collect();
-        Self { _out: out, controls, trees, water: 0.0, frame: 0 }
+        let trees = scene
+            .objects
+            .iter()
+            .filter(|o| tree_key(o.mesh))
+            .map(|o| Vec2::new(o.transform[3], o.transform[11]))
+            .collect();
+        Self {
+            _out: out,
+            controls,
+            trees,
+            water: 0.0,
+            frame: 0,
+        }
     }
 
-    pub fn update(&mut self, eye: Vec3, weather: &vellmark_sim::Weather, hour: f32, terrain: Option<&vellmark_world::Terrain>) {
+    pub fn update(
+        &mut self,
+        eye: Vec3,
+        weather: &vellmark_sim::Weather,
+        hour: f32,
+        terrain: Option<&vellmark_world::Terrain>,
+    ) {
         self.frame += 1;
         // Water is looked for a few times a second, in rings about the listener.
         if self.frame % 15 == 1 {
             self.water = terrain.map_or(0.0, |t| water_near(t, eye));
         }
         let here = Vec2::new(eye.x, eye.z);
-        let trees: f32 = self.trees.iter().map(|t| (1.0 - t.distance(here) / TREE_REACH).max(0.0)).sum();
+        let trees: f32 = self
+            .trees
+            .iter()
+            .map(|t| (1.0 - t.distance(here) / TREE_REACH).max(0.0))
+            .sum();
         let c = &self.controls;
-        c.wind.set(weather.wind_strength * 0.85 + 0.15 * weather.rain);
+        c.wind
+            .set(weather.wind_strength * 0.85 + 0.15 * weather.rain);
         c.rain.set(weather.rain);
         c.water.set(self.water);
         c.trees.set((trees / 6.0).min(1.0));
@@ -55,7 +78,9 @@ impl Sound {
 }
 
 fn tree_key(mesh: vellmark_content::AssetId) -> bool {
-    ["oak", "ash", "apple", "hawthorn"].iter().any(|k| mesh == vellmark_content::AssetId::from_key(&format!("tree.{k}.lod0")))
+    ["oak", "ash", "apple", "hawthorn"]
+        .iter()
+        .any(|k| mesh == vellmark_content::AssetId::from_key(&format!("tree.{k}.lod0")))
 }
 
 /// 1 from soon after dawn to towards dusk, 0 through the night, with a dawn chorus
@@ -80,7 +105,10 @@ fn water_near(terrain: &vellmark_world::Terrain, eye: Vec3) -> f32 {
         let steps = ((r * std::f32::consts::TAU) / 3.0).ceil().max(8.0) as usize;
         for k in 0..steps {
             let a = k as f32 / steps as f32 * std::f32::consts::TAU;
-            if terrain.water_at(eye.x + r * a.cos(), eye.z + r * a.sin()).is_some() {
+            if terrain
+                .water_at(eye.x + r * a.cos(), eye.z + r * a.sin())
+                .is_some()
+            {
                 nearest = nearest.min(r);
             }
         }

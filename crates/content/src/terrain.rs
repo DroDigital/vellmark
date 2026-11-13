@@ -50,8 +50,16 @@ pub enum Ground {
 }
 
 impl Ground {
-    pub const ALL: [Ground; 8] =
-        [Ground::Grass, Ground::Field, Ground::Road, Ground::Earth, Ground::Bank, Ground::Bed, Ground::Forest, Ground::Erasure];
+    pub const ALL: [Ground; 8] = [
+        Ground::Grass,
+        Ground::Field,
+        Ground::Road,
+        Ground::Earth,
+        Ground::Bank,
+        Ground::Bed,
+        Ground::Forest,
+        Ground::Erasure,
+    ];
 
     pub fn from_u8(v: u8) -> Option<Self> {
         Self::ALL.get(v as usize).copied()
@@ -102,7 +110,10 @@ impl TerrainTile {
         let last = (TILE_SAMPLES - 1) as f32;
         let u = ((x - x0) / self.spacing).clamp(0.0, last);
         let v = ((z - z0) / self.spacing).clamp(0.0, last);
-        let (i, j) = ((u.floor() as usize).min(TILE_SAMPLES - 2), (v.floor() as usize).min(TILE_SAMPLES - 2));
+        let (i, j) = (
+            (u.floor() as usize).min(TILE_SAMPLES - 2),
+            (v.floor() as usize).min(TILE_SAMPLES - 2),
+        );
         let (fu, fv) = (u - i as f32, v - j as f32);
         let h = |a: usize, b: usize| self.heights[Self::index(a, b)];
         if fu >= fv {
@@ -117,7 +128,10 @@ impl TerrainTile {
     }
 
     pub fn highest(&self) -> f32 {
-        self.heights.iter().copied().fold(f32::NEG_INFINITY, f32::max)
+        self.heights
+            .iter()
+            .copied()
+            .fold(f32::NEG_INFINITY, f32::max)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -171,7 +185,14 @@ impl TerrainTile {
             .map(|&g| Ground::from_u8(g).ok_or_else(|| bad("unknown ground")))
             .collect::<Result<_, _>>()?;
         let sky = bytes[start + n * 9..start + n * 10].to_vec();
-        Ok(Self { coord, spacing: f32_at(20), heights, water, ground, sky })
+        Ok(Self {
+            coord,
+            spacing: f32_at(20),
+            heights,
+            water,
+            ground,
+            sky,
+        })
     }
 }
 
@@ -181,7 +202,11 @@ mod tests {
 
     #[test]
     fn a_tile_reads_back_as_it_was_written() {
-        let mut tile = TerrainTile::new(TileCoord { level: 3, x: -2, z: 1 });
+        let mut tile = TerrainTile::new(TileCoord {
+            level: 3,
+            x: -2,
+            z: 1,
+        });
         for (k, h) in tile.heights.iter_mut().enumerate() {
             *h = (k as f32 * 0.37).sin() * 20.0;
         }
@@ -201,7 +226,11 @@ mod tests {
 
     #[test]
     fn height_between_samples_follows_the_drawn_triangles() {
-        let mut tile = TerrainTile::new(TileCoord { level: 0, x: 0, z: 0 });
+        let mut tile = TerrainTile::new(TileCoord {
+            level: 0,
+            x: 0,
+            z: 0,
+        });
         tile.heights[TerrainTile::index(1, 0)] = 1.0;
         tile.heights[TerrainTile::index(1, 1)] = 2.0;
         assert_eq!(tile.height_at(0.0, 0.0), 0.0);

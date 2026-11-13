@@ -2,11 +2,56 @@
 /// printed on it, so that the defaults sit under the same fingers on every layout.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Key {
-    W, A, S, D, Q, E, R, F, C, X, Z, V, T, G, B, I, M, P,
-    Num1, Num2, Num3, Num4, Num5, Num6, Num7,
-    Space, LeftShift, LeftCtrl, LeftAlt, Tab, Escape, Enter, Backspace, Grave,
-    Up, Down, Left, Right,
-    F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+    W,
+    A,
+    S,
+    D,
+    Q,
+    E,
+    R,
+    F,
+    C,
+    X,
+    Z,
+    V,
+    T,
+    G,
+    B,
+    I,
+    M,
+    P,
+    Num1,
+    Num2,
+    Num3,
+    Num4,
+    Num5,
+    Num6,
+    Num7,
+    Space,
+    LeftShift,
+    LeftCtrl,
+    LeftAlt,
+    Tab,
+    Escape,
+    Enter,
+    Backspace,
+    Grave,
+    Up,
+    Down,
+    Left,
+    Right,
+    F1,
+    F2,
+    F3,
+    F4,
+    F5,
+    F6,
+    F7,
+    F8,
+    F9,
+    F10,
+    F11,
+    F12,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -18,11 +63,20 @@ pub enum MouseButton {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PadButton {
-    South, East, West, North,
-    LeftShoulder, RightShoulder,
-    LeftStick, RightStick,
-    Start, Back,
-    DPadUp, DPadDown, DPadLeft, DPadRight,
+    South,
+    East,
+    West,
+    North,
+    LeftShoulder,
+    RightShoulder,
+    LeftStick,
+    RightStick,
+    Start,
+    Back,
+    DPadUp,
+    DPadDown,
+    DPadLeft,
+    DPadRight,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -38,18 +92,41 @@ pub enum PadAxis {
 /// What a device reports, before it means anything.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RawInput {
-    Key { key: Key, down: bool },
-    MouseMove { dx: f32, dy: f32 },
-    MouseButton { button: MouseButton, down: bool },
-    MouseWheel { dy: f32 },
+    Key {
+        key: Key,
+        down: bool,
+    },
+    MouseMove {
+        dx: f32,
+        dy: f32,
+    },
+    MouseButton {
+        button: MouseButton,
+        down: bool,
+    },
+    MouseWheel {
+        dy: f32,
+    },
     /// `pad` identifies the controller for as long as it stays plugged in.
-    PadButton { pad: u32, button: PadButton, down: bool },
+    PadButton {
+        pad: u32,
+        button: PadButton,
+        down: bool,
+    },
     /// Sticks are -1 to 1, with down and right positive. Triggers are 0 to 1.
-    PadAxis { pad: u32, axis: PadAxis, value: f32 },
+    PadAxis {
+        pad: u32,
+        axis: PadAxis,
+        value: f32,
+    },
     /// A typed character, while text entry is on.
     Text(char),
-    PadAdded { pad: u32 },
-    PadRemoved { pad: u32 },
+    PadAdded {
+        pad: u32,
+    },
+    PadRemoved {
+        pad: u32,
+    },
 }
 
 /// Everything the game can be asked to do with a button.
@@ -195,7 +272,11 @@ fn bit(action: Action) -> u32 {
 }
 
 fn dead_zone(v: f32, zone: f32) -> f32 {
-    if v.abs() <= zone { 0.0 } else { (v.abs() - zone) / (1.0 - zone) * v.signum() }
+    if v.abs() <= zone {
+        0.0
+    } else {
+        (v.abs() - zone) / (1.0 - zone) * v.signum()
+    }
 }
 
 impl ActionState {
@@ -241,7 +322,11 @@ impl ActionState {
             }
             RawInput::MouseWheel { dy } => {
                 if dy != 0.0 {
-                    let action = if dy > 0.0 { Action::PreviousWord } else { Action::NextWord };
+                    let action = if dy > 0.0 {
+                        Action::PreviousWord
+                    } else {
+                        Action::NextWord
+                    };
                     self.pressed |= bit(action);
                 }
             }
@@ -336,8 +421,10 @@ impl ActionState {
     /// Turn and tilt for a frame of `dt` seconds, in radians. Right and up are positive.
     pub fn look(&self, bindings: &Bindings, dt: f32) -> (f32, f32) {
         let flip = if bindings.invert_y { -1.0 } else { 1.0 };
-        let yaw = self.mouse_look.0 * bindings.mouse_sensitivity + self.stick_look.0 * bindings.stick_turn_rate * dt;
-        let pitch = -self.mouse_look.1 * bindings.mouse_sensitivity - self.stick_look.1 * bindings.stick_turn_rate * dt;
+        let yaw = self.mouse_look.0 * bindings.mouse_sensitivity
+            + self.stick_look.0 * bindings.stick_turn_rate * dt;
+        let pitch = -self.mouse_look.1 * bindings.mouse_sensitivity
+            - self.stick_look.1 * bindings.stick_turn_rate * dt;
         (yaw, pitch * flip)
     }
 }
@@ -351,11 +438,23 @@ mod tests {
         let b = Bindings::default();
         let mut s = ActionState::default();
         s.begin_frame();
-        s.feed(&b, RawInput::Key { key: Key::Space, down: true });
+        s.feed(
+            &b,
+            RawInput::Key {
+                key: Key::Space,
+                down: true,
+            },
+        );
         assert!(s.pressed(Action::Jump) && s.held(Action::Jump));
         s.begin_frame();
         assert!(!s.pressed(Action::Jump) && s.held(Action::Jump));
-        s.feed(&b, RawInput::Key { key: Key::Space, down: false });
+        s.feed(
+            &b,
+            RawInput::Key {
+                key: Key::Space,
+                down: false,
+            },
+        );
         assert!(s.released(Action::Jump) && !s.held(Action::Jump));
     }
 
@@ -363,15 +462,53 @@ mod tests {
     fn keys_and_stick_both_move() {
         let b = Bindings::default();
         let mut s = ActionState::default();
-        s.feed(&b, RawInput::Key { key: Key::W, down: true });
-        s.feed(&b, RawInput::Key { key: Key::D, down: true });
+        s.feed(
+            &b,
+            RawInput::Key {
+                key: Key::W,
+                down: true,
+            },
+        );
+        s.feed(
+            &b,
+            RawInput::Key {
+                key: Key::D,
+                down: true,
+            },
+        );
         assert_eq!(s.movement(), (1.0, 1.0));
-        s.feed(&b, RawInput::Key { key: Key::W, down: false });
-        s.feed(&b, RawInput::Key { key: Key::D, down: false });
+        s.feed(
+            &b,
+            RawInput::Key {
+                key: Key::W,
+                down: false,
+            },
+        );
+        s.feed(
+            &b,
+            RawInput::Key {
+                key: Key::D,
+                down: false,
+            },
+        );
         s.feed(&b, RawInput::PadAdded { pad: 4 });
-        s.feed(&b, RawInput::PadAxis { pad: 4, axis: PadAxis::LeftY, value: -1.0 });
+        s.feed(
+            &b,
+            RawInput::PadAxis {
+                pad: 4,
+                axis: PadAxis::LeftY,
+                value: -1.0,
+            },
+        );
         assert_eq!(s.movement(), (0.0, 1.0));
-        s.feed(&b, RawInput::PadAxis { pad: 4, axis: PadAxis::LeftY, value: 0.1 });
+        s.feed(
+            &b,
+            RawInput::PadAxis {
+                pad: 4,
+                axis: PadAxis::LeftY,
+                value: 0.1,
+            },
+        );
         assert_eq!(s.movement(), (0.0, 0.0));
     }
 
@@ -379,17 +516,43 @@ mod tests {
     fn each_hand_has_its_own_button_on_both_devices() {
         let b = Bindings::default();
         let mut s = ActionState::default();
-        s.feed(&b, RawInput::MouseButton { button: MouseButton::Left, down: true });
-        s.feed(&b, RawInput::MouseButton { button: MouseButton::Right, down: true });
+        s.feed(
+            &b,
+            RawInput::MouseButton {
+                button: MouseButton::Left,
+                down: true,
+            },
+        );
+        s.feed(
+            &b,
+            RawInput::MouseButton {
+                button: MouseButton::Right,
+                down: true,
+            },
+        );
         assert!(s.held(Action::MainHand) && s.held(Action::OffHand));
         assert_eq!(s.last_device, DeviceKind::KeyboardMouse);
 
         let mut s = ActionState::default();
         s.feed(&b, RawInput::PadAdded { pad: 1 });
-        s.feed(&b, RawInput::PadAxis { pad: 1, axis: PadAxis::RightTrigger, value: 0.9 });
+        s.feed(
+            &b,
+            RawInput::PadAxis {
+                pad: 1,
+                axis: PadAxis::RightTrigger,
+                value: 0.9,
+            },
+        );
         assert!(s.pressed(Action::MainHand) && !s.held(Action::OffHand));
         assert_eq!(s.last_device, DeviceKind::Pad);
-        s.feed(&b, RawInput::PadAxis { pad: 1, axis: PadAxis::RightTrigger, value: 0.0 });
+        s.feed(
+            &b,
+            RawInput::PadAxis {
+                pad: 1,
+                axis: PadAxis::RightTrigger,
+                value: 0.0,
+            },
+        );
         assert!(s.released(Action::MainHand));
     }
 
@@ -399,9 +562,23 @@ mod tests {
         let mut s = ActionState::default();
         s.feed(&b, RawInput::PadAdded { pad: 1 });
         s.feed(&b, RawInput::PadAdded { pad: 2 });
-        s.feed(&b, RawInput::PadButton { pad: 2, button: PadButton::South, down: true });
+        s.feed(
+            &b,
+            RawInput::PadButton {
+                pad: 2,
+                button: PadButton::South,
+                down: true,
+            },
+        );
         assert!(!s.held(Action::Jump));
-        s.feed(&b, RawInput::PadButton { pad: 1, button: PadButton::South, down: true });
+        s.feed(
+            &b,
+            RawInput::PadButton {
+                pad: 1,
+                button: PadButton::South,
+                down: true,
+            },
+        );
         assert!(s.held(Action::Jump));
     }
 
@@ -410,8 +587,22 @@ mod tests {
         let b = Bindings::default();
         let mut s = ActionState::default();
         s.feed(&b, RawInput::PadAdded { pad: 1 });
-        s.feed(&b, RawInput::PadButton { pad: 1, button: PadButton::South, down: true });
-        s.feed(&b, RawInput::PadAxis { pad: 1, axis: PadAxis::LeftX, value: 1.0 });
+        s.feed(
+            &b,
+            RawInput::PadButton {
+                pad: 1,
+                button: PadButton::South,
+                down: true,
+            },
+        );
+        s.feed(
+            &b,
+            RawInput::PadAxis {
+                pad: 1,
+                axis: PadAxis::LeftX,
+                value: 1.0,
+            },
+        );
         s.feed(&b, RawInput::PadRemoved { pad: 9 });
         assert!(!s.pad_lost && s.held(Action::Jump));
         s.feed(&b, RawInput::PadRemoved { pad: 1 });
@@ -426,7 +617,13 @@ mod tests {
         let b = Bindings::default();
         let mut s = ActionState::default();
         s.begin_frame();
-        s.feed(&b, RawInput::MouseMove { dx: 100.0, dy: -50.0 });
+        s.feed(
+            &b,
+            RawInput::MouseMove {
+                dx: 100.0,
+                dy: -50.0,
+            },
+        );
         let (yaw, pitch) = s.look(&b, 1.0 / 60.0);
         assert!(yaw > 0.0 && pitch > 0.0);
         s.begin_frame();

@@ -1,7 +1,7 @@
 use crate::clock::STEP_SECONDS;
+use crate::debris::{Debris, Solid, shatter};
 use crate::hash::Fnv64;
 use crate::input::PlayerInput;
-use crate::debris::{shatter, Debris, Solid};
 use crate::snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
 use glam::Vec3;
 use std::sync::Arc;
@@ -28,7 +28,11 @@ pub struct WorldConfig {
 
 impl Default for WorldConfig {
     fn default() -> Self {
-        Self { seed: 1, start_time_of_day: 10.0, hours_per_second: 24.0 / (48.0 * 60.0) }
+        Self {
+            seed: 1,
+            start_time_of_day: 10.0,
+            hours_per_second: 24.0 / (48.0 * 60.0),
+        }
     }
 }
 
@@ -39,6 +43,9 @@ pub struct BreakableThing {
     pub id: u64,
     pub to_world: glam::Affine3A,
     pub boxes: Vec<(Vec3, Vec3, u32)>,
+    /// In kilograms if it is loose, a prop that falls and can be carried; 0 if it is
+    /// fixed in place.
+    pub mass: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -107,6 +114,16 @@ pub struct World {
     solid_things: Vec<u64>,
     /// Things authored broken have been broken.
     authored_broken: bool,
+    /// Solid things being mended, and which of their pieces stand again.
+    standing: Vec<(u64, Vec<u32>)>,
+    /// The loose things, as rigid bodies.
+    props: Option<crate::props::Props>,
+    /// Who carries what.
+    carried: Vec<(PlayerId, u64)>,
+    /// The props have come to rest on the ground once, at load.
+    props_settled: bool,
+    /// Where each loose thing stands now, for the snapshot.
+    prop_poses: Arc<Vec<(u64, glam::Affine3A)>>,
 }
 
 impl World {
@@ -141,6 +158,11 @@ impl World {
             landings: Vec::new(),
             solid_things: Vec::new(),
             authored_broken: false,
+            standing: Vec::new(),
+            props: None,
+            carried: Vec::new(),
+            props_settled: false,
+            prop_poses: Arc::default(),
         }
     }
 
@@ -149,7 +171,16 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default() });
+        self.players.push(Player {
+            id,
+            body: crate::character::Body::new(feet),
+            yaw,
+            pitch: 0.0,
+            reading: Default::default(),
+            in_focus: None,
+            perception: 0,
+            caster: Default::default(),
+        });
         id
     }
 
@@ -159,6 +190,56 @@ impl World {
         self.debris.set_solids(solids);
         self.breakables = breakables;
         self.rebuild_statics();
+        self.rebuild_props();
+    }
+
+    /// The loose things become rigid bodies on the still things, where they stand now.
+    fn rebuild_props(&mut self) {
+        let mut loose: Vec<crate::props::LooseThing> = self
+            .breakables
+            .iter()
+            .filter(|b| b.mass > 0.0 && !self.broken.contains(&b.id))
+            .map(|b| crate::props::LooseThing {
+                id: b.id,
+                to_world: b.to_world,
+                boxes: b.boxes.iter().map(|(min, max, _)| (*min, *max)).collect(),
+                mass: b.mass,
+            })
+            .collect();
+        if loose.is_empty() {
+            self.props = None;
+            return;
+        }
+        if let Some(old) = &self.props {
+            for t in &mut loose {
+                if let Some(p) = old.pose(t.id) {
+                    t.to_world = p;
+                }
+            }
+        }
+        let still = crate::props::Still {
+            patches: self
+                .ground
+                .as_ref()
+                .map(|g| g.patches())
+                .unwrap_or_default(),
+            solids: self.solids.clone(),
+            trunks: self.trunks.clone(),
+        };
+        let first = !self.props_settled && self.ground.is_some();
+        let mut props = crate::props::Props::new(Arc::new(still), loose, STEP_SECONDS);
+        // At load, props stand where they would have come to rest.
+        if first {
+            props.settle();
+            self.props_settled = true;
+        }
+        self.props = Some(props);
+        self.prop_poses = Arc::new(self.props.as_ref().map(|p| p.poses()).unwrap_or_default());
+    }
+
+    /// What a player carries, if anything.
+    pub fn carrying(&self, id: PlayerId) -> Option<u64> {
+        self.carried.iter().find(|(p, _)| *p == id).map(|(_, t)| *t)
     }
 
     /// Gives the world the words, as compiled from their sheets.
@@ -180,23 +261,53 @@ impl World {
     /// A breakable thing that bodies stand on and cannot walk through while it is whole:
     /// a marked structure, or one named so.
     fn solid(&self, id: u64) -> bool {
-        self.solid_things.contains(&id) || self.targets.iter().any(|t| t.id == id && self.rules.classes.get(t.class).is_some_and(|c| c == "structure"))
+        self.solid_things.contains(&id)
+            || self.targets.iter().any(|t| {
+                t.id == id
+                    && self
+                        .rules
+                        .classes
+                        .get(t.class)
+                        .is_some_and(|c| c == "structure")
+            })
     }
 
     /// A blow lands on a player: a full charge in either hand smudges into its typo and
     /// flies at whatever is in the gaze; a lesser charge is lost.
     pub fn strike(&mut self, id: PlayerId) {
-        let Some(p) = self.players.iter_mut().find(|p| p.id == id) else { return };
+        let Some(p) = self.players.iter_mut().find(|p| p.id == id) else {
+            return;
+        };
         let eye = p.body.feet + Vec3::Y * p.body.eye;
         let (sy, cy) = p.yaw.sin_cos();
         let (sp, cp) = p.pitch.sin_cos();
         let gaze = Vec3::new(sy * cp, sp, -cy * cp);
         let right = Vec3::new(cy, 0.0, sy);
         for hand in [crate::hands::Hand::Main, crate::hands::Hand::Off] {
-            let full = p.caster.hands.charging(hand).is_some_and(|t| t >= crate::emendation::CHARGE_FULL);
+            let full = p
+                .caster
+                .hands
+                .charging(hand)
+                .is_some_and(|t| t >= crate::emendation::CHARGE_FULL);
             if let (true, crate::casting::Holding::Word(w)) = (full, p.caster.holds(hand)) {
-                let stroke = crate::emendation::Stroke { charge: 1.0, typo: true, ..Default::default() };
-                crate::casting::send(p.id.0, &mut p.caster, w, Some(hand), stroke, &self.rules, &self.targets, eye, gaze, right, &mut self.flights);
+                let stroke = crate::emendation::Stroke {
+                    charge: 1.0,
+                    typo: true,
+                    ..Default::default()
+                };
+                crate::casting::send(
+                    p.id.0,
+                    &mut p.caster,
+                    w,
+                    Some(hand),
+                    stroke,
+                    &self.rules,
+                    &self.targets,
+                    eye,
+                    gaze,
+                    right,
+                    &mut self.flights,
+                );
             }
         }
         p.caster.hands.interrupt();
@@ -205,7 +316,9 @@ impl World {
 
     /// A player learns a word, by its spelling. Returns whether there is such a word.
     pub fn learn(&mut self, id: PlayerId, spelling: &str) -> bool {
-        let Some(w) = self.rules.word(spelling) else { return false };
+        let Some(w) = self.rules.word(spelling) else {
+            return false;
+        };
         if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
             p.caster.learn(w);
         }
@@ -214,7 +327,9 @@ impl World {
 
     /// Puts a word, by its spelling, in a player's hand: 0 main, 1 off.
     pub fn hold_word(&mut self, id: PlayerId, hand: usize, spelling: &str) {
-        let Some(w) = self.rules.word(spelling) else { return };
+        let Some(w) = self.rules.word(spelling) else {
+            return;
+        };
         if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
             p.caster.learn(w);
             p.caster.holding[hand.min(1)] = crate::casting::Holding::Word(w);
@@ -235,7 +350,12 @@ impl World {
                 .collect(),
         );
         // Words that heat and cool make things hot and cold.
-        let mut all: Vec<(u64, f32)> = self.heat.iter().copied().filter(|(id, _)| !self.targets.iter().any(|t| t.id == *id)).collect();
+        let mut all: Vec<(u64, f32)> = self
+            .heat
+            .iter()
+            .copied()
+            .filter(|(id, _)| !self.targets.iter().any(|t| t.id == *id))
+            .collect();
         for t in &self.targets {
             let h = crate::casting::heat_of(t);
             if h != 0.0 {
@@ -261,6 +381,9 @@ impl World {
     pub fn set_trunks(&mut self, trunks: Vec<crate::character::Trunk>) {
         self.trunks = trunks;
         self.rebuild_statics();
+        if self.props.is_some() {
+            self.rebuild_props();
+        }
     }
 
     /// Marks breakable things that bodies stand on and cannot walk through while whole.
@@ -270,34 +393,84 @@ impl World {
     }
 
     fn rebuild_statics(&mut self) {
-        let patches = self.ground.as_ref().map(|g| g.patches()).unwrap_or_default();
-        // The scene's boxes, and the boxes of solid things that are whole, as they stand.
-        let mut solids = self.solids.clone();
-        for b in self.breakables.iter().filter(|b| self.solid(b.id) && !self.broken.contains(&b.id)) {
-            for (min, max, _) in &b.boxes {
+        let patches = self
+            .ground
+            .as_ref()
+            .map(|g| g.patches())
+            .unwrap_or_default();
+        if patches.is_empty()
+            && self.solids.is_empty()
+            && self.trunks.is_empty()
+            && self.breakables.is_empty()
+        {
+            self.statics = None;
+            return;
+        }
+        let mut statics = crate::character::Statics::new(&patches, &self.solids, &self.trunks);
+        let solid: Vec<u64> = self
+            .breakables
+            .iter()
+            .map(|b| b.id)
+            .filter(|id| self.solid(*id))
+            .collect();
+        for id in solid {
+            statics.set_thing(id, &self.thing_solids(id));
+        }
+        self.statics = Some(Arc::new(statics));
+    }
+
+    /// The boxes a solid thing stands in now, in the world: all of them while it is whole,
+    /// the pieces that stand again while it is mended, and none while it lies broken.
+    fn thing_solids(&self, id: u64) -> Vec<Solid> {
+        let Some(b) = self.breakables.iter().find(|b| b.id == id) else {
+            return Vec::new();
+        };
+        let standing = self.standing.iter().find(|(t, _)| *t == id).map(|(_, p)| p);
+        let broken = self.broken.contains(&id);
+        b.boxes
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| !broken || standing.is_some_and(|p| p.contains(&(*k as u32))))
+            .map(|(_, (min, max, _))| {
                 let mut lo = Vec3::splat(f32::MAX);
                 let mut hi = Vec3::splat(f32::MIN);
                 for corner in 0..8 {
-                    let p = Vec3::new(if corner & 1 == 0 { min.x } else { max.x }, if corner & 2 == 0 { min.y } else { max.y }, if corner & 4 == 0 { min.z } else { max.z });
+                    let p = Vec3::new(
+                        if corner & 1 == 0 { min.x } else { max.x },
+                        if corner & 2 == 0 { min.y } else { max.y },
+                        if corner & 4 == 0 { min.z } else { max.z },
+                    );
                     let w = b.to_world.transform_point3(p);
                     lo = lo.min(w);
                     hi = hi.max(w);
                 }
-                solids.push(Solid { min: lo, max: hi });
-            }
-        }
-        if patches.is_empty() && solids.is_empty() && self.trunks.is_empty() {
-            self.statics = None;
+                Solid { min: lo, max: hi }
+            })
+            .collect()
+    }
+
+    /// The statics take up what a solid thing stands in now.
+    fn refresh_thing(&mut self, id: u64) {
+        if !self.solid(id) {
             return;
         }
-        self.statics = Some(Arc::new(crate::character::Statics::new(&patches, &solids, &self.trunks)));
+        let solids = self.thing_solids(id);
+        match self.statics.as_mut().and_then(Arc::get_mut) {
+            Some(statics) => statics.set_thing(id, &solids),
+            None => self.rebuild_statics(),
+        }
     }
 
     /// Things authored broken are broken now, their letters already at rest, as though
     /// they fell long ago. Their state is their Inscription.
     fn break_authored(&mut self) {
         self.authored_broken = true;
-        let ids: Vec<(u64, Vec3)> = self.targets.iter().filter(|t| t.words.iter().any(|w| w.spelling == "BROKEN")).map(|t| (t.id, t.centre)).collect();
+        let ids: Vec<(u64, Vec3)> = self
+            .targets
+            .iter()
+            .filter(|t| t.words.iter().any(|w| w.spelling == "BROKEN"))
+            .map(|t| (t.id, t.centre))
+            .collect();
         for (id, centre) in ids {
             self.break_thing_with(id, centre + Vec3::Y * 0.5, 0.25);
         }
@@ -309,7 +482,12 @@ impl World {
     fn inscribe_state(&mut self, id: u64, spelling: &str) {
         if let Some(t) = self.targets.iter_mut().find(|t| t.id == id) {
             t.words.retain(|w| w.class != "Integrity");
-            t.words.push(crate::emendation::InscribedWord { spelling: spelling.into(), class: "Integrity".into(), fades_at: None, replaced: None });
+            t.words.push(crate::emendation::InscribedWord {
+                spelling: spelling.into(),
+                class: "Integrity".into(),
+                fades_at: None,
+                replaced: None,
+            });
             t.effects.retain(|e| e.effect != "mend");
         }
     }
@@ -326,10 +504,19 @@ impl World {
         if self.broken.contains(&id) {
             return None;
         }
-        let thing = self.breakables.iter().find(|b| b.id == id)?.clone();
+        let mut thing = self.breakables.iter().find(|b| b.id == id)?.clone();
+        // A loose thing breaks where it lies now, and its body is gone.
+        if let Some(props) = &mut self.props {
+            if let Some(p) = props.pose(id) {
+                thing.to_world = p;
+                props.remove(id);
+                self.carried.retain(|(_, t)| *t != id);
+                self.prop_poses = Arc::new(props.poses());
+            }
+        }
         let mut made = 0;
         let keep = crate::debris::keep_for(thing.boxes.iter().map(|(min, max, _)| (*min, *max)));
-        for (min, max, material) in &thing.boxes {
+        for (piece, (min, max, material)) in thing.boxes.iter().enumerate() {
             let mut rng = self.rng;
             let mut random = || {
                 rng = rng.wrapping_add(0x9e37_79b9_7f4a_7c15);
@@ -338,20 +525,35 @@ impl World {
                 z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
                 z ^ (z >> 31)
             };
-            made += shatter(&mut self.debris, *min, *max, thing.to_world, *material, blow, strength, id, keep, &mut random);
+            made += shatter(
+                &mut self.debris,
+                *min,
+                *max,
+                thing.to_world,
+                *material,
+                blow,
+                strength,
+                id,
+                piece as u32,
+                keep,
+                &mut random,
+            );
             self.rng = rng;
         }
         let mut broken = (*self.broken).clone();
         broken.push(id);
         self.broken = Arc::new(broken);
         self.refresh_letters();
-        if self.targets.iter().any(|t| t.id == id && !t.words.iter().any(|w| w.spelling == "BROKEN")) {
+        if self
+            .targets
+            .iter()
+            .any(|t| t.id == id && !t.words.iter().any(|w| w.spelling == "BROKEN"))
+        {
             self.inscribe_state(id, "BROKEN");
             self.refresh_targets();
         }
-        if self.solid(id) {
-            self.rebuild_statics();
-        }
+        self.standing.retain(|(t, _)| *t != id);
+        self.refresh_thing(id);
         Some(made)
     }
 
@@ -359,7 +561,12 @@ impl World {
     /// be. The words of S05 will set this; until then the development tools do.
     pub fn set_heat(&mut self, id: u64, heat: f32) {
         let heat = heat.clamp(-1.0, 1.0);
-        let mut all: Vec<(u64, f32)> = self.heat.iter().copied().filter(|(i, _)| *i != id).collect();
+        let mut all: Vec<(u64, f32)> = self
+            .heat
+            .iter()
+            .copied()
+            .filter(|(i, _)| *i != id)
+            .collect();
         if heat != 0.0 {
             all.push((id, heat));
         }
@@ -387,11 +594,18 @@ impl World {
         self.debris.set_ground(ground.clone());
         self.ground = Some(ground);
         for p in &mut self.players {
-            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.body.feet.x, p.body.feet.z)) {
+            if let Some(h) = self
+                .ground
+                .as_ref()
+                .and_then(|g| g.height(p.body.feet.x, p.body.feet.z))
+            {
                 p.body.feet.y = h;
             }
         }
         self.rebuild_statics();
+        if self.props.is_some() {
+            self.rebuild_props();
+        }
     }
 
     pub fn loose_letters(&self) -> usize {
@@ -408,7 +622,12 @@ impl World {
             self.debris
                 .letters
                 .iter()
-                .map(|l| LetterSnap { position: l.position, rotation: l.rotation, material: l.material, seed: l.seed })
+                .map(|l| LetterSnap {
+                    position: l.position,
+                    rotation: l.rotation,
+                    material: l.material,
+                    seed: l.seed,
+                })
                 .collect(),
         );
     }
@@ -441,7 +660,7 @@ impl World {
         if !self.authored_broken {
             self.break_authored();
         }
-        use crate::reading::{focus, Reading, CLOSE_READING_PACE};
+        use crate::reading::{CLOSE_READING_PACE, Reading, focus};
         // What each player reads. A text in focus is read while Read is held; with none,
         // Read is close reading.
         for (i, p) in self.players.iter_mut().enumerate() {
@@ -463,13 +682,23 @@ impl World {
             };
         }
         // In solo play, close reading slows time. In co-op the shared world never slows.
-        self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close { CLOSE_READING_PACE } else { 1.0 };
+        self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close {
+            CLOSE_READING_PACE
+        } else {
+            1.0
+        };
         let dt = STEP_SECONDS * self.pace;
         for (i, p) in self.players.iter_mut().enumerate() {
             let input = inputs.get(i).copied().unwrap_or_default();
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
-            p.body.step(&input, p.yaw, self.statics.as_deref(), &Around(self.ground.as_deref()), dt);
+            p.body.step(
+                &input,
+                p.yaw,
+                self.statics.as_deref(),
+                &Around(self.ground.as_deref()),
+                dt,
+            );
         }
         // Casting: the hands' taps and charges become words in flight, which land.
         self.landings.clear();
@@ -489,9 +718,37 @@ impl World {
             let (sp, cp) = p.pitch.sin_cos();
             let gaze = Vec3::new(sy * cp, sp, -cy * cp);
             let right = Vec3::new(cy, 0.0, sy);
+            // Loose things: Interact picks one up or puts it down, and the main hand
+            // throws what is carried.
+            let mut throwing = false;
+            if let Some(props) = &mut self.props {
+                let carrying = self.carried.iter().position(|(c, _)| *c == p.id);
+                match carrying {
+                    Some(k) if pressed & buttons::ATTACK_MAIN != 0 => {
+                        props.throw(self.carried[k].1, gaze + Vec3::Y * 0.12);
+                        self.carried.swap_remove(k);
+                        throwing = true;
+                    }
+                    Some(k) if pressed & buttons::INTERACT != 0 => {
+                        self.carried.swap_remove(k);
+                    }
+                    Some(_) => throwing = true,
+                    None if pressed & buttons::INTERACT != 0 => {
+                        if let Some(t) = props
+                            .pick(eye, gaze)
+                            .filter(|t| !self.carried.iter().any(|(_, c)| c == t))
+                        {
+                            self.carried.push((p.id, t));
+                        }
+                    }
+                    None => {}
+                }
+            }
             crate::casting::take_aim(&mut p.caster, eye, gaze, &self.targets);
             // Typing while a word charges.
-            let charging = p.caster.hands.charging(crate::hands::Hand::Main).is_some() || p.caster.hands.charging(crate::hands::Hand::Off).is_some() || p.caster.hands.both().is_some();
+            let charging = p.caster.hands.charging(crate::hands::Hand::Main).is_some()
+                || p.caster.hands.charging(crate::hands::Hand::Off).is_some()
+                || p.caster.hands.both().is_some();
             if charging {
                 for k in 0..4 {
                     let c = (input.typed >> (k * 8)) & 0xff;
@@ -502,12 +759,71 @@ impl World {
             }
             // While reading, the hands are still.
             let reading = p.reading != Reading::None;
-            p.caster.hands.step(input.held(buttons::ATTACK_MAIN) && !reading, input.held(buttons::ATTACK_OFF) && !reading, &mut hand_events);
-            crate::casting::release(p.id.0, &mut p.caster, &hand_events, &self.rules, &self.targets, eye, gaze, right, &mut self.flights);
+            // While carrying, the main hand is full.
+            p.caster.hands.step(
+                input.held(buttons::ATTACK_MAIN) && !reading && !throwing,
+                input.held(buttons::ATTACK_OFF) && !reading,
+                &mut hand_events,
+            );
+            crate::casting::release(
+                p.id.0,
+                &mut p.caster,
+                &hand_events,
+                &self.rules,
+                &self.targets,
+                eye,
+                gaze,
+                right,
+                &mut self.flights,
+            );
             crate::casting::refill(&mut p.caster, dt);
         }
+        // Carried things are drawn before the eye; then the loose things move, and any
+        // jolted hard enough break.
+        if let Some(props) = &mut self.props {
+            let mut lost = Vec::new();
+            for (k, (who, t)) in self.carried.iter().enumerate() {
+                let Some(p) = self.players.iter().find(|p| p.id == *who) else {
+                    continue;
+                };
+                let eye = p.body.feet + Vec3::Y * p.body.eye;
+                let (sy, cy) = p.yaw.sin_cos();
+                let (sp, cp) = p.pitch.sin_cos();
+                let gaze = Vec3::new(sy * cp, sp, -cy * cp);
+                if !props.carry(*t, eye + gaze * crate::props::HOLD_AT) {
+                    lost.push(k);
+                }
+            }
+            for k in lost.into_iter().rev() {
+                self.carried.swap_remove(k);
+            }
+            props.set_dt(dt);
+            let held: Vec<u64> = self.carried.iter().map(|(_, t)| *t).collect();
+            let jolted = props.step(&held);
+            self.prop_poses = Arc::new(props.poses());
+            for (id, at) in jolted {
+                self.break_thing_with(id, at, 0.5);
+            }
+            // What carries an Inscription goes with the thing.
+            for (id, pose) in self.prop_poses.iter() {
+                if let (Some(t), Some(b)) = (
+                    self.targets.iter_mut().find(|t| t.id == *id),
+                    self.breakables.iter().find(|b| b.id == *id),
+                ) {
+                    let local = b.to_world.inverse().transform_point3(t.authored_centre);
+                    t.centre = pose.transform_point3(local);
+                }
+            }
+        }
         let landed_before = self.landings.len();
-        crate::casting::fly(&mut self.flights, &mut self.targets, &self.rules, dt, self.seconds, &mut self.landings);
+        crate::casting::fly(
+            &mut self.flights,
+            &mut self.targets,
+            &self.rules,
+            dt,
+            self.seconds,
+            &mut self.landings,
+        );
         // The chain: twice a second, fire spreads to what is near it.
         if self.step % 30 == 0 && !self.targets.is_empty() {
             let mut rng = self.rng;
@@ -518,18 +834,38 @@ impl World {
                 z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
                 ((z ^ (z >> 31)) >> 40) as f32 / (1u64 << 24) as f32
             };
-            crate::casting::spread(&mut self.targets, &self.rules, self.seconds, 0.35 * self.pace, &mut roll, &mut self.landings);
+            crate::casting::spread(
+                &mut self.targets,
+                &self.rules,
+                self.seconds,
+                0.35 * self.pace,
+                &mut roll,
+                &mut self.landings,
+            );
             self.rng = rng;
         }
         // A word that mends landing on a broken thing calls its letters home.
-        let mending: Vec<u64> = self.landings[landed_before..]
+        let mending: Vec<(u64, Vec3)> = self.landings[landed_before..]
             .iter()
             .filter(|l| matches!(&l.landing, crate::emendation::Landing::Took { effect, .. } if effect == "mend"))
-            .map(|l| l.target)
-            .filter(|id| self.broken.contains(id))
+            .filter(|l| self.broken.contains(&l.target))
+            .map(|l| (l.target, self.players.iter().find(|p| p.id == PlayerId(l.player)).map_or(l.at, |p| p.body.feet)))
             .collect();
-        for id in mending {
-            self.debris.mend(id);
+        for (id, from) in mending {
+            // It knits outward from the writer's feet.
+            self.debris.mend(id, from);
+            if !self.standing.iter().any(|(t, _)| *t == id) {
+                self.standing.push((id, Vec::new()));
+            }
+        }
+        // Pieces whose letters are all home stand again, and bear weight.
+        for k in 0..self.standing.len() {
+            let id = self.standing[k].0;
+            let home = self.debris.pieces_home(id);
+            if home.len() > self.standing[k].1.len() {
+                self.standing[k].1 = home;
+                self.refresh_thing(id);
+            }
         }
         // Its typo knocks a hole: a whole breakable thing falls to its letters.
         let holed: Vec<(u64, Vec3)> = self.landings[landed_before..]
@@ -544,14 +880,21 @@ impl World {
         // Things whose letters have all come home stand whole again.
         let mended = self.debris.take_mended();
         if !mended.is_empty() {
-            self.broken = Arc::new(self.broken.iter().copied().filter(|b| !mended.contains(b)).collect());
+            self.broken = Arc::new(
+                self.broken
+                    .iter()
+                    .copied()
+                    .filter(|b| !mended.contains(b))
+                    .collect(),
+            );
             for id in &mended {
                 self.inscribe_state(*id, "WHOLE");
             }
+            self.standing.retain(|(t, _)| !mended.contains(t));
             self.refresh_letters();
             self.refresh_targets();
-            if mended.iter().any(|id| self.solid(*id)) {
-                self.rebuild_statics();
+            for id in mended {
+                self.refresh_thing(id);
             }
         }
         // A breakable thing that has burned long enough falls to its letters.
@@ -560,7 +903,10 @@ impl World {
                 .targets
                 .iter_mut()
                 .filter_map(|t| {
-                    let alight = t.effects.iter().any(|e| matches!(e.effect.as_str(), "ignite" | "flare" | "blaze"));
+                    let alight = t
+                        .effects
+                        .iter()
+                        .any(|e| matches!(e.effect.as_str(), "ignite" | "flare" | "blaze"));
                     if !alight {
                         t.alight_since = None;
                         return None;
@@ -611,7 +957,12 @@ impl World {
                         crate::reading::ReadingSnap::Text {
                             id: r.id,
                             text: r.text,
-                            hidden: r.hidden.iter().filter(|(_, need)| p.perception >= *need).map(|(s, _)| *s).collect(),
+                            hidden: r
+                                .hidden
+                                .iter()
+                                .filter(|(_, need)| p.perception >= *need)
+                                .map(|(s, _)| *s)
+                                .collect(),
                         }
                     }
                 },
@@ -624,8 +975,18 @@ impl World {
                     p.caster.charge(None),
                 ],
                 preview: [
-                    crate::casting::preview_for(&p.caster, &self.rules, &self.targets, crate::hands::Hand::Main),
-                    crate::casting::preview_for(&p.caster, &self.rules, &self.targets, crate::hands::Hand::Off),
+                    crate::casting::preview_for(
+                        &p.caster,
+                        &self.rules,
+                        &self.targets,
+                        crate::hands::Hand::Main,
+                    ),
+                    crate::casting::preview_for(
+                        &p.caster,
+                        &self.rules,
+                        &self.targets,
+                        crate::hands::Hand::Off,
+                    ),
                 ],
             })
             .collect();
@@ -647,6 +1008,7 @@ impl World {
             letters: self.letters.clone(),
             letters_step: self.letters_step,
             broken: self.broken.clone(),
+            props: self.prop_poses.clone(),
             heat: self.heat.clone(),
             weather: self.weather.now,
             targets: self.targets_snap.clone(),
@@ -659,7 +1021,11 @@ impl World {
                     at: f.at,
                     target: f.target,
                     charge: f.charge,
-                    typo: if f.typo { self.rules.words[f.word].typo.clone() } else { String::new() },
+                    typo: if f.typo {
+                        self.rules.words[f.word].typo.clone()
+                    } else {
+                        String::new()
+                    },
                 })
                 .collect(),
             landings: self.landings.clone(),
@@ -703,7 +1069,12 @@ impl World {
         }
         h.u32(self.debris.letters.len() as u32);
         for l in &self.debris.letters {
-            for v in l.position.to_array().into_iter().chain(l.velocity.to_array()) {
+            for v in l
+                .position
+                .to_array()
+                .into_iter()
+                .chain(l.velocity.to_array())
+            {
                 h.f32(v);
             }
         }
@@ -730,7 +1101,10 @@ mod tests {
     }
 
     fn run(steps: u64) -> (u64, Vec<u64>) {
-        let mut w = World::new(WorldConfig { seed: 7, ..Default::default() });
+        let mut w = World::new(WorldConfig {
+            seed: 7,
+            ..Default::default()
+        });
         w.add_player(Vec3::ZERO, 0.0);
         w.add_player(Vec3::new(3.0, 0.0, 1.0), 1.0);
         let mut trail = Vec::new();
@@ -771,14 +1145,20 @@ mod tests {
     fn forward_is_minus_z_and_yaw_turns_right() {
         let mut w = World::new(WorldConfig::default());
         w.add_player(Vec3::ZERO, 0.0);
-        w.step(&[PlayerInput { move_y: 1.0, ..Default::default() }]);
+        w.step(&[PlayerInput {
+            move_y: 1.0,
+            ..Default::default()
+        }]);
         let s = w.snapshot();
         assert!(s.players[0].feet.z < 0.0);
         assert!((s.views[0].forward() - Vec3::NEG_Z).length() < 1e-5);
 
         let mut w = World::new(WorldConfig::default());
         w.add_player(Vec3::ZERO, std::f32::consts::FRAC_PI_2);
-        w.step(&[PlayerInput { move_y: 1.0, ..Default::default() }]);
+        w.step(&[PlayerInput {
+            move_y: 1.0,
+            ..Default::default()
+        }]);
         let s = w.snapshot();
         assert!(s.players[0].feet.x > 0.0);
         assert!((s.views[0].forward() - Vec3::X).length() < 1e-5);
@@ -790,7 +1170,10 @@ mod tests {
         w.add_player(Vec3::ZERO, 0.0);
         let before = w.snapshot();
         let copy = (*before).clone();
-        w.step(&[PlayerInput { move_y: 1.0, ..Default::default() }]);
+        w.step(&[PlayerInput {
+            move_y: 1.0,
+            ..Default::default()
+        }]);
         assert_eq!(*before, copy);
         assert_ne!(*w.snapshot(), copy);
     }

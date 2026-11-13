@@ -1,6 +1,6 @@
 //! The capture tool against the software renderer.
 
-use vellmark_harness::capture::{run, Options, RefMode, Script};
+use vellmark_harness::capture::{Options, RefMode, Script, run};
 use vellmark_harness::repo_root;
 use vellmark_render::ShaderLibrary;
 
@@ -17,7 +17,8 @@ fn options(ref_mode: RefMode) -> Options {
 /// A machine with no graphics adapter at all cannot run these. That is allowed only
 /// where it is declared, so that a missing driver in CI is noticed and not skipped.
 fn no_adapter_allowed(error: &str) -> bool {
-    error.contains("no usable graphics adapter") && std::env::var_os("VELLMARK_ALLOW_NO_GPU").is_some()
+    error.contains("no usable graphics adapter")
+        && std::env::var_os("VELLMARK_ALLOW_NO_GPU").is_some()
 }
 
 #[test]
@@ -46,12 +47,18 @@ fn two_runs_produce_identical_frames() {
                 assert!(
                     d.max <= 3.0 / 255.0 && d.mean <= 0.0005,
                     "shot {} frame {i} differs between runs on {}: mean {:.6}, max {:.4}",
-                    a.name, first.adapter, d.mean, d.max
+                    a.name,
+                    first.adapter,
+                    d.mean,
+                    d.max
                 );
             }
         }
     }
-    eprintln!("{}: largest difference between two runs {:.4}", first.adapter, worst);
+    eprintln!(
+        "{}: largest difference between two runs {:.4}",
+        first.adapter, worst
+    );
     assert!(first.passed(), "{}", first.summary());
 }
 
@@ -67,7 +74,10 @@ fn captures_match_their_reference_images() {
         Err(e) => panic!("{e}"),
     };
     if !report.adapter.contains("llvmpipe") {
-        return eprintln!("skipped: references are checked on llvmpipe, this is {}", report.adapter);
+        return eprintln!(
+            "skipped: references are checked on llvmpipe, this is {}",
+            report.adapter
+        );
     }
     assert!(report.passed(), "{}", report.summary());
 }

@@ -77,7 +77,8 @@ impl StringTable {
         if bytes.len() != blob_at + blob_len {
             return Err("string table has the wrong length");
         }
-        let blob = std::str::from_utf8(&bytes[blob_at..]).map_err(|_| "string table is not UTF-8")?;
+        let blob =
+            std::str::from_utf8(&bytes[blob_at..]).map_err(|_| "string table is not UTF-8")?;
         let mut index = Vec::with_capacity(count);
         for i in 0..count {
             let at = 16 + i * 16;
@@ -85,7 +86,10 @@ impl StringTable {
             let offset = u32::from_le_bytes(bytes[at + 8..at + 12].try_into().unwrap());
             let len = u32::from_le_bytes(bytes[at + 12..at + 16].try_into().unwrap());
             let end = offset as usize + len as usize;
-            if end > blob.len() || !blob.is_char_boundary(offset as usize) || !blob.is_char_boundary(end) {
+            if end > blob.len()
+                || !blob.is_char_boundary(offset as usize)
+                || !blob.is_char_boundary(end)
+            {
                 return Err("string table entry is out of range");
             }
             if index.last().is_some_and(|&(prev, _, _)| prev >= id) {
@@ -93,7 +97,10 @@ impl StringTable {
             }
             index.push((id, offset, len));
         }
-        Ok(Self { index, blob: blob.to_owned() })
+        Ok(Self {
+            index,
+            blob: blob.to_owned(),
+        })
     }
 
     pub fn get(&self, id: StringId) -> Option<&str> {

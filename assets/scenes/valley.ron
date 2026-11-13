@@ -45,6 +45,39 @@
                 (material: "masonry", min: (-1.0, -4.7, 3.7), max: (1.0, -0.36, 4.3)),
             ],
         ),
+        // What the masons left beside the bridge road, short of the bank: two crates,
+        // one on the other, and a keg across the road. Loose props: they fall, and can be picked up, carried, and thrown.
+        (
+            key: "mason_crate",
+            position: (125.5, 7.25, -93.0),
+            yaw: 12.0,
+            mass: 9.0,
+            boxes: [
+                (material: "timber", min: (-0.27, -0.25, -0.27), max: (0.27, 0.25, 0.27)),
+                (material: "iron", min: (-0.28, 0.12, -0.28), max: (0.28, 0.15, 0.28)),
+            ],
+        ),
+        (
+            key: "mason_crate_small",
+            position: (125.52, 7.7, -92.98),
+            yaw: 31.0,
+            mass: 5.0,
+            boxes: [
+                (material: "timber", min: (-0.19, -0.17, -0.19), max: (0.19, 0.17, 0.19)),
+            ],
+        ),
+        (
+            key: "mason_keg",
+            position: (121.0, 7.36, -94.0),
+            mass: 18.0,
+            boxes: [
+                (material: "timber", min: (-0.2, -0.3, -0.2), max: (0.2, 0.3, 0.2)),
+                (material: "timber", min: (-0.24, -0.18, -0.14), max: (0.24, 0.18, 0.14)),
+                (material: "timber", min: (-0.14, -0.18, -0.24), max: (0.14, 0.18, 0.24)),
+                (material: "iron", min: (-0.215, 0.2, -0.215), max: (0.215, 0.24, 0.215)),
+                (material: "iron", min: (-0.215, -0.24, -0.215), max: (0.215, -0.2, 0.215)),
+            ],
+        ),
     ],
     // A marked structure: broken, as authored, and a little tough to mend.
     inscribed: [

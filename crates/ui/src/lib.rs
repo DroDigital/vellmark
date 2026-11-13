@@ -4,8 +4,8 @@
 //! The interface draws nothing itself. It fills a [`Canvas`] with glyphs and plain
 //! rectangles, in pixels, and the renderer draws the canvas.
 
-pub mod reading_view;
 pub mod hud;
+pub mod reading_view;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 
@@ -72,12 +72,23 @@ impl Canvas {
     }
 
     pub fn rect(&mut self, rect: [f32; 4], colour: Colour) {
-        self.quads.push(Quad { rect, colour, layer: Quad::SOLID });
+        self.quads.push(Quad {
+            rect,
+            colour,
+            layer: Quad::SOLID,
+        });
     }
 
     /// Sets a line of text with its left edge at `x` and its baseline at `baseline`.
     /// Returns the width it took.
-    pub fn text(&mut self, atlas: &GlyphAtlas, x: f32, baseline: f32, style: &TextStyle, text: &Shown<'_>) -> f32 {
+    pub fn text(
+        &mut self,
+        atlas: &GlyphAtlas,
+        x: f32,
+        baseline: f32,
+        style: &TextStyle,
+        text: &Shown<'_>,
+    ) -> f32 {
         let face = atlas.face(style.face);
         let cell = style.size * face.cell_ems;
         let mut pen = x;
@@ -102,13 +113,24 @@ impl Canvas {
 
     /// Sets text as a paragraph, wrapped at word breaks to `width`, its first baseline
     /// at `top` plus one line. Returns the height it took.
-    pub fn paragraph(&mut self, atlas: &GlyphAtlas, x: f32, top: f32, width: f32, style: &TextStyle, text: &Shown<'_>) -> f32 {
+    pub fn paragraph(
+        &mut self,
+        atlas: &GlyphAtlas,
+        x: f32,
+        top: f32,
+        width: f32,
+        style: &TextStyle,
+        text: &Shown<'_>,
+    ) -> f32 {
         let line = Self::line_height(atlas, style);
         let space = atlas.glyph(style.face, ' ').advance * style.size;
         let mut pen = 0.0f32;
         let mut baseline = top + line * 0.85;
         for word in text.as_str().split_whitespace() {
-            let w: f32 = word.chars().map(|c| atlas.glyph(style.face, c).advance * style.size).sum();
+            let w: f32 = word
+                .chars()
+                .map(|c| atlas.glyph(style.face, c).advance * style.size)
+                .sum();
             if pen > 0.0 && pen + w > width {
                 pen = 0.0;
                 baseline += line;
@@ -119,7 +141,12 @@ impl Canvas {
                 let face = atlas.face(style.face);
                 let cell = style.size * face.cell_ems;
                 self.quads.push(Quad {
-                    rect: [at + glyph.centre * style.size - cell * 0.5, baseline - cell * face.baseline, cell, cell],
+                    rect: [
+                        at + glyph.centre * style.size - cell * 0.5,
+                        baseline - cell * face.baseline,
+                        cell,
+                        cell,
+                    ],
                     colour: style.colour,
                     layer: GlyphAtlas::layer(style.face, c),
                 });
@@ -132,7 +159,10 @@ impl Canvas {
 
     /// The width a line of text would take, without drawing it.
     pub fn measure(atlas: &GlyphAtlas, style: &TextStyle, text: &Shown<'_>) -> f32 {
-        text.as_str().chars().map(|c| atlas.glyph(style.face, c).advance * style.size).sum()
+        text.as_str()
+            .chars()
+            .map(|c| atlas.glyph(style.face, c).advance * style.size)
+            .sum()
     }
 
     /// The distance from one baseline to the next.

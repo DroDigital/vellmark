@@ -52,12 +52,18 @@ impl Readables {
             return Err("not a table of readables".into());
         }
         let take = |at: &mut usize, n: usize| -> Result<&[u8], String> {
-            let b = bytes.get(*at..*at + n).ok_or_else(|| "the table of readables is cut short".to_string())?;
+            let b = bytes
+                .get(*at..*at + n)
+                .ok_or_else(|| "the table of readables is cut short".to_string())?;
             *at += n;
             Ok(b)
         };
-        let u64_at = |at: &mut usize| -> Result<u64, String> { Ok(u64::from_le_bytes(take(at, 8)?.try_into().unwrap())) };
-        let u32_at = |at: &mut usize| -> Result<u32, String> { Ok(u32::from_le_bytes(take(at, 4)?.try_into().unwrap())) };
+        let u64_at = |at: &mut usize| -> Result<u64, String> {
+            Ok(u64::from_le_bytes(take(at, 8)?.try_into().unwrap()))
+        };
+        let u32_at = |at: &mut usize| -> Result<u32, String> {
+            Ok(u32::from_le_bytes(take(at, 4)?.try_into().unwrap()))
+        };
         let mut at = 8;
         let count = u32_at(&mut at)? as usize;
         let mut items = Vec::with_capacity(count.min(4096));
@@ -73,7 +79,13 @@ impl Readables {
             for _ in 0..n {
                 hidden.push((StringId(u64_at(&mut at)?), u32_at(&mut at)?));
             }
-            items.push(Readable { id, text, min: [v[0], v[1], v[2]], max: [v[3], v[4], v[5]], hidden });
+            items.push(Readable {
+                id,
+                text,
+                min: [v[0], v[1], v[2]],
+                max: [v[3], v[4], v[5]],
+                hidden,
+            });
         }
         Ok(Self { items })
     }
@@ -155,11 +167,15 @@ impl InscribedThings {
         }
         let mut at = 8usize;
         let take = |at: &mut usize, n: usize| -> Result<&[u8], String> {
-            let b = bytes.get(*at..*at + n).ok_or_else(|| "the table of inscribed things is cut short".to_string())?;
+            let b = bytes
+                .get(*at..*at + n)
+                .ok_or_else(|| "the table of inscribed things is cut short".to_string())?;
             *at += n;
             Ok(b)
         };
-        let u32_at = |at: &mut usize| -> Result<u32, String> { Ok(u32::from_le_bytes(take(at, 4)?.try_into().unwrap())) };
+        let u32_at = |at: &mut usize| -> Result<u32, String> {
+            Ok(u32::from_le_bytes(take(at, 4)?.try_into().unwrap()))
+        };
         let str_at = |at: &mut usize| -> Result<String, String> {
             let n = u32_at(at)? as usize;
             String::from_utf8(take(at, n)?.to_vec()).map_err(|_| "a name is not text".to_string())
@@ -179,7 +195,14 @@ impl InscribedThings {
             for _ in 0..k {
                 words.push((str_at(&mut at)?, str_at(&mut at)?));
             }
-            items.push(InscribedThing { id, class, centre: [v[0], v[1], v[2]], radius: v[3], resistance, words });
+            items.push(InscribedThing {
+                id,
+                class,
+                centre: [v[0], v[1], v[2]],
+                radius: v[3],
+                resistance,
+                words,
+            });
         }
         Ok(Self { items })
     }
@@ -192,7 +215,14 @@ mod inscribed_tests {
     #[test]
     fn inscribed_things_round_trip() {
         let t = InscribedThings {
-            items: vec![InscribedThing { id: AssetId(5), class: "door".into(), centre: [1.0, 2.0, 3.0], radius: 1.2, resistance: 1, words: vec![("LOCKED".into(), "Access".into())] }],
+            items: vec![InscribedThing {
+                id: AssetId(5),
+                class: "door".into(),
+                centre: [1.0, 2.0, 3.0],
+                radius: 1.2,
+                resistance: 1,
+                words: vec![("LOCKED".into(), "Access".into())],
+            }],
         };
         assert_eq!(InscribedThings::from_bytes(&t.to_bytes()).unwrap(), t);
     }

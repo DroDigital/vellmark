@@ -6,10 +6,10 @@
 //! then, and for anything those sources lack, maps are generated here from noise. Both
 //! paths end in the same asset, so the renderer never knows which was used.
 
-use crate::{err, BakeError};
+use crate::{BakeError, err};
 use serde::Deserialize;
 use std::path::Path;
-use vellmark_content::{AssetId, Material, MaterialSet, Lexicon};
+use vellmark_content::{AssetId, Lexicon, Material, MaterialSet};
 
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 enum Generator {
@@ -60,8 +60,10 @@ pub struct AuthoredLexicon {
 
 /// Reads every material's lexicon, the one place the words are kept.
 pub fn read_lexicons(file: &Path) -> Result<Vec<AuthoredLexicon>, BakeError> {
-    let text = std::fs::read_to_string(file).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
-    let all: Vec<AuthoredLexicon> = ron::from_str(&text).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
+    let text =
+        std::fs::read_to_string(file).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
+    let all: Vec<AuthoredLexicon> =
+        ron::from_str(&text).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
     let mut seen = std::collections::BTreeSet::new();
     for l in &all {
         if !seen.insert(l.key.clone()) {
@@ -99,7 +101,10 @@ fn hash(mut x: u32) -> u32 {
 }
 
 fn hash2(x: i32, y: i32, seed: u32) -> f32 {
-    let h = hash((x as u32).wrapping_mul(0x9e37_79b1) ^ hash((y as u32).wrapping_add(seed.wrapping_mul(0x85eb_ca6b))));
+    let h = hash(
+        (x as u32).wrapping_mul(0x9e37_79b1)
+            ^ hash((y as u32).wrapping_add(seed.wrapping_mul(0x85eb_ca6b))),
+    );
     (h >> 8) as f32 / 16_777_216.0
 }
 
@@ -114,7 +119,13 @@ fn fbm(u: f32, v: f32, fx: i32, fy: i32, octaves: u32, seed: u32) -> f32 {
     for o in 0..octaves {
         let s = 1 << o;
         // Each octave has its own period so that the whole stays periodic over the square.
-        let n = noise_xy(u * (fx * s) as f32, v * (fy * s) as f32, fx * s, fy * s, seed + o * 31);
+        let n = noise_xy(
+            u * (fx * s) as f32,
+            v * (fy * s) as f32,
+            fx * s,
+            fy * s,
+            seed + o * 31,
+        );
         sum += n * weight;
         total += weight;
         weight *= 0.5;
@@ -125,7 +136,13 @@ fn fbm(u: f32, v: f32, fx: i32, fy: i32, octaves: u32, seed: u32) -> f32 {
 fn noise_xy(x: f32, y: f32, period_x: i32, period_y: i32, seed: u32) -> f32 {
     let (xi, yi) = (x.floor() as i32, y.floor() as i32);
     let (fx, fy) = (smooth(x - xi as f32), smooth(y - yi as f32));
-    let at = |dx: i32, dy: i32| hash2((xi + dx).rem_euclid(period_x), (yi + dy).rem_euclid(period_y), seed);
+    let at = |dx: i32, dy: i32| {
+        hash2(
+            (xi + dx).rem_euclid(period_x),
+            (yi + dy).rem_euclid(period_y),
+            seed,
+        )
+    };
     let top = at(0, 0) + (at(1, 0) - at(0, 0)) * fx;
     let bottom = at(0, 1) + (at(1, 1) - at(0, 1)) * fx;
     top + (bottom - top) * fy
@@ -153,7 +170,11 @@ fn cellular(u: f32, v: f32, cells: i32, seed: u32) -> (f32, f32) {
 }
 
 fn mix3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 fn scale3(a: [f32; 3], s: f32) -> [f32; 3] {
@@ -222,13 +243,17 @@ fn timber(u: f32, v: f32) -> Texel {
     let gap = step(0.0, 0.035, px.min(1.0 - px));
     // Grain: noise stretched along the plank, shifted for each plank so none match.
     let streak = fbm(u + id * 0.37, v, 160, 3, 3, 43);
-    let rings = ((px + (fbm(u, v + id, 6, 2, 2, 47) - 0.5) * 0.6) * 14.0 + id * 9.0).sin() * 0.5 + 0.5;
+    let rings =
+        ((px + (fbm(u, v + id, 6, 2, 2, 47) - 0.5) * 0.6) * 14.0 + id * 9.0).sin() * 0.5 + 0.5;
     let grain = streak * 0.65 + rings * 0.35;
     let (knot, _) = cellular(u + id, v, 3, 51 + plank as u32);
     let knot = 1.0 - step(0.02, 0.09, knot);
     let weather = fbm(u, v, 5, 5, 3, 53);
     let base = mix3([0.20, 0.13, 0.08], [0.36, 0.25, 0.15], grain);
-    let colour = scale3(mix3(base, [0.10, 0.06, 0.04], knot * 0.8), 0.75 + id * 0.35 + (weather - 0.5) * 0.25);
+    let colour = scale3(
+        mix3(base, [0.10, 0.06, 0.04], knot * 0.8),
+        0.75 + id * 0.35 + (weather - 0.5) * 0.25,
+    );
     Texel {
         colour: scale3(colour, 0.35 + 0.65 * gap),
         height: (0.55 + grain * 0.25 - knot * 0.10) * (0.15 + 0.85 * gap),
@@ -284,11 +309,21 @@ fn earth(u: f32, v: f32) -> Texel {
     // Only some points are stones, and they differ in size.
     let size = 0.10 + id * 0.22;
     let is_stone = hash((id * 4096.0) as u32) % 9 < 2;
-    let stone = if is_stone { 1.0 - step(size * 0.6, size, d) } else { 0.0 };
+    let stone = if is_stone {
+        1.0 - step(size * 0.6, size, d)
+    } else {
+        0.0
+    };
     let damp = step(0.55, 0.8, fbm(u, v, 3, 3, 3, 101));
-    let soil = scale3(mix3([0.19, 0.14, 0.09], [0.31, 0.25, 0.17], broad), 0.8 + fine * 0.4);
+    let soil = scale3(
+        mix3([0.19, 0.14, 0.09], [0.31, 0.25, 0.17], broad),
+        0.8 + fine * 0.4,
+    );
     let soil = scale3(soil, 1.0 - damp * 0.3);
-    let pebble = scale3(mix3([0.22, 0.21, 0.19], [0.30, 0.28, 0.25], id), 0.85 + fine * 0.3);
+    let pebble = scale3(
+        mix3([0.22, 0.21, 0.19], [0.30, 0.28, 0.25], id),
+        0.85 + fine * 0.3,
+    );
     Texel {
         colour: mix3(soil, pebble, stone),
         height: 0.35 + broad * 0.2 + fine * 0.12 + stone * 0.3 * (1.0 - d / size.max(0.01) * 0.5),
@@ -317,7 +352,11 @@ fn grass(u: f32, v: f32) -> Texel {
     let colour = mix3(green, [0.32, 0.30, 0.14], dry * 0.6);
     let gap = step(0.25, 0.45, blade);
     Texel {
-        colour: mix3(scale3([0.16, 0.12, 0.08], 0.9), scale3(colour, 0.8 + blade * 0.45), gap),
+        colour: mix3(
+            scale3([0.16, 0.12, 0.08], 0.9),
+            scale3(colour, 0.8 + blade * 0.45),
+            gap,
+        ),
         height: 0.3 + clump * 0.3 + blade * 0.3,
         roughness: 0.9,
         metal: 0.0,
@@ -333,7 +372,11 @@ fn straw(u: f32, v: f32) -> Texel {
     let ground = [0.24, 0.19, 0.12];
     let on = 1.0 - step(0.45, 0.8, row);
     Texel {
-        colour: mix3(ground, scale3(gold, 0.8 + stalk * 0.4), on * (0.6 + stalk * 0.4)),
+        colour: mix3(
+            ground,
+            scale3(gold, 0.8 + stalk * 0.4),
+            on * (0.6 + stalk * 0.4),
+        ),
         height: 0.3 + on * 0.4 + stalk * 0.2,
         roughness: 0.85,
         metal: 0.0,
@@ -390,7 +433,12 @@ fn bark(u: f32, v: f32) -> Texel {
     let plates = cellular(u, v * 0.4, 14, 229).0;
     let ridge = step(0.35, 0.65, furrow) * (0.6 + 0.4 * step(0.1, 0.4, plates));
     let colour = mix3([0.10, 0.08, 0.06], [0.30, 0.26, 0.21], ridge);
-    Texel { colour: scale3(colour, 0.9 + fbm(u, v, 40, 40, 2, 233) * 0.2), height: ridge, roughness: 0.9, metal: 0.0 }
+    Texel {
+        colour: scale3(colour, 0.9 + fbm(u, v, 40, 40, 2, 233) * 0.2),
+        height: ridge,
+        roughness: 0.9,
+        metal: 0.0,
+    }
 }
 
 /// Leaves: green, a little veined, lighter at the tips. A card's shape is cut by the
@@ -399,14 +447,24 @@ fn leaves(u: f32, v: f32) -> Texel {
     let broad = fbm(u, v, 6, 6, 4, 239);
     let vein = 1.0 - step(0.0, 0.08, (fbm(u, v, 30, 30, 2, 241) - 0.5).abs());
     let colour = mix3([0.08, 0.15, 0.04], [0.20, 0.32, 0.08], broad);
-    Texel { colour: scale3(colour, 1.0 + vein * 0.15), height: 0.5 + vein * 0.1, roughness: 0.55, metal: 0.0 }
+    Texel {
+        colour: scale3(colour, 1.0 + vein * 0.15),
+        height: 0.5 + vein * 0.1,
+        roughness: 0.55,
+        metal: 0.0,
+    }
 }
 
 /// The floor of a wood: moss and fallen leaves.
 fn moss(u: f32, v: f32) -> Texel {
     let broad = fbm(u, v, 6, 6, 4, 191);
     let (d, id) = cellular(u, v, 40, 193);
-    let leaf = (1.0 - step(0.15, 0.35, d)) * if hash((id * 4096.0) as u32) % 3 == 0 { 1.0 } else { 0.0 };
+    let leaf = (1.0 - step(0.15, 0.35, d))
+        * if hash((id * 4096.0) as u32) % 3 == 0 {
+            1.0
+        } else {
+            0.0
+        };
     let green = mix3([0.07, 0.11, 0.04], [0.14, 0.20, 0.06], broad);
     let brown = mix3([0.28, 0.16, 0.07], [0.40, 0.26, 0.10], id);
     Texel {
@@ -425,7 +483,11 @@ fn rock(u: f32, v: f32) -> Texel {
     let crack = 1.0 - step(0.0, 0.06, d);
     let lichen = step(0.62, 0.8, fbm(u, v, 12, 12, 3, 211));
     let stone = mix3([0.30, 0.29, 0.27], [0.46, 0.44, 0.41], broad);
-    let colour = mix3(scale3(stone, 0.9 + layer * 0.15), [0.38, 0.40, 0.24], lichen * 0.5);
+    let colour = mix3(
+        scale3(stone, 0.9 + layer * 0.15),
+        [0.38, 0.40, 0.24],
+        lichen * 0.5,
+    );
     Texel {
         colour: scale3(colour, 1.0 - crack * 0.5),
         height: 0.5 + broad * 0.3 - crack * 0.3 + layer * 0.06,
@@ -437,18 +499,31 @@ fn rock(u: f32, v: f32) -> Texel {
 /// The Erasure: bare paper, very faintly fibrous.
 fn paper(u: f32, v: f32) -> Texel {
     let fibre = fbm(u, v, 64, 64, 3, 223);
-    Texel { colour: scale3([0.86, 0.85, 0.81], 0.97 + fibre * 0.05), height: 0.5 + fibre * 0.05, roughness: 0.95, metal: 0.0 }
+    Texel {
+        colour: scale3([0.86, 0.85, 0.81], 0.97 + fibre * 0.05),
+        height: 0.5 + fibre * 0.05,
+        roughness: 0.95,
+        metal: 0.0,
+    }
 }
 
 fn to_srgb(v: f32) -> u8 {
     let v = v.clamp(0.0, 1.0);
-    let s = if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 };
+    let s = if v <= 0.003_130_8 {
+        v * 12.92
+    } else {
+        1.055 * v.powf(1.0 / 2.4) - 0.055
+    };
     (s * 255.0 + 0.5) as u8
 }
 
 fn from_srgb(b: u8) -> f32 {
     let s = b as f32 / 255.0;
-    if s <= 0.040_45 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+    if s <= 0.040_45 {
+        s / 12.92
+    } else {
+        ((s + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 /// The two maps of one material at the largest level.
@@ -480,13 +555,21 @@ fn relief_depth(generator: Generator) -> f32 {
     }
 }
 
-fn generate(generator: Generator, size: u32, tile_metres: f32, picture: Option<&[([f32; 3], f32)]>) -> Maps {
+fn generate(
+    generator: Generator,
+    size: u32,
+    tile_metres: f32,
+    picture: Option<&[([f32; 3], f32)]>,
+) -> Maps {
     use rayon::prelude::*;
     let n = size as usize;
     let texels: Vec<Texel> = (0..n * n)
         .into_par_iter()
         .map(|i| {
-            let (u, v) = (((i % n) as f32 + 0.5) / n as f32, ((i / n) as f32 + 0.5) / n as f32);
+            let (u, v) = (
+                ((i % n) as f32 + 0.5) / n as f32,
+                ((i / n) as f32 + 0.5) / n as f32,
+            );
             match generator {
                 Generator::Masonry => masonry(u, v),
                 Generator::Timber => timber(u, v),
@@ -507,7 +590,12 @@ fn generate(generator: Generator, size: u32, tile_metres: f32, picture: Option<&
                 // Colour, and in the height the share of the texel the tree covers.
                 Generator::Impostor => {
                     let (colour, cover) = picture.map_or(([0.0; 3], 0.0), |p| p[i]);
-                    Texel { colour, height: cover, roughness: 0.8, metal: 0.0 }
+                    Texel {
+                        colour,
+                        height: cover,
+                        roughness: 0.8,
+                        metal: 0.0,
+                    }
                 }
             }
         })
@@ -520,7 +608,12 @@ fn generate(generator: Generator, size: u32, tile_metres: f32, picture: Option<&
     for y in 0..n {
         for x in 0..n {
             let t = texels[y * n + x];
-            colour.extend_from_slice(&[to_srgb(t.colour[0]), to_srgb(t.colour[1]), to_srgb(t.colour[2]), (t.metal.clamp(0.0, 1.0) * 255.0 + 0.5) as u8]);
+            colour.extend_from_slice(&[
+                to_srgb(t.colour[0]),
+                to_srgb(t.colour[1]),
+                to_srgb(t.colour[2]),
+                (t.metal.clamp(0.0, 1.0) * 255.0 + 0.5) as u8,
+            ]);
             let h = |dx: isize, dy: isize| {
                 let xx = (x as isize + dx).rem_euclid(n as isize) as usize;
                 let yy = (y as isize + dy).rem_euclid(n as isize) as usize;
@@ -549,12 +642,15 @@ fn halve(texels: &[u8], side: u32, is_colour: bool) -> Vec<u8> {
     let mut out = Vec::with_capacity(half * half * 4);
     for y in 0..half {
         for x in 0..half {
-            let at = |dx: usize, dy: usize, c: usize| texels[((y * 2 + dy) * side + x * 2 + dx) * 4 + c];
+            let at =
+                |dx: usize, dy: usize, c: usize| texels[((y * 2 + dy) * side + x * 2 + dx) * 4 + c];
             for c in 0..4 {
                 let four = [at(0, 0, c), at(1, 0, c), at(0, 1, c), at(1, 1, c)];
                 if is_colour && c < 3 {
                     // Colours are averaged as light, not as stored bytes.
-                    out.push(to_srgb(four.iter().map(|&b| from_srgb(b)).sum::<f32>() / 4.0));
+                    out.push(to_srgb(
+                        four.iter().map(|&b| from_srgb(b)).sum::<f32>() / 4.0,
+                    ));
                 } else {
                     out.push(((four.iter().map(|&b| b as u32).sum::<u32>() + 2) / 4) as u8);
                 }
@@ -572,8 +668,10 @@ pub fn material_id(name: &str) -> AssetId {
 }
 
 pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
-    let text = std::fs::read_to_string(file).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
-    let authored: AuthoredSet = ron::from_str(&text).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
+    let text =
+        std::fs::read_to_string(file).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
+    let authored: AuthoredSet =
+        ron::from_str(&text).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
     if !authored.size.is_power_of_two() || authored.size < 16 {
         return err(format!("{}: size must be a power of two", file.display()));
     }
@@ -584,30 +682,65 @@ pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
     let mut levels: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     for m in &authored.materials {
         let family = m.family.as_bytes();
-        if family.is_empty() || family.len() > MaterialSet::MAX_FAMILY || !family.iter().all(|b| (0x20..=0x7e).contains(b)) {
-            return err(format!("{}: `{}` needs 1 to 8 printable ASCII characters in its family", file.display(), m.key));
+        if family.is_empty()
+            || family.len() > MaterialSet::MAX_FAMILY
+            || !family.iter().all(|b| (0x20..=0x7e).contains(b))
+        {
+            return err(format!(
+                "{}: `{}` needs 1 to 8 printable ASCII characters in its family",
+                file.display(),
+                m.key
+            ));
         }
         let word = |w: &String| -> Result<Vec<u8>, BakeError> {
-            if w.is_empty() || w.len() > Lexicon::WORD || !w.bytes().all(|b| (0x21..=0x7e).contains(&b)) {
-                return err(format!("{}: `{}`: the word `{w}` must be 1 to 16 printable ASCII characters, no spaces", file.display(), m.key));
+            if w.is_empty()
+                || w.len() > Lexicon::WORD
+                || !w.bytes().all(|b| (0x21..=0x7e).contains(&b))
+            {
+                return err(format!(
+                    "{}: `{}`: the word `{w}` must be 1 to 16 printable ASCII characters, no spaces",
+                    file.display(),
+                    m.key
+                ));
             }
             Ok(w.as_bytes().to_vec())
         };
-        let list = |words: &Vec<String>, most: usize, what: &str| -> Result<Vec<Vec<u8>>, BakeError> {
-            if words.len() > most {
-                return err(format!("{}: `{}` has more than {most} {what} words", file.display(), m.key));
-            }
-            words.iter().map(word).collect()
-        };
+        let list =
+            |words: &Vec<String>, most: usize, what: &str| -> Result<Vec<Vec<u8>>, BakeError> {
+                if words.len() > most {
+                    return err(format!(
+                        "{}: `{}` has more than {most} {what} words",
+                        file.display(),
+                        m.key
+                    ));
+                }
+                words.iter().map(word).collect()
+            };
         // A far form is never near enough to read, and has no words of its own.
-        let none = AuthoredLexicon { key: m.key.clone(), name: String::new(), elements: Vec::new(), hot: Vec::new(), cold: Vec::new() };
+        let none = AuthoredLexicon {
+            key: m.key.clone(),
+            name: String::new(),
+            elements: Vec::new(),
+            hot: Vec::new(),
+            cold: Vec::new(),
+        };
         let words = match lexicons.iter().find(|l| l.key == m.key) {
             Some(words) => words,
             None if m.generator == Generator::Impostor => &none,
-            None => return err(format!("{}: `{}` has no entry in lexicon.ron", file.display(), m.key)),
+            None => {
+                return err(format!(
+                    "{}: `{}` has no entry in lexicon.ron",
+                    file.display(),
+                    m.key
+                ));
+            }
         };
         let lexicon = Lexicon {
-            name: if words.name.is_empty() { Vec::new() } else { word(&words.name)? },
+            name: if words.name.is_empty() {
+                Vec::new()
+            } else {
+                word(&words.name)?
+            },
             elements: list(&words.elements, Lexicon::ELEMENTS, "element")?,
             hot: list(&words.hot, Lexicon::HOT, "hot")?,
             cold: list(&words.cold, Lexicon::COLD, "cold")?,
@@ -623,13 +756,30 @@ pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
         });
         let picture = match (m.generator, &m.tree) {
             (Generator::Impostor, Some(tree)) => {
-                let kind = kinds.iter().find(|k| &k.key == tree).ok_or_else(|| BakeError(format!("{}: `{}` names no tree kind `{tree}`", file.display(), m.key)))?;
+                let kind = kinds.iter().find(|k| &k.key == tree).ok_or_else(|| {
+                    BakeError(format!(
+                        "{}: `{}` names no tree kind `{tree}`",
+                        file.display(),
+                        m.key
+                    ))
+                })?;
                 Some(crate::trees::impostor(kind, authored.size as usize))
             }
-            (Generator::Impostor, None) => return err(format!("{}: `{}` is an impostor and names no tree", file.display(), m.key)),
+            (Generator::Impostor, None) => {
+                return err(format!(
+                    "{}: `{}` is an impostor and names no tree",
+                    file.display(),
+                    m.key
+                ));
+            }
             _ => None,
         };
-        let maps = generate(m.generator, authored.size, m.tile_metres, picture.as_deref());
+        let maps = generate(
+            m.generator,
+            authored.size,
+            m.tile_metres,
+            picture.as_deref(),
+        );
         levels.push((maps.colour, maps.normal));
     }
     let mut texels = Vec::new();
@@ -648,7 +798,12 @@ pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
             }
         }
     }
-    Ok(MaterialSet { size: authored.size, mips, materials, texels })
+    Ok(MaterialSet {
+        size: authored.size,
+        mips,
+        materials,
+        texels,
+    })
 }
 
 #[cfg(test)]
@@ -671,23 +826,49 @@ mod tests {
         // The table in the art direction brief and `lexicon.ron` must say the same.
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let lexicons = read_lexicons(&root.join("assets/materials/lexicon.ron")).unwrap();
-        let brief = std::fs::read_to_string(root.join("full-game/docs/brief/2-art-direction.md")).unwrap();
-        let table = brief.split("<!-- lexicon:start -->").nth(1).and_then(|t| t.split("<!-- lexicon:end -->").next()).expect("the brief has the table");
+        let brief =
+            std::fs::read_to_string(root.join("full-game/docs/brief/2-art-direction.md")).unwrap();
+        let table = brief
+            .split("<!-- lexicon:start -->")
+            .nth(1)
+            .and_then(|t| t.split("<!-- lexicon:end -->").next())
+            .expect("the brief has the table");
         let words = |cell: &str| -> Vec<String> {
             if cell == "none" {
                 return Vec::new();
             }
-            cell.split(", ").map(|w| w.trim_matches('`').to_owned()).collect()
+            cell.split(", ")
+                .map(|w| w.trim_matches('`').to_owned())
+                .collect()
         };
         let rows: Vec<Vec<String>> = table
             .lines()
             .filter(|l| l.starts_with("| ") && !l.starts_with("| Material"))
-            .map(|l| l.trim().trim_matches('|').split(" | ").map(|c| c.trim().to_owned()).collect())
+            .map(|l| {
+                l.trim()
+                    .trim_matches('|')
+                    .split(" | ")
+                    .map(|c| c.trim().to_owned())
+                    .collect()
+            })
             .collect();
-        assert_eq!(rows.len(), lexicons.len(), "the brief and lexicon.ron list different materials");
+        assert_eq!(
+            rows.len(),
+            lexicons.len(),
+            "the brief and lexicon.ron list different materials"
+        );
         for (row, l) in rows.iter().zip(&lexicons) {
             assert_eq!(row[0], l.key);
-            assert_eq!(words(&row[1]), if l.name.is_empty() { Vec::new() } else { vec![l.name.clone()] }, "{}", l.key);
+            assert_eq!(
+                words(&row[1]),
+                if l.name.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![l.name.clone()]
+                },
+                "{}",
+                l.key
+            );
             assert_eq!(words(&row[2]), l.elements, "{}", l.key);
             assert_eq!(words(&row[3]), l.hot, "{}", l.key);
             assert_eq!(words(&row[4]), l.cold, "{}", l.key);
@@ -705,7 +886,10 @@ mod tests {
         }
         // Left and right edges agree closely: the map tiles.
         let edge_difference: u32 = (0..64)
-            .map(|y| (maps.colour[(y * 64) * 4] as i32 - maps.colour[(y * 64 + 63) * 4] as i32).unsigned_abs())
+            .map(|y| {
+                (maps.colour[(y * 64) * 4] as i32 - maps.colour[(y * 64 + 63) * 4] as i32)
+                    .unsigned_abs()
+            })
             .sum();
         assert!(edge_difference / 64 < 40, "{edge_difference}");
     }

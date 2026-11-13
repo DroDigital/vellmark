@@ -27,7 +27,14 @@ pub enum Knob {
     Resolution,
 }
 
-pub const KNOBS: [Knob; 6] = [Knob::FarShadows, Knob::Particles, Knob::FarGrass, Knob::FogGrid, Knob::Contact, Knob::Resolution];
+pub const KNOBS: [Knob; 6] = [
+    Knob::FarShadows,
+    Knob::Particles,
+    Knob::FarGrass,
+    Knob::FogGrid,
+    Knob::Contact,
+    Knob::Resolution,
+];
 
 /// How much of each thing has been given up: 0 nothing, 1 all the governor may.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -108,7 +115,13 @@ pub struct Governor {
 impl Governor {
     /// `budget_ms` is the frame's whole budget, 16.6 ms for 60 frames a second.
     pub fn new(budget_ms: f32) -> Self {
-        Self { budget_ms, smoothed: None, wait: 0.0, relief: Relief::default(), log: Vec::new() }
+        Self {
+            budget_ms,
+            smoothed: None,
+            wait: 0.0,
+            relief: Relief::default(),
+            log: Vec::new(),
+        }
     }
 
     pub fn relief(&self) -> Relief {
@@ -143,14 +156,18 @@ impl Governor {
         let high = self.budget_ms - 0.6;
         let low = self.budget_ms - 2.5;
         if s > high {
-            let next = (0..KNOBS.len()).find(|&i| self.relief.levels[i] < 1.0 && !(reading && i == resolution));
+            let next = (0..KNOBS.len())
+                .find(|&i| self.relief.levels[i] < 1.0 && !(reading && i == resolution));
             if let Some(i) = next {
                 self.relief.levels[i] = (self.relief.levels[i] + STEP).min(1.0);
                 self.wait = GIVE_WAIT;
                 self.note(seconds, KNOBS[i], "given up", s);
             }
         } else if s < low {
-            if let Some(i) = (0..KNOBS.len()).rev().find(|&i| self.relief.levels[i] > 0.0) {
+            if let Some(i) = (0..KNOBS.len())
+                .rev()
+                .find(|&i| self.relief.levels[i] > 0.0)
+            {
                 self.relief.levels[i] = (self.relief.levels[i] - STEP).max(0.0);
                 self.wait = TAKE_WAIT;
                 self.note(seconds, KNOBS[i], "taken back", s);
@@ -161,7 +178,10 @@ impl Governor {
 
     fn note(&mut self, seconds: f32, knob: Knob, what: &str, smoothed: f32) {
         let i = KNOBS.iter().position(|k| *k == knob).unwrap();
-        self.log.push(format!("{seconds:8.2} s  {knob:?} {what}, now {:.0}%, frame {smoothed:.2} ms", self.relief.levels[i] * 100.0));
+        self.log.push(format!(
+            "{seconds:8.2} s  {knob:?} {what}, now {:.0}%, frame {smoothed:.2} ms",
+            self.relief.levels[i] * 100.0
+        ));
     }
 }
 
@@ -183,10 +203,19 @@ mod tests {
         // A frame that runs long gives up the far shadows first, and touches nothing else
         // until they are all given up.
         let r = run(&mut g, 18.0, 1.5, false);
-        assert!(r.levels[0] > 0.0 && r.levels[1..].iter().all(|l| *l == 0.0), "{r:?}");
+        assert!(
+            r.levels[0] > 0.0 && r.levels[1..].iter().all(|l| *l == 0.0),
+            "{r:?}"
+        );
         let r = run(&mut g, 18.0, 30.0, false);
-        assert!(r.levels.iter().all(|l| *l == 1.0), "a long run gives everything: {r:?}");
-        assert!((r.scene_scale() - SCALE_FLOOR).abs() < 1.0e-6, "never below the floor");
+        assert!(
+            r.levels.iter().all(|l| *l == 1.0),
+            "a long run gives everything: {r:?}"
+        );
+        assert!(
+            (r.scene_scale() - SCALE_FLOOR).abs() < 1.0e-6,
+            "never below the floor"
+        );
         // With room again, the resolution comes back first, the far shadows last.
         let r = run(&mut g, 12.0, 3.0, false);
         assert!(r.levels[5] < 1.0 && r.levels[0] == 1.0, "{r:?}");
@@ -216,6 +245,10 @@ mod tests {
         run(&mut g, 20.0, 30.0, false);
         assert!(g.relief().scene_scale() < 1.0);
         let r = run(&mut g, 20.0, 0.5, true);
-        assert_eq!(r.scene_scale(), 1.0, "reading takes the resolution back at once and keeps it");
+        assert_eq!(
+            r.scene_scale(),
+            1.0,
+            "reading takes the resolution back at once and keeps it"
+        );
     }
 }

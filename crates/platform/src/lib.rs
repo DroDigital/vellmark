@@ -6,11 +6,13 @@
 
 mod actions;
 mod device;
+pub mod prompts;
 mod sdl;
 mod settings;
-pub mod prompts;
 
-pub use actions::{Action, ActionState, Bindings, DeviceKind, Key, MouseButton, PadAxis, PadButton, RawInput};
+pub use actions::{
+    Action, ActionState, Bindings, DeviceKind, Key, MouseButton, PadAxis, PadButton, RawInput,
+};
 pub use device::{InputSource, SimulatedDevice};
+pub use sdl::{AudioOut, Platform, PlatformEvent, Window, WindowOptions, message_box};
 pub use settings::InputSettings;
-pub use sdl::{message_box, AudioOut, Platform, PlatformEvent, Window, WindowOptions};

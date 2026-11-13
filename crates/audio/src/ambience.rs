@@ -3,8 +3,8 @@
 //! Every layer varies by chance, so that nothing repeats the same way twice. Voices live
 //! in fixed pools; nothing is allocated once made.
 
-use crate::dsp::{pan, Pink, Rng, Sine, Smooth, Svf};
 use crate::SAMPLE_RATE;
+use crate::dsp::{Pink, Rng, Sine, Smooth, Svf, pan};
 
 const SR: f32 = SAMPLE_RATE as f32;
 
@@ -64,7 +64,12 @@ impl Ambience {
         let water = self.water.next(t.water.clamp(0.0, 1.0));
         let trees = self.trees.next(t.trees.clamp(0.0, 1.0));
         // Birds sing by day, in the open, and fall quiet in rain and strong wind.
-        let birdsong = self.birdsong.next(t.daylight.clamp(0.0, 1.0) * t.open.clamp(0.0, 1.0) * (1.0 - t.rain.clamp(0.0, 1.0)).powi(2) * (1.0 - 0.6 * t.wind.clamp(0.0, 1.0)));
+        let birdsong = self.birdsong.next(
+            t.daylight.clamp(0.0, 1.0)
+                * t.open.clamp(0.0, 1.0)
+                * (1.0 - t.rain.clamp(0.0, 1.0)).powi(2)
+                * (1.0 - 0.6 * t.wind.clamp(0.0, 1.0)),
+        );
         let (gust, a) = self.air.next(wind, &mut self.rng);
         let b = self.leaves.next(wind * trees, gust);
         let c = self.rainfall.next(rain, &mut self.rng);
@@ -120,11 +125,16 @@ impl Air {
         let mut out = [0.0; 2];
         for ear in 0..2 {
             let n = self.noise[ear].next();
-            let rush = self.band[ear].next(n, centre * (1.0 + 0.06 * ear as f32), 1.1).band;
+            let rush = self.band[ear]
+                .next(n, centre * (1.0 + 0.06 * ear as f32), 1.1)
+                .band;
             let roll = self.low[ear].next(n, 110.0, 0.7).low;
             out[ear] = (rush * 0.9 + roll * 0.6) * level;
         }
-        let w = self.whistle.next(self.noise[0].next(), 650.0 + 900.0 * gust, 14.0).band;
+        let w = self
+            .whistle
+            .next(self.noise[0].next(), 650.0 + 900.0 * gust, 14.0)
+            .band;
         let whistle = w * (wind * gust).powi(3) * 0.35;
         (gust, (out[0] + whistle * 0.7, out[1] + whistle))
     }
@@ -140,14 +150,24 @@ struct Leaves {
 
 impl Leaves {
     fn new(seed: u32) -> Self {
-        Self { noise: [Pink::new(seed ^ 0x33), Pink::new(seed ^ 0x44)], high: Default::default(), flutter_noise: Pink::new(seed ^ 0x55), flutter: Svf::default() }
+        Self {
+            noise: [Pink::new(seed ^ 0x33), Pink::new(seed ^ 0x44)],
+            high: Default::default(),
+            flutter_noise: Pink::new(seed ^ 0x55),
+            flutter: Svf::default(),
+        }
     }
 
     fn next(&mut self, amount: f32, gust: f32) -> (f32, f32) {
         if amount < 1.0e-4 {
             return (0.0, 0.0);
         }
-        let flutter = self.flutter.next(self.flutter_noise.next(), 7.0, 0.7).low.abs() * 6.0;
+        let flutter = self
+            .flutter
+            .next(self.flutter_noise.next(), 7.0, 0.7)
+            .low
+            .abs()
+            * 6.0;
         let level = amount * gust * gust * (0.4 + flutter.min(1.5)) * 0.5;
         let l = self.high[0].next(self.noise[0].next(), 4200.0, 0.8).high;
         let r = self.high[1].next(self.noise[1].next(), 4600.0, 0.8).high;
@@ -177,7 +197,11 @@ struct Rainfall {
 
 impl Rainfall {
     fn new(seed: u32) -> Self {
-        Self { noise: [Pink::new(seed ^ 0x66), Pink::new(seed ^ 0x77)], hiss: Default::default(), drops: Default::default() }
+        Self {
+            noise: [Pink::new(seed ^ 0x66), Pink::new(seed ^ 0x77)],
+            hiss: Default::default(),
+            drops: Default::default(),
+        }
     }
 
     fn next(&mut self, rain: f32, rng: &mut Rng) -> (f32, f32) {
@@ -264,7 +288,10 @@ impl River {
             burble[k % 2] += b;
         }
         let level = water * 0.38;
-        ((l * 0.7 + burble[0] * 0.5) * level, (r * 0.7 + burble[1] * 0.5) * level)
+        (
+            (l * 0.7 + burble[0] * 0.5) * level,
+            (r * 0.7 + burble[1] * 0.5) * level,
+        )
     }
 }
 
@@ -311,9 +338,17 @@ impl Birds {
     fn begin_note(&mut self, rng: &mut Rng) {
         let (from, to, len) = match self.kind {
             // A falling whistle.
-            0 => (rng.range(3800.0, 4600.0), rng.range(2400.0, 2900.0), rng.range(0.12, 0.22)),
+            0 => (
+                rng.range(3800.0, 4600.0),
+                rng.range(2400.0, 2900.0),
+                rng.range(0.12, 0.22),
+            ),
             // A quick rising chirp.
-            1 => (rng.range(2300.0, 2900.0), rng.range(4800.0, 5600.0), rng.range(0.05, 0.09)),
+            1 => (
+                rng.range(2300.0, 2900.0),
+                rng.range(4800.0, 5600.0),
+                rng.range(0.05, 0.09),
+            ),
             // A trilled note, nearly level.
             _ => {
                 let f = rng.range(3200.0, 3900.0);

@@ -42,7 +42,13 @@ impl DevTools {
         };
         let mut overlay = overlay::Overlay::new();
         overlay.profiler = profiler;
-        Self { reload, free_camera: None, last_reload_ms: None, data_changed: None, overlay }
+        Self {
+            reload,
+            free_camera: None,
+            last_reload_ms: None,
+            data_changed: None,
+            overlay,
+        }
     }
 
     /// Applies any change on disk. Call once a frame.
@@ -57,7 +63,9 @@ impl DevTools {
         if actions.pressed(Action::DevProfiler) {
             self.overlay.profiler = !self.overlay.profiler;
         }
-        let Some(reload) = self.reload.as_mut() else { return };
+        let Some(reload) = self.reload.as_mut() else {
+            return;
+        };
         let (changes, seen) = reload.poll();
         if changes.data {
             self.data_changed = seen;
@@ -65,7 +73,9 @@ impl DevTools {
         if changes.shaders {
             match renderer.reload_shaders(gpu, registry, shaders) {
                 Ok(()) => {
-                    let ms = seen.map(|t| t.elapsed().as_secs_f32() * 1000.0).unwrap_or(0.0);
+                    let ms = seen
+                        .map(|t| t.elapsed().as_secs_f32() * 1000.0)
+                        .unwrap_or(0.0);
                     self.last_reload_ms = Some(ms);
                     log::line(&format!("shaders reloaded in {ms:.1} ms"));
                 }
@@ -119,7 +129,17 @@ impl DevTools {
         registry: &PipelineRegistry,
         tuning: &vellmark_render::GlyphTuning,
     ) {
-        self.overlay.draw(canvas, atlas, target, density, frame_time, passes, registry, self.last_reload_ms, tuning);
+        self.overlay.draw(
+            canvas,
+            atlas,
+            target,
+            density,
+            frame_time,
+            passes,
+            registry,
+            self.last_reload_ms,
+            tuning,
+        );
     }
 
     /// True once after text or data sheets changed on disk, with when it was seen.
@@ -135,24 +155,41 @@ impl DevTools {
 
     /// When the free camera is on, it replaces the player's view and takes the
     /// movement input.
-    pub fn override_camera(&mut self, camera: &mut Camera, actions: &ActionState, bindings: &Bindings, dt: f32) {
+    pub fn override_camera(
+        &mut self,
+        camera: &mut Camera,
+        actions: &ActionState,
+        bindings: &Bindings,
+        dt: f32,
+    ) {
         if actions.pressed(Action::DevFreeCamera) {
             self.free_camera = match self.free_camera {
                 Some(_) => None,
                 None => {
                     let (yaw, pitch) = yaw_pitch_of(camera.rotation);
-                    Some(FreeCamera { eye: camera.eye, yaw, pitch })
+                    Some(FreeCamera {
+                        eye: camera.eye,
+                        yaw,
+                        pitch,
+                    })
                 }
             };
         }
-        let Some(free) = self.free_camera.as_mut() else { return };
+        let Some(free) = self.free_camera.as_mut() else {
+            return;
+        };
         let (look_yaw, look_pitch) = actions.look(bindings, dt);
         free.yaw += look_yaw;
         free.pitch = (free.pitch + look_pitch).clamp(-1.55, 1.55);
         let (x, y) = actions.movement();
-        let speed = if actions.held(Action::Sprint) { 40.0 } else { 6.0 };
+        let speed = if actions.held(Action::Sprint) {
+            40.0
+        } else {
+            6.0
+        };
         let rotation = Quat::from_rotation_y(-free.yaw) * Quat::from_rotation_x(free.pitch);
-        let rise = actions.held(Action::Jump) as i32 as f32 - actions.held(Action::Sneak) as i32 as f32;
+        let rise =
+            actions.held(Action::Jump) as i32 as f32 - actions.held(Action::Sneak) as i32 as f32;
         free.eye += (rotation * Vec3::new(x, 0.0, -y) + Vec3::Y * rise) * speed * dt;
         *camera = Camera::looking(free.eye, free.yaw, free.pitch);
     }
@@ -160,5 +197,8 @@ impl DevTools {
 
 fn yaw_pitch_of(rotation: Quat) -> (f32, f32) {
     let forward = rotation * Vec3::NEG_Z;
-    (forward.x.atan2(-forward.z), forward.y.clamp(-1.0, 1.0).asin())
+    (
+        forward.x.atan2(-forward.z),
+        forward.y.clamp(-1.0, 1.0).asin(),
+    )
 }

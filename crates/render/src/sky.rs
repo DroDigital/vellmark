@@ -36,7 +36,11 @@ pub const MULTIPLE: f32 = 1.5;
 /// How much air, haze, and ozone there is at a height, as shares of sea level's.
 fn density(height: f32) -> (f32, f32, f32) {
     let ozone = (1.0 - (height - 25_000.0).abs() / 15_000.0).max(0.0);
-    ((-height / RAYLEIGH_HEIGHT).exp(), (-height / MIE_HEIGHT).exp(), ozone)
+    (
+        (-height / RAYLEIGH_HEIGHT).exp(),
+        (-height / MIE_HEIGHT).exp(),
+        ozone,
+    )
 }
 
 fn extinction(height: f32) -> Vec3 {
@@ -54,11 +58,7 @@ fn to_sphere(radius: f32, cos: f32, to: f32) -> f32 {
         return -1.0;
     }
     let s = d.sqrt();
-    if -b - s > 0.0 {
-        -b - s
-    } else {
-        -b + s
-    }
+    if -b - s > 0.0 { -b - s } else { -b + s }
 }
 
 /// How much light gets through from the top of the atmosphere to a point at `height`,
@@ -97,7 +97,11 @@ pub fn radiance(view: Vec3, light: Vec3) -> Vec3 {
     let radius = EARTH + EYE;
     let cos = view.y;
     let ground = to_sphere(radius, cos, EARTH);
-    let length = if ground > 0.0 && cos < 0.0 { ground } else { to_sphere(radius, cos, TOP).max(0.0) };
+    let length = if ground > 0.0 && cos < 0.0 {
+        ground
+    } else {
+        to_sphere(radius, cos, TOP).max(0.0)
+    };
     let mu = view.dot(light);
     let (pr, pm) = (rayleigh_phase(mu), mie_phase(mu));
     let steps = 24;
@@ -139,7 +143,9 @@ pub fn sky_light(sun_dir: Vec3, moon_dir: Vec3) -> SkyLight {
     let sun = transmittance(EYE, sun_dir.y) * SUN;
     let moon_strength = SUN * MOON * moon_lit;
     let moon = transmittance(EYE, moon_dir.y) * moon_strength;
-    let sky = |dir: Vec3| radiance(dir, sun_dir) * SUN + radiance(dir, moon_dir) * moon_strength + NIGHT_GLOW;
+    let sky = |dir: Vec3| {
+        radiance(dir, sun_dir) * SUN + radiance(dir, moon_dir) * moon_strength + NIGHT_GLOW
+    };
     let zenith = sky(Vec3::Y) * MULTIPLE;
     let horizon = [Vec3::X, Vec3::NEG_X, Vec3::Z, Vec3::NEG_Z]
         .iter()
@@ -147,7 +153,13 @@ pub fn sky_light(sun_dir: Vec3, moon_dir: Vec3) -> SkyLight {
         .sum::<Vec3>()
         * 0.25
         * MULTIPLE;
-    SkyLight { sun, moon, moon_lit, zenith, horizon }
+    SkyLight {
+        sun,
+        moon,
+        moon_lit,
+        zenith,
+        horizon,
+    }
 }
 
 #[cfg(test)]
@@ -158,9 +170,21 @@ mod tests {
     fn the_noon_sky_is_blue_and_the_sun_white() {
         let sun = Vec3::new(0.2, 0.9, 0.3).normalize();
         let s = sky_light(sun, -sun);
-        assert!(s.zenith.z > s.zenith.x * 1.8, "the zenith is blue: {}", s.zenith);
-        assert!(s.sun.x > 0.8 * s.sun.z && s.sun.z > 0.7 * s.sun.x, "the noon sun is near white: {}", s.sun);
-        assert!(s.horizon.length() > s.zenith.length() * 0.6, "the horizon is pale and bright: {}", s.horizon);
+        assert!(
+            s.zenith.z > s.zenith.x * 1.8,
+            "the zenith is blue: {}",
+            s.zenith
+        );
+        assert!(
+            s.sun.x > 0.8 * s.sun.z && s.sun.z > 0.7 * s.sun.x,
+            "the noon sun is near white: {}",
+            s.sun
+        );
+        assert!(
+            s.horizon.length() > s.zenith.length() * 0.6,
+            "the horizon is pale and bright: {}",
+            s.horizon
+        );
     }
 
     #[test]
@@ -171,7 +195,11 @@ mod tests {
         let night = Vec3::new(0.3, -0.6, 0.2).normalize();
         let n = sky_light(night, Vec3::new(0.0, 0.5, 0.8).normalize());
         let noon = sky_light(Vec3::Y, -Vec3::Y);
-        assert!(n.zenith.length() < noon.zenith.length() * 0.05, "night is dark: {}", n.zenith);
+        assert!(
+            n.zenith.length() < noon.zenith.length() * 0.05,
+            "night is dark: {}",
+            n.zenith
+        );
         assert_eq!(n.sun, Vec3::ZERO, "the sun below the earth sends no light");
     }
 
@@ -189,10 +217,19 @@ mod print {
     #[test]
     #[ignore]
     fn print_the_day() {
-        for hour in [0.0f32, 3.0, 5.5, 6.0, 6.4, 7.0, 9.0, 13.0, 17.0, 18.0, 18.4, 19.0, 21.0] {
+        for hour in [
+            0.0f32, 3.0, 5.5, 6.0, 6.4, 7.0, 9.0, 13.0, 17.0, 18.0, 18.4, 19.0, 21.0,
+        ] {
             let a = crate::frame::Atmosphere::at(hour);
             let l = |v: glam::Vec3| v.dot(glam::Vec3::new(0.2126, 0.7152, 0.0722));
-            eprintln!("{hour:5.1} sun_y {:6.3} light {:7.4} zenith {:7.5} horizon {:7.5} exposure {:5.2}", a.sun_dir.y, l(a.light_colour), l(a.sky_zenith), l(a.sky_horizon), a.exposure);
+            eprintln!(
+                "{hour:5.1} sun_y {:6.3} light {:7.4} zenith {:7.5} horizon {:7.5} exposure {:5.2}",
+                a.sun_dir.y,
+                l(a.light_colour),
+                l(a.sky_zenith),
+                l(a.sky_horizon),
+                a.exposure
+            );
         }
     }
 }

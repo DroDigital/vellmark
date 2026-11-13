@@ -56,10 +56,39 @@ mod tests {
 
     #[test]
     fn containing_tile_handles_negative_ground() {
-        assert_eq!(TileCoord::containing(1.0, 1.0, 0), TileCoord { level: 0, x: 0, z: 0 });
-        assert_eq!(TileCoord::containing(-1.0, 65.0, 0), TileCoord { level: 0, x: -1, z: 1 });
-        assert_eq!(TileCoord::containing(-1.0, 65.0, 1), TileCoord { level: 1, x: -1, z: 0 });
-        assert_eq!(TileCoord { level: 1, x: -1, z: 0 }.origin(), (-128.0, 0.0));
+        assert_eq!(
+            TileCoord::containing(1.0, 1.0, 0),
+            TileCoord {
+                level: 0,
+                x: 0,
+                z: 0
+            }
+        );
+        assert_eq!(
+            TileCoord::containing(-1.0, 65.0, 0),
+            TileCoord {
+                level: 0,
+                x: -1,
+                z: 1
+            }
+        );
+        assert_eq!(
+            TileCoord::containing(-1.0, 65.0, 1),
+            TileCoord {
+                level: 1,
+                x: -1,
+                z: 0
+            }
+        );
+        assert_eq!(
+            TileCoord {
+                level: 1,
+                x: -1,
+                z: 0
+            }
+            .origin(),
+            (-128.0, 0.0)
+        );
     }
 
     #[test]

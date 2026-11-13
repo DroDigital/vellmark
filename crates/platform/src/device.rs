@@ -51,8 +51,22 @@ mod tests {
     fn a_scripted_controller_drives_actions() {
         let mut device = SimulatedDevice::new()
             .at(0, RawInput::PadAdded { pad: 7 })
-            .at(1, RawInput::PadAxis { pad: 7, axis: PadAxis::LeftY, value: -1.0 })
-            .at(2, RawInput::PadButton { pad: 7, button: PadButton::South, down: true })
+            .at(
+                1,
+                RawInput::PadAxis {
+                    pad: 7,
+                    axis: PadAxis::LeftY,
+                    value: -1.0,
+                },
+            )
+            .at(
+                2,
+                RawInput::PadButton {
+                    pad: 7,
+                    button: PadButton::South,
+                    down: true,
+                },
+            )
             .at(3, RawInput::PadRemoved { pad: 7 })
             .at(5, RawInput::PadAdded { pad: 8 });
         let bindings = Bindings::default();

@@ -7,11 +7,11 @@
 //! things around it stay as they are, and at most one cube is drawn in a frame. A light
 //! newly among the nearest lights without a shadow until its cube is drawn.
 
-use crate::camera::{look_at, View};
+use crate::camera::{View, look_at};
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use vellmark_content::Light;
-use vellmark_gpu::{wgpu, Gpu};
+use vellmark_gpu::{Gpu, wgpu};
 
 pub const MAX_LIGHTS: usize = 64;
 /// Clusters across, down, and into the view.
@@ -75,10 +75,22 @@ pub fn cube_face_matrix(position: Vec3, radius: f32, face: usize) -> Mat4 {
     // A quarter-turn field of view, depth 0 at near to 1 at far, and the picture
     // turned over so that its rows match a cube map's.
     let projection = Mat4::from_cols_array(&[
-        1.0, 0.0, 0.0, 0.0,
-        0.0, -1.0, 0.0, 0.0,
-        0.0, 0.0, f / (n - f), -1.0,
-        0.0, 0.0, n * f / (n - f), 0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        f / (n - f),
+        -1.0,
+        0.0,
+        0.0,
+        n * f / (n - f),
+        0.0,
     ]);
     projection * look_at(position, position + forward, up)
 }
@@ -113,7 +125,11 @@ impl Lights {
         });
         let cube = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("light shadow cube"),
-            size: wgpu::Extent3d { width: CUBE_SIZE, height: CUBE_SIZE, depth_or_array_layers: 6 * SHADOWED_LIGHTS as u32 },
+            size: wgpu::Extent3d {
+                width: CUBE_SIZE,
+                height: CUBE_SIZE,
+                depth_or_array_layers: 6 * SHADOWED_LIGHTS as u32,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -135,20 +151,44 @@ impl Lights {
                 })
             })
             .collect();
-        Self { uniform, cluster_texture, cluster_view, cube_view, cube_faces, slots: [None; SHADOWED_LIGHTS], draw: None }
+        Self {
+            uniform,
+            cluster_texture,
+            cluster_view,
+            cube_view,
+            cube_faces,
+            slots: [None; SHADOWED_LIGHTS],
+            draw: None,
+        }
     }
 
     /// Uploads the lights and sorts them into each view's clusters, and chooses which cast
     /// shadows and which cube, if any, is drawn this frame. `generation` changes whenever
     /// anything that casts shadows has moved, broken, or fallen.
-    pub fn update(&mut self, gpu: &Gpu, lights: &[Light], views: &[View], aspects: &[f32], generation: u64, shadowed: usize) {
+    pub fn update(
+        &mut self,
+        gpu: &Gpu,
+        lights: &[Light],
+        views: &[View],
+        aspects: &[f32],
+        generation: u64,
+        shadowed: usize,
+    ) {
         let lights = &lights[..lights.len().min(MAX_LIGHTS)];
         // The shadows go to the shadow-casting lights nearest the first view.
         let eye = views.first().map(|v| v.camera.eye).unwrap_or(Vec3::ZERO);
-        let mut casting: Vec<usize> = (0..lights.len()).filter(|&i| lights[i].casts_shadow).collect();
-        casting.sort_by(|&a, &b| Vec3::from(lights[a].position).distance(eye).total_cmp(&Vec3::from(lights[b].position).distance(eye)));
+        let mut casting: Vec<usize> = (0..lights.len())
+            .filter(|&i| lights[i].casts_shadow)
+            .collect();
+        casting.sort_by(|&a, &b| {
+            Vec3::from(lights[a].position)
+                .distance(eye)
+                .total_cmp(&Vec3::from(lights[b].position).distance(eye))
+        });
         casting.truncate(shadowed.min(SHADOWED_LIGHTS));
-        let same = |slot: &Slot, i: usize| slot.position == Vec3::from(lights[i].position) && slot.radius == lights[i].radius;
+        let same = |slot: &Slot, i: usize| {
+            slot.position == Vec3::from(lights[i].position) && slot.radius == lights[i].radius
+        };
         // A light keeps its cube while it stays among the nearest; the others give theirs up.
         for slot in self.slots.iter_mut() {
             if slot.is_some_and(|s| !casting.iter().any(|&i| same(&s, i))) {
@@ -158,14 +198,22 @@ impl Lights {
         for &i in &casting {
             if !self.slots.iter().flatten().any(|s| same(s, i)) {
                 if let Some(free) = self.slots.iter_mut().find(|s| s.is_none()) {
-                    *free = Some(Slot { position: Vec3::from(lights[i].position), radius: lights[i].radius, drawn: None });
+                    *free = Some(Slot {
+                        position: Vec3::from(lights[i].position),
+                        radius: lights[i].radius,
+                        drawn: None,
+                    });
                 }
             }
         }
         // One cube a frame: the nearest light whose cube is missing or out of date.
         self.draw = None;
         for &i in &casting {
-            if let Some(k) = self.slots.iter().position(|s| s.is_some_and(|s| same(&s, i) && s.drawn != Some(generation))) {
+            if let Some(k) = self
+                .slots
+                .iter()
+                .position(|s| s.is_some_and(|s| same(&s, i) && s.drawn != Some(generation)))
+            {
                 let slot = self.slots[k].as_mut().unwrap();
                 slot.drawn = Some(generation);
                 self.draw = Some((k, slot.position, slot.radius));
@@ -182,10 +230,21 @@ impl Lights {
         let mut uniform = LightsUniform::zeroed();
         uniform.count[0] = lights.len() as u32;
         for (i, (slot, light)) in uniform.lights.iter_mut().zip(lights).enumerate() {
-            slot.position_radius = [light.position[0], light.position[1], light.position[2], light.radius];
-            slot.colour_shadow = [light.colour[0], light.colour[1], light.colour[2], cube_of(i)];
+            slot.position_radius = [
+                light.position[0],
+                light.position[1],
+                light.position[2],
+                light.radius,
+            ];
+            slot.colour_shadow = [
+                light.colour[0],
+                light.colour[1],
+                light.colour[2],
+                cube_of(i),
+            ];
         }
-        gpu.queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
+        gpu.queue
+            .write_buffer(&self.uniform, 0, bytemuck::bytes_of(&uniform));
 
         let (cx, cy, cz) = CLUSTERS;
         for (v, view) in views.iter().enumerate() {
@@ -201,23 +260,48 @@ impl Lights {
                     continue;
                 }
                 let slice = |d: f32| {
-                    let t = (d.max(CLUSTER_DEPTH.0) / CLUSTER_DEPTH.0).ln() / (CLUSTER_DEPTH.1 / CLUSTER_DEPTH.0).ln();
+                    let t = (d.max(CLUSTER_DEPTH.0) / CLUSTER_DEPTH.0).ln()
+                        / (CLUSTER_DEPTH.1 / CLUSTER_DEPTH.0).ln();
                     ((t * cz as f32).floor() as i32).clamp(0, cz as i32 - 1) as u32
                 };
                 for z in slice(near)..=slice(far) {
                     // The slice's depth range, and so how wide the view is across it.
-                    let d0 = CLUSTER_DEPTH.0 * (CLUSTER_DEPTH.1 / CLUSTER_DEPTH.0).powf(z as f32 / cz as f32);
-                    let d1 = CLUSTER_DEPTH.0 * (CLUSTER_DEPTH.1 / CLUSTER_DEPTH.0).powf((z + 1) as f32 / cz as f32);
+                    let d0 = CLUSTER_DEPTH.0
+                        * (CLUSTER_DEPTH.1 / CLUSTER_DEPTH.0).powf(z as f32 / cz as f32);
+                    let d1 = CLUSTER_DEPTH.0
+                        * (CLUSTER_DEPTH.1 / CLUSTER_DEPTH.0).powf((z + 1) as f32 / cz as f32);
                     for y in 0..cy {
                         for x in 0..cx {
                             // The cluster's box in view space, taken at both ends of the slice.
-                            let edge = |i: u32, n: u32, tan: f32, d: f32| ((i as f32 / n as f32) * 2.0 - 1.0) * tan * d;
-                            let xs = [edge(x, cx, tan_x, d0), edge(x + 1, cx, tan_x, d0), edge(x, cx, tan_x, d1), edge(x + 1, cx, tan_x, d1)];
+                            let edge = |i: u32, n: u32, tan: f32, d: f32| {
+                                ((i as f32 / n as f32) * 2.0 - 1.0) * tan * d
+                            };
+                            let xs = [
+                                edge(x, cx, tan_x, d0),
+                                edge(x + 1, cx, tan_x, d0),
+                                edge(x, cx, tan_x, d1),
+                                edge(x + 1, cx, tan_x, d1),
+                            ];
                             // Row 0 is the top of the screen, which is +y in view space.
-                            let ys = [edge(cy - y, cy, tan_y, d0), edge(cy - y - 1, cy, tan_y, d0), edge(cy - y, cy, tan_y, d1), edge(cy - y - 1, cy, tan_y, d1)];
-                            let (x0, x1) = (xs.iter().copied().fold(f32::MAX, f32::min), xs.iter().copied().fold(f32::MIN, f32::max));
-                            let (y0, y1) = (ys.iter().copied().fold(f32::MAX, f32::min), ys.iter().copied().fold(f32::MIN, f32::max));
-                            let nearest = Vec3::new(p.x.clamp(x0, x1), p.y.clamp(y0, y1), p.z.clamp(-d1, -d0));
+                            let ys = [
+                                edge(cy - y, cy, tan_y, d0),
+                                edge(cy - y - 1, cy, tan_y, d0),
+                                edge(cy - y, cy, tan_y, d1),
+                                edge(cy - y - 1, cy, tan_y, d1),
+                            ];
+                            let (x0, x1) = (
+                                xs.iter().copied().fold(f32::MAX, f32::min),
+                                xs.iter().copied().fold(f32::MIN, f32::max),
+                            );
+                            let (y0, y1) = (
+                                ys.iter().copied().fold(f32::MAX, f32::min),
+                                ys.iter().copied().fold(f32::MIN, f32::max),
+                            );
+                            let nearest = Vec3::new(
+                                p.x.clamp(x0, x1),
+                                p.y.clamp(y0, y1),
+                                p.z.clamp(-d1, -d0),
+                            );
                             if nearest.distance_squared(p) <= r * r {
                                 masks[(y * cx * cz + z * cx + x) as usize][i / 32] |= 1 << (i % 32);
                             }
@@ -229,12 +313,24 @@ impl Lights {
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.cluster_texture,
                     mip_level: 0,
-                    origin: wgpu::Origin3d { x: 0, y: 0, z: v as u32 },
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: v as u32,
+                    },
                     aspect: wgpu::TextureAspect::All,
                 },
                 bytemuck::cast_slice(&masks),
-                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(cx * cz * 8), rows_per_image: Some(cy) },
-                wgpu::Extent3d { width: cx * cz, height: cy, depth_or_array_layers: 1 },
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(cx * cz * 8),
+                    rows_per_image: Some(cy),
+                },
+                wgpu::Extent3d {
+                    width: cx * cz,
+                    height: cy,
+                    depth_or_array_layers: 1,
+                },
             );
         }
     }
@@ -247,10 +343,23 @@ mod tests {
     #[test]
     fn each_cube_face_sees_its_own_direction() {
         let light = Vec3::new(1.0, 2.0, 3.0);
-        for (face, dir) in [Vec3::X, Vec3::NEG_X, Vec3::Y, Vec3::NEG_Y, Vec3::Z, Vec3::NEG_Z].into_iter().enumerate() {
+        for (face, dir) in [
+            Vec3::X,
+            Vec3::NEG_X,
+            Vec3::Y,
+            Vec3::NEG_Y,
+            Vec3::Z,
+            Vec3::NEG_Z,
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let m = cube_face_matrix(light, 10.0, face);
             let clip = m.project_point3(light + dir * 5.0);
-            assert!(clip.x.abs() < 1e-4 && clip.y.abs() < 1e-4, "face {face}: {clip:?}");
+            assert!(
+                clip.x.abs() < 1e-4 && clip.y.abs() < 1e-4,
+                "face {face}: {clip:?}"
+            );
             assert!(clip.z > 0.0 && clip.z < 1.0);
         }
     }

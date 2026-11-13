@@ -1,15 +1,17 @@
 //! The capture tool. A script names shots; each shot is a camera, an hour, and a number
 //! of frames on a fixed clock. The same script always produces the same images.
 
-use crate::image::{contact_sheet, difference_masked, Difference, Image};
+use crate::image::{Difference, Image, contact_sheet, difference_masked};
 use crate::refs::{self, RefResult, Tolerance};
 use crate::shimmer::{self, Shimmer};
 use glam::Vec3;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use vellmark_gpu::{read_texture_rgba8, wgpu, Gpu, GpuOptions, PassTimers, PipelineRegistry};
 use vellmark_content::{AssetId, AssetKind, GlyphAtlas, Pack};
-use vellmark_render::{load_scene, Camera, FrameInput, GlyphTuning, LoadedAssets, Renderer, ShaderLibrary, View};
+use vellmark_gpu::{Gpu, GpuOptions, PassTimers, PipelineRegistry, read_texture_rgba8, wgpu};
+use vellmark_render::{
+    Camera, FrameInput, GlyphTuning, LoadedAssets, Renderer, ShaderLibrary, View, load_scene,
+};
 
 fn one() -> u32 {
     1
@@ -28,11 +30,19 @@ impl Pose {
     fn lerp(&self, to: &Pose, t: f32) -> Pose {
         let a = Vec3::from(self.eye);
         let e = a.lerp(Vec3::from(to.eye), t);
-        Pose { eye: e.into(), yaw: self.yaw + (to.yaw - self.yaw) * t, pitch: self.pitch + (to.pitch - self.pitch) * t }
+        Pose {
+            eye: e.into(),
+            yaw: self.yaw + (to.yaw - self.yaw) * t,
+            pitch: self.pitch + (to.pitch - self.pitch) * t,
+        }
     }
 
     pub fn camera(&self) -> Camera {
-        Camera::looking(self.eye.into(), self.yaw.to_radians(), self.pitch.to_radians())
+        Camera::looking(
+            self.eye.into(),
+            self.yaw.to_radians(),
+            self.pitch.to_radians(),
+        )
     }
 }
 
@@ -138,7 +148,12 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { pair_mean: 0.0005, pair_max: 0.02, tone_shift: 0.03, shimmer_p99: 0.02 }
+        Self {
+            pair_mean: 0.0005,
+            pair_max: 0.02,
+            tone_shift: 0.03,
+            shimmer_p99: 0.02,
+        }
     }
 }
 
@@ -227,13 +242,19 @@ impl Report {
                 ));
             }
             if let Some(m) = shot.shimmer {
-                s.push_str(&format!(", shimmer mean {:.5} p99 {:.4} flickering {:.4}", m.mean, m.p99, m.flickering));
+                s.push_str(&format!(
+                    ", shimmer mean {:.5} p99 {:.4} flickering {:.4}",
+                    m.mean, m.p99, m.flickering
+                ));
             }
             match &shot.reference {
-                Some(RefResult::Matches(d)) => s.push_str(&format!(", reference matches (mean {:.5})", d.mean)),
-                Some(RefResult::Moved(d)) => {
-                    s.push_str(&format!(", reference MOVED (mean {:.5}, changed {:.4})", d.mean, d.changed))
+                Some(RefResult::Matches(d)) => {
+                    s.push_str(&format!(", reference matches (mean {:.5})", d.mean))
                 }
+                Some(RefResult::Moved(d)) => s.push_str(&format!(
+                    ", reference MOVED (mean {:.5}, changed {:.4})",
+                    d.mean, d.changed
+                )),
                 Some(RefResult::Missing) => s.push_str(", reference MISSING"),
                 Some(RefResult::SizeChanged) => s.push_str(", reference SIZE CHANGED"),
                 None => {}
@@ -243,7 +264,11 @@ impl Report {
         for f in &self.failures {
             s.push_str(&format!("  FAIL: {f}\n"));
         }
-        s.push_str(if self.passed() { "  passed\n" } else { "  FAILED\n" });
+        s.push_str(if self.passed() {
+            "  passed\n"
+        } else {
+            "  FAILED\n"
+        });
         s
     }
 }
@@ -273,13 +298,20 @@ pub fn baked_base_pack() -> Result<Pack, String> {
         cache: Some(root.join("build/bake-cache")),
     };
     let output = vellmark_bake::bake(&inputs).map_err(|e| e.to_string())?;
-    let (_, bytes) = output.packs.into_iter().next().ok_or("the bake produced no pack")?;
+    let (_, bytes) = output
+        .packs
+        .into_iter()
+        .next()
+        .ok_or("the bake produced no pack")?;
     Pack::from_bytes(bytes).map_err(|e| e.to_string())
 }
 
 pub fn glyph_atlas(pack: &Pack) -> Result<GlyphAtlas, String> {
     let bytes = pack
-        .get(AssetKind::GlyphAtlas, AssetId::from_key(vellmark_bake::GLYPH_ATLAS_KEY))
+        .get(
+            AssetKind::GlyphAtlas,
+            AssetId::from_key(vellmark_bake::GLYPH_ATLAS_KEY),
+        )
         .ok_or("the pack has no glyph atlas")?;
     GlyphAtlas::from_bytes(bytes).map_err(|e| e.to_string())
 }
@@ -293,7 +325,14 @@ impl Offscreen {
         height: u32,
         scene: Option<&str>,
     ) -> Result<Self, String> {
-        Self::with_pack(gpu_options, shaders, width, height, baked_base_pack()?, scene)
+        Self::with_pack(
+            gpu_options,
+            shaders,
+            width,
+            height,
+            baked_base_pack()?,
+            scene,
+        )
     }
 
     /// As `new`, drawing from a given pack: for tests with scenes of their own.
@@ -308,7 +347,13 @@ impl Offscreen {
         let gpu = Gpu::headless(gpu_options).map_err(|e| e.to_string())?;
         let mut registry = PipelineRegistry::new();
         let assets = LoadedAssets::from_pack(&pack)?;
-        let mut renderer = Renderer::new(&gpu, &mut registry, shaders, CAPTURE_FORMAT, &assets.borrow())?;
+        let mut renderer = Renderer::new(
+            &gpu,
+            &mut registry,
+            shaders,
+            CAPTURE_FORMAT,
+            &assets.borrow(),
+        )?;
         let mut loaded = None;
         let mut terrain = None;
         if let Some(key) = scene {
@@ -326,7 +371,11 @@ impl Offscreen {
         let timers = PassTimers::new(&gpu, true);
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("capture"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -334,14 +383,30 @@ impl Offscreen {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        Ok(Self { gpu, registry, renderer, timers, texture, size: (width, height), scene: loaded, terrain })
+        Ok(Self {
+            gpu,
+            registry,
+            renderer,
+            timers,
+            texture,
+            size: (width, height),
+            scene: loaded,
+            terrain,
+        })
     }
 
     pub fn frame(&mut self, frame: &FrameInput<'_>) -> Image {
         let view = self.texture.create_view(&Default::default());
         let mut encoder = self.gpu.device.create_command_encoder(&Default::default());
         self.timers.begin_frame();
-        self.renderer.render(&self.gpu, &mut encoder, &view, self.size, frame, &mut self.timers);
+        self.renderer.render(
+            &self.gpu,
+            &mut encoder,
+            &view,
+            self.size,
+            frame,
+            &mut self.timers,
+        );
         self.timers.end_frame(&self.gpu, &mut encoder);
         self.gpu.queue.submit([encoder.finish()]);
         self.timers.after_submit();
@@ -352,7 +417,13 @@ impl Offscreen {
 }
 
 pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
-    let mut offscreen = Offscreen::new(&options.gpu, &options.shaders, script.width, script.height, Some(&script.scene))?;
+    let mut offscreen = Offscreen::new(
+        &options.gpu,
+        &options.shaders,
+        script.width,
+        script.height,
+        Some(&script.scene),
+    )?;
     let mut report = Report {
         script: script.name.clone(),
         adapter: offscreen.gpu.describe(),
@@ -369,20 +440,32 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
         // A shot that breaks something runs the rules for it, from a fresh world.
         let mut world = None;
         if let Some(name) = &shot.break_thing {
-            let scene = offscreen.scene.as_ref().ok_or("a shot breaks something, but the script names no scene")?;
+            let scene = offscreen
+                .scene
+                .as_ref()
+                .ok_or("a shot breaks something, but the script names no scene")?;
             let mut w = vellmark_sim::World::new(vellmark_sim::WorldConfig::default());
             let (solids, breakables) = vellmark_render::scene_rules(scene);
             w.set_scene(solids, breakables);
             let id = vellmark_content::AssetId::from_key(&format!("{}.{name}", script.scene));
             let blow = shot.blow.map_or(shot.from.camera().eye, |b| b.into());
-            w.break_thing_with(id.0, blow, shot.strength.unwrap_or(1.0)).ok_or_else(|| format!("shot `{}`: the scene has nothing called `{name}` to break", shot.name))?;
+            w.break_thing_with(id.0, blow, shot.strength.unwrap_or(1.0))
+                .ok_or_else(|| {
+                    format!(
+                        "shot `{}`: the scene has nothing called `{name}` to break",
+                        shot.name
+                    )
+                })?;
             for _ in 0..shot.settle {
                 w.step(&[]);
             }
             world = Some(w);
         }
         let heat: Vec<(u64, f32)> = match &shot.heat {
-            Some((name, h)) => vec![(vellmark_content::AssetId::from_key(&format!("{}.{name}", script.scene)).0, *h)],
+            Some((name, h)) => vec![(
+                vellmark_content::AssetId::from_key(&format!("{}.{name}", script.scene)).0,
+                *h,
+            )],
             None => Vec::new(),
         };
         for i in 0..frames_wanted {
@@ -392,18 +475,27 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 }
             }
             let snapshot = world.as_ref().map(|w| w.snapshot());
-            let (letters, letters_step, broken): (&[vellmark_sim::LetterSnap], u64, &[u64]) = match &snapshot {
-                Some(s) => (&s.letters, s.letters_step, &s.broken),
-                None => (&[], 0, &[]),
+            let (letters, letters_step, broken): (&[vellmark_sim::LetterSnap], u64, &[u64]) =
+                match &snapshot {
+                    Some(s) => (&s.letters, s.letters_step, &s.broken),
+                    None => (&[], 0, &[]),
+                };
+            let t = if frames_wanted > 1 {
+                i as f32 / (frames_wanted - 1) as f32
+            } else {
+                0.0
             };
-            let t = if frames_wanted > 1 { i as f32 / (frames_wanted - 1) as f32 } else { 0.0 };
             let pose = match &shot.to {
                 Some(to) => shot.from.lerp(to, t),
                 None => shot.from,
             };
             let mut pose = pose;
             if shot.above_ground {
-                if let Some(h) = offscreen.terrain.as_ref().and_then(|t| t.height_at(pose.eye.0, pose.eye.2)) {
+                if let Some(h) = offscreen
+                    .terrain
+                    .as_ref()
+                    .and_then(|t| t.height_at(pose.eye.0, pose.eye.2))
+                {
                     pose.eye.1 += h;
                 }
             }
@@ -423,7 +515,10 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 close_reading: shot.close_reading,
                 dive: shot.dive,
                 lamps: if shot.lamps_out { 0.0 } else { 1.0 },
-                tuning: GlyphTuning { look: shot.look, ..GlyphTuning::default() },
+                tuning: GlyphTuning {
+                    look: shot.look,
+                    ..GlyphTuning::default()
+                },
                 reveal_mask: false,
                 letters,
                 letters_step,
@@ -439,13 +534,21 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                     }
                 },
                 wind_gust: shot.wind_sentence.map(|n| (n, 0.4)),
-                relief: vellmark_render::Relief { levels: [shot.relief.unwrap_or(0.0); 6] },
+                relief: vellmark_render::Relief {
+                    levels: [shot.relief.unwrap_or(0.0); 6],
+                },
                 ui: None,
             };
             frames.push(offscreen.frame(&input));
             if shot.pair && i == 0 {
-                glyph_off = Some(offscreen.frame(&FrameInput { glyph_layer: false, ..input }));
-                reveal_mask = Some(offscreen.frame(&FrameInput { reveal_mask: true, ..input }));
+                glyph_off = Some(offscreen.frame(&FrameInput {
+                    glyph_layer: false,
+                    ..input
+                }));
+                reveal_mask = Some(offscreen.frame(&FrameInput {
+                    reveal_mask: true,
+                    ..input
+                }));
             }
         }
 
@@ -464,7 +567,12 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                         for dy in -3..=3 {
                             for dx in -3..=3 {
                                 let (xx, yy) = (x + dx, y + dy);
-                                if xx >= 0 && yy >= 0 && xx < w && yy < h && revealed[(yy * w + xx) as usize] {
+                                if xx >= 0
+                                    && yy >= 0
+                                    && xx < w
+                                    && yy < h
+                                    && revealed[(yy * w + xx) as usize]
+                                {
                                     return false;
                                 }
                             }
@@ -492,7 +600,11 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                     if n == 0 { 0.0 } else { (sum / n as f64) as f32 }
                 };
                 let (lit_on, lit_off) = (mean(&on_l), mean(&off_l));
-                let tone_shift = if lit_off > 0.0 { (lit_on - lit_off) / lit_off } else { 0.0 };
+                let tone_shift = if lit_off > 0.0 {
+                    (lit_on - lit_off) / lit_off
+                } else {
+                    0.0
+                };
                 if tone_shift.abs() > script.limits.tone_shift {
                     report.failures.push(format!(
                         "{}: within the reveal distance the letters change mean brightness by {:+.2}% (limit {:.1}%)",
@@ -501,7 +613,11 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                         script.limits.tone_shift * 100.0
                     ));
                 }
-                Some(Pair { beyond: far, revealed_share: share, tone_shift })
+                Some(Pair {
+                    beyond: far,
+                    revealed_share: share,
+                    tone_shift,
+                })
             }
             _ => None,
         };
@@ -549,11 +665,20 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                 off.save(&dir.join(format!("{}_glyph_off.png", shot.name)))?;
             }
             if let Some((x, y, w, h)) = shot.crop {
-                frames[0].crop(x, y, w, h).save(&dir.join(format!("{}_crop.png", shot.name)))?;
+                frames[0]
+                    .crop(x, y, w, h)
+                    .save(&dir.join(format!("{}_crop.png", shot.name)))?;
             }
         }
 
-        report.shots.push(ShotResult { name: shot.name.clone(), frames, glyph_off, pair, shimmer, reference });
+        report.shots.push(ShotResult {
+            name: shot.name.clone(),
+            frames,
+            glyph_off,
+            pair,
+            shimmer,
+            reference,
+        });
     }
 
     if let Some(dir) = &out {

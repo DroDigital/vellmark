@@ -2,13 +2,16 @@
 //! the sky behind them, and the step from the lit scene to the screen.
 
 use crate::frame::{
-    cascade_matrix, view_uniform, Atmosphere, ViewUniform, CASCADES, CASCADE_FAR, MAX_VIEWS, SHADOW_SIZE,
+    Atmosphere, CASCADE_FAR, CASCADES, MAX_VIEWS, SHADOW_SIZE, ViewUniform, cascade_matrix,
+    view_uniform,
 };
-use crate::lights::{cube_face_matrix, Lights};
-use crate::world_gpu::{vertex_layout, InstanceGpu, SceneGpu, SurfaceResources, MAX_GROUPS, MAX_INSTANCES};
+use crate::lights::{Lights, cube_face_matrix};
+use crate::world_gpu::{
+    InstanceGpu, MAX_GROUPS, MAX_INSTANCES, SceneGpu, SurfaceResources, vertex_layout,
+};
 use crate::{FrameInput, ShaderLibrary};
 use glam::{Mat4, Vec3};
-use vellmark_gpu::{wgpu, Gpu, PassTimers, PipelineRegistry};
+use vellmark_gpu::{Gpu, PassTimers, PipelineRegistry, wgpu};
 
 pub const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -163,31 +166,56 @@ const GUST_NEAREST: f32 = 14.0;
 
 /// A sentence laid across the grass where a view is looking, to run left to right as the
 /// view sees it, its letters' tops away from the eye. None if the view looks at no grass.
-fn gust_ahead(view: &crate::View, grass: &crate::grass::GrassField, sentence: u32, chars: usize, window: u64, start: f32) -> Option<Gust> {
+fn gust_ahead(
+    view: &crate::View,
+    grass: &crate::grass::GrassField,
+    sentence: u32,
+    chars: usize,
+    window: u64,
+    start: f32,
+) -> Option<Gust> {
     let eye = view.camera.eye;
     let forward = view.camera.rotation * glam::Vec3::NEG_Z;
     let f = glam::Vec2::new(forward.x, forward.z).try_normalize()?;
     let level = glam::Vec3::new(f.x, 0.0, f.y);
     // Where the gaze meets the grass, a little below the middle of the view, where the
     // eye rests on the ground ahead; if it meets none, the grass straight ahead.
-    let gaze = (view.camera.rotation * glam::Vec3::new(0.0, -(view.camera.fov_y * 0.18).tan(), -1.0)).normalize();
-    let hit = grass
-        .ground_hit(eye, gaze)
-        .or_else(|| grass.ground_hit(eye + level * GUST_NEAREST + glam::Vec3::Y * 50.0, -glam::Vec3::Y))?;
+    let gaze = (view.camera.rotation
+        * glam::Vec3::new(0.0, -(view.camera.fov_y * 0.18).tan(), -1.0))
+    .normalize();
+    let hit = grass.ground_hit(eye, gaze).or_else(|| {
+        grass.ground_hit(
+            eye + level * GUST_NEAREST + glam::Vec3::Y * 50.0,
+            -glam::Vec3::Y,
+        )
+    })?;
     let mut centre = hit;
     let mut distance = glam::Vec2::new(centre.x - eye.x, centre.z - eye.z).length();
     if distance < GUST_NEAREST {
-        centre = grass.ground_hit(eye + level * GUST_NEAREST + glam::Vec3::Y * 50.0, -glam::Vec3::Y)?;
+        centre = grass.ground_hit(
+            eye + level * GUST_NEAREST + glam::Vec3::Y * 50.0,
+            -glam::Vec3::Y,
+        )?;
         distance = GUST_NEAREST;
     }
     let along = glam::Vec2::new(-f.y, f.x);
     let half = distance * (view.camera.fov_y * 0.5).tan() * 16.0 / 9.0;
-    let width = (distance * 0.09).min(half * 2.0 * 0.85 / chars.max(1) as f32).max(0.8);
+    let width = (distance * 0.09)
+        .min(half * 2.0 * 0.85 / chars.max(1) as f32)
+        .max(0.8);
     let down = ((eye.y - centre.y) / distance.max(1.0)).max(0.07);
     let depth = (width * 0.8 / down).min(40.0);
     let length = chars as f32 * width;
     let origin = glam::Vec2::new(centre.x, centre.z) - along * length * 0.5 - f * depth * 0.5;
-    Some(Gust { window, sentence, origin, along, width, depth, start })
+    Some(Gust {
+        window,
+        sentence,
+        origin,
+        along,
+        width,
+        depth,
+        start,
+    })
 }
 
 /// A far cascade as it was last drawn.
@@ -204,7 +232,12 @@ fn aligned(size: u64, align: u64) -> u64 {
     size.div_ceil(align) * align
 }
 
-fn uniform_entry(binding: u32, visibility: wgpu::ShaderStages, dynamic: bool, size: u64) -> wgpu::BindGroupLayoutEntry {
+fn uniform_entry(
+    binding: u32,
+    visibility: wgpu::ShaderStages,
+    dynamic: bool,
+    size: u64,
+) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
         visibility,
@@ -332,7 +365,11 @@ impl ScenePass {
         let storage = |binding, visibility| wgpu::BindGroupLayoutEntry {
             binding,
             visibility,
-            ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None },
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
             count: None,
         };
         let object_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -346,7 +383,12 @@ impl ScenePass {
         });
         let cascade_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cascade"),
-            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX, true, CASCADE_UNIFORM)],
+            entries: &[uniform_entry(
+                0,
+                wgpu::ShaderStages::VERTEX,
+                true,
+                CASCADE_UNIFORM,
+            )],
         });
         let post_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("post"),
@@ -403,8 +445,14 @@ impl ScenePass {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let draw_buffer = buffer("draw batches", object_stride * ((1 + MAX_VIEWS) * MAX_GROUPS) as u64);
-        let cascade_buffer = buffer("cascades", cascade_stride * (CASCADES * SHADOWED_VIEWS + CUBE_FACES) as u64);
+        let draw_buffer = buffer(
+            "draw batches",
+            object_stride * ((1 + MAX_VIEWS) * MAX_GROUPS) as u64,
+        );
+        let cascade_buffer = buffer(
+            "cascades",
+            cascade_stride * (CASCADES * SHADOWED_VIEWS + CUBE_FACES) as u64,
+        );
         let post_buffer = buffer("post", 64);
 
         let one = |label, layout: &wgpu::BindGroupLayout, buffer: &wgpu::Buffer, size| {
@@ -413,7 +461,11 @@ impl ScenePass {
                 layout,
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer, offset: 0, size: wgpu::BufferSize::new(size) }),
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(size),
+                    }),
                 }],
             })
         };
@@ -421,11 +473,21 @@ impl ScenePass {
             label: Some("instances"),
             layout: &object_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: instance_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: visible_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: instance_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: visible_buffer.as_entire_binding(),
+                },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &draw_buffer, offset: 0, size: wgpu::BufferSize::new(16) }),
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &draw_buffer,
+                        offset: 0,
+                        size: wgpu::BufferSize::new(16),
+                    }),
                 },
             ],
         });
@@ -478,9 +540,19 @@ impl ScenePass {
         let pyramid_module = shaders.module(gpu, "pyramid")?;
         let culling = crate::cull::Culling::new(gpu, registry, &cull_module, &pyramid_module);
         let contact_module = shaders.module(gpu, "contact")?;
-        let contact = crate::contact::ContactOcclusion::new(gpu, registry, &contact_module, view_size);
+        let contact =
+            crate::contact::ContactOcclusion::new(gpu, registry, &contact_module, view_size);
         let fog_module = shaders.module(gpu, "fog")?;
-        let fog = crate::fog::FogVolume::new(gpu, registry, &fog_module, SHADOWED_VIEWS, &view_buffer, view_size, &shadow_arrays, &shadow_sampler);
+        let fog = crate::fog::FogVolume::new(
+            gpu,
+            registry,
+            &fog_module,
+            SHADOWED_VIEWS,
+            &view_buffer,
+            view_size,
+            &shadow_arrays,
+            &shadow_sampler,
+        );
         let frame_bind_groups = (0..SHADOWED_VIEWS)
             .map(|v| {
                 let array = &shadow_arrays[v];
@@ -496,14 +568,38 @@ impl ScenePass {
                                 size: wgpu::BufferSize::new(view_size),
                             }),
                         },
-                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(array) },
-                        wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&shadow_sampler) },
-                        wgpu::BindGroupEntry { binding: 3, resource: lights.uniform.as_entire_binding() },
-                        wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&lights.cluster_view) },
-                        wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&lights.cube_view) },
-                        wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&fog.integrated_views[v]) },
-                        wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::Sampler(&fog.sampler) },
-                        wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(&contact.view) },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(array),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: lights.uniform.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&lights.cluster_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 5,
+                            resource: wgpu::BindingResource::TextureView(&lights.cube_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 6,
+                            resource: wgpu::BindingResource::TextureView(&fog.integrated_views[v]),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 7,
+                            resource: wgpu::BindingResource::Sampler(&fog.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 8,
+                            resource: wgpu::BindingResource::TextureView(&contact.view),
+                        },
                     ],
                 })
             })
@@ -526,7 +622,18 @@ impl ScenePass {
             ..Default::default()
         });
         let pipelines = Self::pipelines(
-            gpu, registry, shaders, surface, target_format, &frame_layout, &object_layout, &cascade_layout, &post_layout, &bloom_layout, &terrain_layout, &water_layout,
+            gpu,
+            registry,
+            shaders,
+            surface,
+            target_format,
+            &frame_layout,
+            &object_layout,
+            &cascade_layout,
+            &post_layout,
+            &bloom_layout,
+            &terrain_layout,
+            &water_layout,
         )?;
         Ok(Self {
             pipelines,
@@ -567,7 +674,8 @@ impl ScenePass {
             target_format,
             letter_buffer: gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("loose letters"),
-                size: (vellmark_sim::debris::MAX_LETTERS * std::mem::size_of::<LetterInstance>()) as u64,
+                size: (vellmark_sim::debris::MAX_LETTERS * std::mem::size_of::<LetterInstance>())
+                    as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
@@ -608,11 +716,22 @@ impl ScenePass {
                 immediate_size: 0,
             })
         };
-        let world_layout = layout("world", &[Some(frame_layout), Some(&surface.layout), Some(object_layout)]);
+        let world_layout = layout(
+            "world",
+            &[
+                Some(frame_layout),
+                Some(&surface.layout),
+                Some(object_layout),
+            ],
+        );
         let shadow_layout = layout("shadow", &[Some(cascade_layout), Some(object_layout)]);
         let post_pipeline_layout = layout("post", &[Some(post_layout)]);
 
-        let multisample = wgpu::MultisampleState { count: SAMPLES, mask: !0, alpha_to_coverage_enabled: false };
+        let multisample = wgpu::MultisampleState {
+            count: SAMPLES,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        };
         let solid = wgpu::PrimitiveState {
             front_face: wgpu::FrontFace::Ccw,
             cull_mode: Some(wgpu::Face::Back),
@@ -639,13 +758,20 @@ impl ScenePass {
                 },
                 fragment: None,
                 // Thin things like a hanging cloth must cast from both sides.
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
                     depth_write_enabled: Some(true),
                     depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: Default::default(),
-                    bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.5,
+                        clamp: 0.0,
+                    },
                 }),
                 multisample: Default::default(),
                 multiview_mask: None,
@@ -724,7 +850,10 @@ impl ScenePass {
         );
         // Trees: drawn from both sides, for their leaf cards, and cut in the fragment stage
         // to their leaves, their crossfades, and their far form's picture.
-        let both_sides = wgpu::PrimitiveState { cull_mode: None, ..Default::default() };
+        let both_sides = wgpu::PrimitiveState {
+            cull_mode: None,
+            ..Default::default()
+        };
         let tree_shadow = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
@@ -736,14 +865,23 @@ impl ScenePass {
                     compilation_options: Default::default(),
                     buffers: &[Some(vertex_layout())],
                 },
-                fragment: Some(wgpu::FragmentState { module: &shadow_module, entry_point: Some("fs_tree"), compilation_options: Default::default(), targets: &[] }),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shadow_module,
+                    entry_point: Some("fs_tree"),
+                    compilation_options: Default::default(),
+                    targets: &[],
+                }),
                 primitive: both_sides,
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
                     depth_write_enabled: Some(true),
                     depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: Default::default(),
-                    bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.5,
+                        clamp: 0.0,
+                    },
                 }),
                 multisample: Default::default(),
                 multiview_mask: None,
@@ -761,7 +899,12 @@ impl ScenePass {
                     compilation_options: Default::default(),
                     buffers: &[Some(vertex_layout())],
                 },
-                fragment: Some(wgpu::FragmentState { module: &opaque_module, entry_point: Some("fs_tree_depth"), compilation_options: Default::default(), targets: &[] }),
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_tree_depth"),
+                    compilation_options: Default::default(),
+                    targets: &[],
+                }),
                 primitive: both_sides,
                 depth_stencil: Some(depth_state(true, wgpu::CompareFunction::Greater)),
                 multisample,
@@ -799,7 +942,12 @@ impl ScenePass {
             &wgpu::RenderPipelineDescriptor {
                 label: Some("magic"),
                 layout: Some(&world_layout),
-                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_spark"), compilation_options: Default::default(), buffers: &[] },
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs_spark"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &opaque_module,
                     entry_point: Some("fs_spark"),
@@ -807,13 +955,24 @@ impl ScenePass {
                     targets: &[Some(wgpu::ColorTargetState {
                         format: HDR_FORMAT,
                         blend: Some(wgpu::BlendState {
-                            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
-                            alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::One,
+                                dst_factor: wgpu::BlendFactor::One,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::Zero,
+                                dst_factor: wgpu::BlendFactor::One,
+                                operation: wgpu::BlendOperation::Add,
+                            },
                         }),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 depth_stencil: Some(depth_state(false, wgpu::CompareFunction::GreaterEqual)),
                 multisample,
                 multiview_mask: None,
@@ -837,13 +996,20 @@ impl ScenePass {
                     })],
                 },
                 fragment: None,
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
                     depth_write_enabled: Some(true),
                     depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: Default::default(),
-                    bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.5,
+                        clamp: 0.0,
+                    },
                 }),
                 multisample: Default::default(),
                 multiview_mask: None,
@@ -852,22 +1018,54 @@ impl ScenePass {
         );
         // The terrain: its own vertex stage, which reads the heights, and its own layouts,
         // with the terrain's bind group after the object's.
-        let terrain_world_layout = layout("terrain", &[Some(frame_layout), Some(&surface.layout), Some(object_layout), Some(terrain_layout)]);
-        let terrain_shadow_layout = layout("terrain shadow", &[Some(cascade_layout), Some(object_layout), Some(terrain_layout)]);
+        let terrain_world_layout = layout(
+            "terrain",
+            &[
+                Some(frame_layout),
+                Some(&surface.layout),
+                Some(object_layout),
+                Some(terrain_layout),
+            ],
+        );
+        let terrain_shadow_layout = layout(
+            "terrain shadow",
+            &[
+                Some(cascade_layout),
+                Some(object_layout),
+                Some(terrain_layout),
+            ],
+        );
         let terrain_shadow = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
                 label: Some("terrain shadow"),
                 layout: Some(&terrain_shadow_layout),
-                vertex: wgpu::VertexState { module: &shadow_module, entry_point: Some("vs_terrain"), compilation_options: Default::default(), buffers: &[] },
-                fragment: Some(wgpu::FragmentState { module: &shadow_module, entry_point: Some("fs_terrain"), compilation_options: Default::default(), targets: &[] }),
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                vertex: wgpu::VertexState {
+                    module: &shadow_module,
+                    entry_point: Some("vs_terrain"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shadow_module,
+                    entry_point: Some("fs_terrain"),
+                    compilation_options: Default::default(),
+                    targets: &[],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
                     depth_write_enabled: Some(true),
                     depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: Default::default(),
-                    bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+                    bias: wgpu::DepthBiasState {
+                        constant: 2,
+                        slope_scale: 2.5,
+                        clamp: 0.0,
+                    },
                 }),
                 multisample: Default::default(),
                 multiview_mask: None,
@@ -879,8 +1077,18 @@ impl ScenePass {
             &wgpu::RenderPipelineDescriptor {
                 label: Some("terrain depth"),
                 layout: Some(&terrain_world_layout),
-                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_terrain"), compilation_options: Default::default(), buffers: &[] },
-                fragment: Some(wgpu::FragmentState { module: &opaque_module, entry_point: Some("fs_terrain_depth"), compilation_options: Default::default(), targets: &[] }),
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs_terrain"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_terrain_depth"),
+                    compilation_options: Default::default(),
+                    targets: &[],
+                }),
                 primitive: solid,
                 depth_stencil: Some(depth_state(true, wgpu::CompareFunction::Greater)),
                 multisample,
@@ -893,7 +1101,12 @@ impl ScenePass {
             &wgpu::RenderPipelineDescriptor {
                 label: Some("terrain"),
                 layout: Some(&terrain_world_layout),
-                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_terrain"), compilation_options: Default::default(), buffers: &[] },
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs_terrain"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &opaque_module,
                     entry_point: Some("fs_terrain"),
@@ -913,9 +1126,22 @@ impl ScenePass {
             &wgpu::RenderPipelineDescriptor {
                 label: Some("grass depth"),
                 layout: Some(&terrain_world_layout),
-                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_grass"), compilation_options: Default::default(), buffers: &[] },
-                fragment: Some(wgpu::FragmentState { module: &opaque_module, entry_point: Some("fs_grass_depth"), compilation_options: Default::default(), targets: &[] }),
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs_grass"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_grass_depth"),
+                    compilation_options: Default::default(),
+                    targets: &[],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 depth_stencil: Some(depth_state(true, wgpu::CompareFunction::Greater)),
                 multisample,
                 multiview_mask: None,
@@ -927,14 +1153,22 @@ impl ScenePass {
             &wgpu::RenderPipelineDescriptor {
                 label: Some("grass"),
                 layout: Some(&terrain_world_layout),
-                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_grass"), compilation_options: Default::default(), buffers: &[] },
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs_grass"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &opaque_module,
                     entry_point: Some("fs_grass"),
                     compilation_options: Default::default(),
                     targets: &[Some(HDR_FORMAT.into())],
                 }),
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Equal)),
                 multisample,
                 multiview_mask: None,
@@ -943,20 +1177,36 @@ impl ScenePass {
         );
         // Water: after the opaque pass, into the resolved scene, reading a copy of it and
         // its depth. It tests depth itself, so it needs no depth target.
-        let water_world_layout = layout("water", &[Some(frame_layout), Some(&surface.layout), Some(object_layout), Some(water_layout)]);
+        let water_world_layout = layout(
+            "water",
+            &[
+                Some(frame_layout),
+                Some(&surface.layout),
+                Some(object_layout),
+                Some(water_layout),
+            ],
+        );
         let water = registry.render_pipeline(
             device,
             &wgpu::RenderPipelineDescriptor {
                 label: Some("water"),
                 layout: Some(&water_world_layout),
-                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_water"), compilation_options: Default::default(), buffers: &[] },
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs_water"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &opaque_module,
                     entry_point: Some("fs_water"),
                     compilation_options: Default::default(),
                     targets: &[Some(HDR_FORMAT.into())],
                 }),
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 depth_stencil: None,
                 multisample: Default::default(),
                 multiview_mask: None,
@@ -969,7 +1219,12 @@ impl ScenePass {
             &wgpu::RenderPipelineDescriptor {
                 label: Some("rain"),
                 layout: Some(&water_world_layout),
-                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_rain"), compilation_options: Default::default(), buffers: &[] },
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs_rain"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
                 fragment: Some(wgpu::FragmentState {
                     module: &opaque_module,
                     entry_point: Some("fs_rain"),
@@ -980,7 +1235,10 @@ impl ScenePass {
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 depth_stencil: None,
                 multisample: Default::default(),
                 multiview_mask: None,
@@ -1009,11 +1267,18 @@ impl ScenePass {
                     targets: &[Some(HDR_FORMAT.into())],
                 }),
                 // A letter is seen from both sides as it tumbles.
-                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                primitive: wgpu::PrimitiveState {
+                    cull_mode: None,
+                    ..Default::default()
+                },
                 // Not in the pre-pass: tested against it and written as they are drawn.
                 depth_stencil: Some(depth_state(true, wgpu::CompareFunction::Greater)),
                 // The shape of the character is cut out by coverage, so its edge is smooth.
-                multisample: wgpu::MultisampleState { count: SAMPLES, mask: !0, alpha_to_coverage_enabled: true },
+                multisample: wgpu::MultisampleState {
+                    count: SAMPLES,
+                    mask: !0,
+                    alpha_to_coverage_enabled: true,
+                },
                 multiview_mask: None,
                 cache: None,
             },
@@ -1059,7 +1324,11 @@ impl ScenePass {
                         module: &bloom_module,
                         entry_point: Some(entry),
                         compilation_options: Default::default(),
-                        targets: &[Some(wgpu::ColorTargetState { format: HDR_FORMAT, blend, write_mask: wgpu::ColorWrites::ALL })],
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: HDR_FORMAT,
+                            blend,
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
                     }),
                     primitive: Default::default(),
                     depth_stencil: None,
@@ -1070,13 +1339,39 @@ impl ScenePass {
             )
         };
         let add = wgpu::BlendState {
-            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
             alpha: wgpu::BlendComponent::REPLACE,
         };
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, tree_shadow, tree_depth, tree, sparks, water, rain, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines {
+            shadow,
+            depth,
+            opaque,
+            sky,
+            letters,
+            letter_shadow,
+            terrain_shadow,
+            terrain_depth,
+            terrain,
+            grass_depth,
+            grass,
+            tree_shadow,
+            tree_depth,
+            tree,
+            sparks,
+            water,
+            rain,
+            post,
+            bloom_first,
+            bloom_down,
+            bloom_up,
+        })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -1113,7 +1408,11 @@ impl ScenePass {
                 gpu.device
                     .create_texture(&wgpu::TextureDescriptor {
                         label: Some(label),
-                        size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+                        size: wgpu::Extent3d {
+                            width: size.0,
+                            height: size.1,
+                            depth_or_array_layers: 1,
+                        },
                         mip_level_count: 1,
                         sample_count: samples,
                         dimension: wgpu::TextureDimension::D2,
@@ -1126,16 +1425,28 @@ impl ScenePass {
             let attachment = wgpu::TextureUsages::RENDER_ATTACHMENT;
             let colour_msaa = texture("scene colour", HDR_FORMAT, SAMPLES, attachment);
             // Read by contact occlusion as well as drawn into.
-            let depth_msaa = texture("scene depth", DEPTH_FORMAT, SAMPLES, attachment | wgpu::TextureUsages::TEXTURE_BINDING);
+            let depth_msaa = texture(
+                "scene depth",
+                DEPTH_FORMAT,
+                SAMPLES,
+                attachment | wgpu::TextureUsages::TEXTURE_BINDING,
+            );
             let plain = |label| {
                 gpu.device.create_texture(&wgpu::TextureDescriptor {
                     label: Some(label),
-                    size: wgpu::Extent3d { width: size.0, height: size.1, depth_or_array_layers: 1 },
+                    size: wgpu::Extent3d {
+                        width: size.0,
+                        height: size.1,
+                        depth_or_array_layers: 1,
+                    },
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: HDR_FORMAT,
-                    usage: attachment | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+                    usage: attachment
+                        | wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::COPY_SRC
+                        | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
                 })
             };
@@ -1146,7 +1457,11 @@ impl ScenePass {
             self.water_group = None;
             let bloom_texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("bloom"),
-                size: wgpu::Extent3d { width: (size.0 / 2).max(16), height: (size.1 / 2).max(16), depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: (size.0 / 2).max(16),
+                    height: (size.1 / 2).max(16),
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: BLOOM_LEVELS as u32,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -1168,8 +1483,14 @@ impl ScenePass {
                     label: Some("bloom source"),
                     layout: &self.bloom_layout,
                     entries: &[
-                        wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
-                        wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.post_sampler) },
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.post_sampler),
+                        },
                     ],
                 })
             };
@@ -1179,15 +1500,49 @@ impl ScenePass {
                 label: Some("post"),
                 layout: &self.post_layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&resolved) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.post_sampler) },
-                    wgpu::BindGroupEntry { binding: 2, resource: self.post_buffer.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&bloom_levels[0]) },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&resolved),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.post_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: self.post_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(&bloom_levels[0]),
+                    },
                 ],
             });
-            let contact_group = self.contact.bind(gpu, &self.view_buffer, self.view_size, &depth_msaa);
-            let pyramid = self.culling.targets(gpu, size, &depth_msaa, &self.instance_buffer, &self.visible_buffer);
-            self.targets = Some(Targets { size, colour_msaa, depth_msaa, resolved, resolved_texture, behind_texture, behind, post_bind_group, bloom_levels, bloom_sources, scene_source, contact_group, pyramid });
+            let contact_group =
+                self.contact
+                    .bind(gpu, &self.view_buffer, self.view_size, &depth_msaa);
+            let pyramid = self.culling.targets(
+                gpu,
+                size,
+                &depth_msaa,
+                &self.instance_buffer,
+                &self.visible_buffer,
+            );
+            self.targets = Some(Targets {
+                size,
+                colour_msaa,
+                depth_msaa,
+                resolved,
+                resolved_texture,
+                behind_texture,
+                behind,
+                post_bind_group,
+                bloom_levels,
+                bloom_sources,
+                scene_source,
+                contact_group,
+                pyramid,
+            });
         }
         self.targets.as_ref().unwrap()
     }
@@ -1196,7 +1551,11 @@ impl ScenePass {
         let mut bytes = [0u8; CASCADE_UNIFORM as usize];
         bytes[..64].copy_from_slice(bytemuck::cast_slice(&matrix.to_cols_array()));
         bytes[64..68].copy_from_slice(&glowing.to_le_bytes());
-        gpu.queue.write_buffer(&self.cascade_buffer, slot as u64 * self.cascade_stride, &bytes);
+        gpu.queue.write_buffer(
+            &self.cascade_buffer,
+            slot as u64 * self.cascade_stride,
+            &bytes,
+        );
     }
 
     /// Where batch `group` of list `list` starts, as a dynamic offset into the batches.
@@ -1207,13 +1566,22 @@ impl ScenePass {
 
     /// For tests: how many instances of each batch view 0 drew, read back from the draws.
     #[cfg(feature = "dev")]
-    pub fn drawn_last_frame(&self, gpu: &Gpu, scene: &SceneGpu) -> Vec<(vellmark_content::AssetId, u32)> {
+    pub fn drawn_last_frame(
+        &self,
+        gpu: &Gpu,
+        scene: &SceneGpu,
+    ) -> Vec<(vellmark_content::AssetId, u32)> {
         let words = self.read_draws(gpu, scene.groups.len());
         scene
             .groups
             .iter()
             .enumerate()
-            .map(|(g, group)| (scene.placed[group.first_instance as usize].key, words[g * 5 + 1]))
+            .map(|(g, group)| {
+                (
+                    scene.placed[group.first_instance as usize].key,
+                    words[g * 5 + 1],
+                )
+            })
             .collect()
     }
 
@@ -1237,7 +1605,11 @@ impl ScenePass {
 
     /// For tests: how many grass patches view 0 drew last frame at each level of detail.
     #[cfg(feature = "dev")]
-    pub fn grass_drawn_last_frame(&self, gpu: &Gpu, scene: &SceneGpu) -> [u32; crate::grass::LEVELS] {
+    pub fn grass_drawn_last_frame(
+        &self,
+        gpu: &Gpu,
+        scene: &SceneGpu,
+    ) -> [u32; crate::grass::LEVELS] {
         let first = scene.groups.len();
         let words = self.read_draws(gpu, first + crate::grass::LEVELS);
         std::array::from_fn(|l| words[(first + l) * 5 + 1])
@@ -1261,15 +1633,26 @@ impl ScenePass {
         let slice = readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |_| {});
         let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
-        let words: Vec<u32> = bytemuck::cast_slice(&slice.get_mapped_range().expect("mapped")).to_vec();
+        let words: Vec<u32> =
+            bytemuck::cast_slice(&slice.get_mapped_range().expect("mapped")).to_vec();
         words
     }
 
     /// Every mesh of the scene that view `v` can see, one indirect batch each, as the
     /// culling pass left them.
     /// A mesh with levels of detail is a tree's, drawn with `tree`; every other with `plain`.
-    fn draw_scene_culled(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, v: usize, object_group: u32, plain: &wgpu::RenderPipeline, tree: &wgpu::RenderPipeline) {
-        let (Some(vertices), Some(indices)) = (&scene.vertices, &scene.indices) else { return };
+    fn draw_scene_culled(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        scene: &SceneGpu,
+        v: usize,
+        object_group: u32,
+        plain: &wgpu::RenderPipeline,
+        tree: &wgpu::RenderPipeline,
+    ) {
+        let (Some(vertices), Some(indices)) = (&scene.vertices, &scene.indices) else {
+            return;
+        };
         pass.set_vertex_buffer(0, vertices.slice(..));
         pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
         let mut current: Option<bool> = None;
@@ -1282,16 +1665,33 @@ impl ScenePass {
                 pass.set_pipeline(if leveled { tree } else { plain });
                 current = Some(leveled);
             }
-            pass.set_bind_group(object_group, &self.object_bind_group, &[self.batch_offset(1 + v, g)]);
-            pass.draw_indexed_indirect(&self.culling.draws, crate::cull::Culling::draw_offset(v, g));
+            pass.set_bind_group(
+                object_group,
+                &self.object_bind_group,
+                &[self.batch_offset(1 + v, g)],
+            );
+            pass.draw_indexed_indirect(
+                &self.culling.draws,
+                crate::cull::Culling::draw_offset(v, g),
+            );
         }
     }
 
     /// Every mesh of the scene, one batch each, from list `list`, for the shadows. A mesh
     /// with levels of detail casts from one coarse level, with `tree`; every other is
     /// drawn with `plain`.
-    fn draw_scene(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, list: usize, object_group: u32, plain: &wgpu::RenderPipeline, tree: &wgpu::RenderPipeline) {
-        let (Some(vertices), Some(indices)) = (&scene.vertices, &scene.indices) else { return };
+    fn draw_scene(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        scene: &SceneGpu,
+        list: usize,
+        object_group: u32,
+        plain: &wgpu::RenderPipeline,
+        tree: &wgpu::RenderPipeline,
+    ) {
+        let (Some(vertices), Some(indices)) = (&scene.vertices, &scene.indices) else {
+            return;
+        };
         pass.set_vertex_buffer(0, vertices.slice(..));
         pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
         let mut current: Option<bool> = None;
@@ -1301,7 +1701,12 @@ impl ScenePass {
             }
             let leveled = group.levels > 1;
             // The third level's branches and cards, which is close enough for a shadow map.
-            let mesh = &scene.meshes[scene.groups[g + if leveled { SHADOW_LEVEL.min(group.levels as usize - 1) } else { 0 }].mesh];
+            let mesh = &scene.meshes[scene.groups[g + if leveled {
+                SHADOW_LEVEL.min(group.levels as usize - 1)
+            } else {
+                0
+            }]
+            .mesh];
             if group.count == 0 || mesh.index_count == 0 {
                 continue;
             }
@@ -1309,8 +1714,16 @@ impl ScenePass {
                 pass.set_pipeline(if leveled { tree } else { plain });
                 current = Some(leveled);
             }
-            pass.set_bind_group(object_group, &self.object_bind_group, &[self.batch_offset(list, g)]);
-            pass.draw_indexed(mesh.first_index..mesh.first_index + mesh.index_count, mesh.base_vertex, 0..group.count);
+            pass.set_bind_group(
+                object_group,
+                &self.object_bind_group,
+                &[self.batch_offset(list, g)],
+            );
+            pass.draw_indexed(
+                mesh.first_index..mesh.first_index + mesh.index_count,
+                mesh.base_vertex,
+                0..group.count,
+            );
         }
     }
 
@@ -1332,7 +1745,14 @@ impl ScenePass {
     /// turning never changes it. It is drawn once and kept until the light has moved by a
     /// quarter of a degree, the eye has crossed into another cell of a grid an eighth of
     /// its reach, or a still thing has changed.
-    fn far_cascade(&mut self, s: usize, eye: Vec3, light: Vec3, statics: u64, relief: &crate::Relief) -> (Mat4, bool) {
+    fn far_cascade(
+        &mut self,
+        s: usize,
+        eye: Vec3,
+        light: Vec3,
+        statics: u64,
+        relief: &crate::Relief,
+    ) -> (Mat4, bool) {
         let reach = CASCADE_FAR[CASCADES - 1];
         let step = reach / 8.0;
         let cell = (eye / step).floor().as_ivec3();
@@ -1349,7 +1769,13 @@ impl ScenePass {
         // Reach from the cell's middle to any eye within it, and the whole cascade beyond.
         let radius = reach + step * 0.9;
         let matrix = crate::frame::sphere_cascade_matrix(centre, radius, light);
-        self.far_shadows[s] = Some(FarShadow { matrix, light, cell, statics, frame: self.frame_count });
+        self.far_shadows[s] = Some(FarShadow {
+            matrix,
+            light,
+            cell,
+            statics,
+            frame: self.frame_count,
+        });
         (matrix, true)
     }
 
@@ -1358,7 +1784,12 @@ impl ScenePass {
     }
 
     /// The terrain, with the pipeline already set and the frame or cascade bound.
-    fn draw_terrain(&self, pass: &mut wgpu::RenderPass<'_>, terrain: Option<&crate::terrain::TerrainGpu>, object_group: u32) {
+    fn draw_terrain(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        terrain: Option<&crate::terrain::TerrainGpu>,
+        object_group: u32,
+    ) {
         if let Some(t) = terrain {
             pass.set_bind_group(object_group, &self.object_bind_group, &[0]);
             pass.set_bind_group(object_group + 1, &t.bind_group, &[]);
@@ -1369,7 +1800,14 @@ impl ScenePass {
 
     /// The grass view `v` can see, each level of detail one indirect batch, with the
     /// pipeline already set and the frame bound.
-    fn draw_grass(&self, pass: &mut wgpu::RenderPass<'_>, terrain: Option<&crate::terrain::TerrainGpu>, v: usize, first_group: usize, counts: &[u32; crate::grass::LEVELS]) {
+    fn draw_grass(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        terrain: Option<&crate::terrain::TerrainGpu>,
+        v: usize,
+        first_group: usize,
+        counts: &[u32; crate::grass::LEVELS],
+    ) {
         let Some(t) = terrain else { return };
         pass.set_bind_group(3, &t.bind_group, &[]);
         pass.set_index_buffer(t.grass.indices.slice(..), wgpu::IndexFormat::Uint32);
@@ -1377,8 +1815,15 @@ impl ScenePass {
             if *count == 0 {
                 continue;
             }
-            pass.set_bind_group(2, &self.object_bind_group, &[self.batch_offset(1 + v, first_group + l)]);
-            pass.draw_indexed_indirect(&self.culling.draws, crate::cull::Culling::draw_offset(v, first_group + l));
+            pass.set_bind_group(
+                2,
+                &self.object_bind_group,
+                &[self.batch_offset(1 + v, first_group + l)],
+            );
+            pass.draw_indexed_indirect(
+                &self.culling.draws,
+                crate::cull::Culling::draw_offset(v, first_group + l),
+            );
         }
     }
 
@@ -1416,7 +1861,9 @@ impl ScenePass {
         let mut atmosphere = Atmosphere::at(frame.time_of_day);
         let air = self.grade.at(frame.time_of_day);
         atmosphere.fog = [air.fog_density, air.fog_floor, air.fog_falloff];
-        let atmosphere = atmosphere.with_rain(frame.weather.rain).with_fog(frame.weather.fog);
+        let atmosphere = atmosphere
+            .with_rain(frame.weather.rain)
+            .with_fog(frame.weather.fog);
         let views = &frame.views[..frame.views.len().min(MAX_VIEWS)];
         let letter_count = frame.letters.len().min(vellmark_sim::debris::MAX_LETTERS);
         if self.letters_sent != Some((frame.letters_step, letter_count)) {
@@ -1430,7 +1877,8 @@ impl ScenePass {
                 })
                 .collect();
             if !instances.is_empty() {
-                gpu.queue.write_buffer(&self.letter_buffer, 0, bytemuck::cast_slice(&instances));
+                gpu.queue
+                    .write_buffer(&self.letter_buffer, 0, bytemuck::cast_slice(&instances));
             }
             self.letters_sent = Some((frame.letters_step, letter_count));
         }
@@ -1439,10 +1887,12 @@ impl ScenePass {
         // where each batch starts in each list.
         let instances = scene.instances(frame.heat, frame.broken, magic.lasting());
         if !instances.is_empty() {
-            gpu.queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
+            gpu.queue
+                .write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(&instances));
             // The shadows draw every placed thing; each view's own list is written by culling.
             let every: Vec<u32> = (0..instances.len() as u32).collect();
-            gpu.queue.write_buffer(&self.visible_buffer, 0, bytemuck::cast_slice(&every));
+            gpu.queue
+                .write_buffer(&self.visible_buffer, 0, bytemuck::cast_slice(&every));
             for list in 0..=views.len().min(MAX_VIEWS) {
                 // List 0 holds every instance in order, so a batch starts where its group's
                 // instances do; a view's list has a place for every level of detail.
@@ -1451,20 +1901,37 @@ impl ScenePass {
                     if !group.is_coarser_level() {
                         finest = g;
                     }
-                    let start = if list == 0 { group.first_instance } else { group.list_base };
+                    let start = if list == 0 {
+                        group.first_instance
+                    } else {
+                        group.list_base
+                    };
                     // x: where the batch starts. y: its level of detail. z: the leaf cards'
                     // material, from 1. w: how many levels its mesh has.
-                    let base = [(list * MAX_INSTANCES) as u32 + start, (g - finest) as u32, self.leaves, scene.groups[finest].levels];
-                    gpu.queue.write_buffer(&self.draw_buffer, self.batch_offset(list, g) as u64, bytemuck::cast_slice(&base));
+                    let base = [
+                        (list * MAX_INSTANCES) as u32 + start,
+                        (g - finest) as u32,
+                        self.leaves,
+                        scene.groups[finest].levels,
+                    ];
+                    gpu.queue.write_buffer(
+                        &self.draw_buffer,
+                        self.batch_offset(list, g) as u64,
+                        bytemuck::cast_slice(&base),
+                    );
                 }
             }
         }
         // The grass patches near any view, after the placed things, one batch for each
         // level of detail. They are sent again only when the patches change.
-        let mut headers: Vec<[u32; 3]> = scene.groups.iter().map(|g| {
-            let mesh = &scene.meshes[g.mesh];
-            [mesh.index_count, mesh.first_index, mesh.base_vertex as u32]
-        }).collect();
+        let mut headers: Vec<[u32; 3]> = scene
+            .groups
+            .iter()
+            .map(|g| {
+                let mesh = &scene.meshes[g.mesh];
+                [mesh.index_count, mesh.first_index, mesh.base_vertex as u32]
+            })
+            .collect();
         let grass_group = scene.groups.len();
         let mut grass_counts = [0u32; crate::grass::LEVELS];
         let mut instance_count = instances.len();
@@ -1473,7 +1940,9 @@ impl ScenePass {
             // Grass follows every place the scene's batches take in a list, the trees'
             // coarser levels included.
             let list_end = scene.list_end.max(instances.len() as u32);
-            let chosen = t.grass.choose(&eyes, MAX_INSTANCES.saturating_sub(list_end as usize));
+            let chosen = t
+                .grass
+                .choose(&eyes, MAX_INSTANCES.saturating_sub(list_end as usize));
             let (patches, counts) = t.grass.instances(&chosen, list_end, grass_group as u32);
             grass_counts = counts;
             instance_count += patches.len();
@@ -1481,8 +1950,14 @@ impl ScenePass {
             let key = (instances.len(), chosen);
             if self.grass_sent.as_ref() != Some(&key) {
                 if !patches.is_empty() {
-                    let offset = (instances.len() * std::mem::size_of::<crate::world_gpu::InstanceGpu>()) as u64;
-                    gpu.queue.write_buffer(&self.instance_buffer, offset, bytemuck::cast_slice(&patches));
+                    let offset = (instances.len()
+                        * std::mem::size_of::<crate::world_gpu::InstanceGpu>())
+                        as u64;
+                    gpu.queue.write_buffer(
+                        &self.instance_buffer,
+                        offset,
+                        bytemuck::cast_slice(&patches),
+                    );
                 }
                 self.grass_sent = Some(key);
             }
@@ -1490,11 +1965,24 @@ impl ScenePass {
             for (l, count) in counts.iter().enumerate() {
                 for list in 1..=views.len().min(MAX_VIEWS) {
                     let base = [(list * MAX_INSTANCES) as u32 + start, 0, 0, 0];
-                    gpu.queue.write_buffer(&self.draw_buffer, self.batch_offset(list, grass_group + l) as u64, bytemuck::cast_slice(&base));
+                    gpu.queue.write_buffer(
+                        &self.draw_buffer,
+                        self.batch_offset(list, grass_group + l) as u64,
+                        bytemuck::cast_slice(&base),
+                    );
                 }
                 start += count;
             }
-            gpu.queue.write_buffer(&t.grass_uniform, 0, bytemuck::bytes_of(&t.grass.uniform(frame.seconds, &eyes, &frame.weather, &self.wind_sentences)));
+            gpu.queue.write_buffer(
+                &t.grass_uniform,
+                0,
+                bytemuck::bytes_of(&t.grass.uniform(
+                    frame.seconds,
+                    &eyes,
+                    &frame.weather,
+                    &self.wind_sentences,
+                )),
+            );
         }
         // What casts shadows, as a number that changes whenever any of it does: the
         // still things (the scene, the terrain, what is broken) and, for the lights' cubes,
@@ -1502,6 +1990,7 @@ impl ScenePass {
         let statics = {
             let mut h = vellmark_sim::Fnv64::new();
             h.u64(scene.placed.len() as u64);
+            h.u64(scene.moves());
             h.u64(terrain.map_or(0, |t| t.tile_count as u64));
             for b in frame.broken {
                 h.u64(*b);
@@ -1516,14 +2005,25 @@ impl ScenePass {
         // stretch of time has at most one, at a time fixed by the clock, so a capture or
         // a replay sees the same gusts. A tool may ask for one, written whole.
         let mut reading: Option<(Gust, f32)> = None;
-        if let (Some(t), Some(first), false) = (terrain, views.first(), self.wind_sentences.is_empty()) {
+        if let (Some(t), Some(first), false) =
+            (terrain, views.first(), self.wind_sentences.is_empty())
+        {
             let count = self.wind_sentences.len() as u32;
             if let Some((n, progress)) = frame.wind_gust {
                 // Asked for by a tool: placed when it begins, then held where it is.
                 let n = n % count;
-                let stale = self.gust.is_none_or(|g| g.window != u64::MAX || g.sentence != n || progress < g.start);
+                let stale = self
+                    .gust
+                    .is_none_or(|g| g.window != u64::MAX || g.sentence != n || progress < g.start);
                 if stale {
-                    self.gust = gust_ahead(first, &t.grass, n, self.wind_sentences[n as usize].len(), u64::MAX, progress);
+                    self.gust = gust_ahead(
+                        first,
+                        &t.grass,
+                        n,
+                        self.wind_sentences[n as usize].len(),
+                        u64::MAX,
+                        progress,
+                    );
                 }
                 if let Some(g) = self.gust.as_mut() {
                     g.start = progress;
@@ -1531,13 +2031,25 @@ impl ScenePass {
                 }
             } else {
                 let window = (frame.seconds / GUST_WINDOW).floor().max(0.0) as u64;
-                let h = (window.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ 0x51ed_270b).wrapping_mul(0xff51_afd7_ed55_8ccd);
+                let h = (window.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ 0x51ed_270b)
+                    .wrapping_mul(0xff51_afd7_ed55_8ccd);
                 let start = window as f32 * GUST_WINDOW + 20.0 + ((h >> 20) % 100) as f32;
                 let windy = frame.weather.wind_strength > 0.3;
-                if h % 10 < 6 && windy && frame.seconds >= start && frame.seconds < start + GUST_SECONDS {
+                if h % 10 < 6
+                    && windy
+                    && frame.seconds >= start
+                    && frame.seconds < start + GUST_SECONDS
+                {
                     if self.gust.is_none_or(|g| g.window != window) {
                         let n = ((h >> 40) % count as u64) as u32;
-                        self.gust = gust_ahead(first, &t.grass, n, self.wind_sentences[n as usize].len(), window, start);
+                        self.gust = gust_ahead(
+                            first,
+                            &t.grass,
+                            n,
+                            self.wind_sentences[n as usize].len(),
+                            window,
+                            start,
+                        );
                     }
                     if let Some(g) = self.gust.filter(|g| g.window == window) {
                         reading = Some((g, (frame.seconds - g.start) / GUST_SECONDS));
@@ -1555,7 +2067,13 @@ impl ScenePass {
                 if c == CASCADES - 1 {
                     // The far cascade is kept from frame to frame: see `far_cascade`.
                     let s = i.min(SHADOWED_VIEWS - 1);
-                    let (matrix, redraw) = self.far_cascade(s, source.camera.eye, atmosphere.light_dir, statics, &frame.relief);
+                    let (matrix, redraw) = self.far_cascade(
+                        s,
+                        source.camera.eye,
+                        atmosphere.light_dir,
+                        statics,
+                        &frame.relief,
+                    );
                     *slot = matrix;
                     if i < SHADOWED_VIEWS && redraw {
                         self.write_cascade(gpu, i * CASCADES + c, slot, surface.glowing);
@@ -1593,7 +2111,12 @@ impl ScenePass {
             let w = &frame.weather;
             uniform.weather = [w.rain, w.wetness, w.wind_strength, 0.0];
             let r = &frame.relief;
-            uniform.quality = [r.far_grass(), r.contact(), r.fog_grid(), r.particles() * self.quality.particles];
+            uniform.quality = [
+                r.far_grass(),
+                r.contact(),
+                r.fog_grid(),
+                r.particles() * self.quality.particles,
+            ];
             uniform.wind = [w.wind[0], w.wind[1], 0.0, 0.0];
             if let Some((g, progress)) = reading {
                 uniform.sentence = [g.origin.x, g.origin.y, g.along.x, g.along.y];
@@ -1602,19 +2125,46 @@ impl ScenePass {
             if let Some(t) = terrain {
                 uniform.ground_tiles = t.tiles_around(view.camera.eye.x, view.camera.eye.z);
             }
-            magic.fill(&mut uniform, &|id| scene.placed.iter().position(|p| p.key.0 == id).map(|i| i as u32 + 1));
-            gpu.queue.write_buffer(&self.view_buffer, i as u64 * self.view_stride, bytemuck::bytes_of(&uniform));
+            magic.fill(&mut uniform, &|id| {
+                scene
+                    .placed
+                    .iter()
+                    .position(|p| p.key.0 == id)
+                    .map(|i| i as u32 + 1)
+            });
+            gpu.queue.write_buffer(
+                &self.view_buffer,
+                i as u64 * self.view_stride,
+                bytemuck::bytes_of(&uniform),
+            );
         }
         // In the reveal mask nothing may bleed from one pixel to the next.
-        let (bloom, edge) = if frame.reveal_mask { (0.0, 0.0) } else { (0.045, 1.0) };
+        let (bloom, edge) = if frame.reveal_mask {
+            (0.0, 0.0)
+        } else {
+            (0.045, 1.0)
+        };
         let g = self.grade.at(frame.time_of_day);
         let post: [f32; 16] = [
-            atmosphere.exposure, bloom, edge, if frame.reveal_mask { 1.0 } else { 0.0 },
-            g.lift[0], g.lift[1], g.lift[2], g.saturation,
-            g.gamma[0], g.gamma[1], g.gamma[2], scene_size.0 as f32 / target_size.0 as f32,
-            g.gain[0], g.gain[1], g.gain[2], scene_size.1 as f32 / target_size.1 as f32,
+            atmosphere.exposure,
+            bloom,
+            edge,
+            if frame.reveal_mask { 1.0 } else { 0.0 },
+            g.lift[0],
+            g.lift[1],
+            g.lift[2],
+            g.saturation,
+            g.gamma[0],
+            g.gamma[1],
+            g.gamma[2],
+            scene_size.0 as f32 / target_size.0 as f32,
+            g.gain[0],
+            g.gain[1],
+            g.gain[2],
+            scene_size.1 as f32 / target_size.1 as f32,
         ];
-        gpu.queue.write_buffer(&self.post_buffer, 0, bytemuck::cast_slice(&post));
+        gpu.queue
+            .write_buffer(&self.post_buffer, 0, bytemuck::cast_slice(&post));
 
         let aspects: Vec<f32> = views
             .iter()
@@ -1623,12 +2173,24 @@ impl ScenePass {
                 w / h
             })
             .collect();
-        self.lights.update(gpu, &magic.lights(&scene.lights), views, &aspects, generation, self.quality.shadowed_lights);
+        self.lights.update(
+            gpu,
+            &magic.lights(&scene.lights),
+            views,
+            &aspects,
+            generation,
+            self.quality.shadowed_lights,
+        );
         if let Some((_, position, radius)) = self.lights.draw {
             self.shadows_drawn.1 += 1;
             for face in 0..CUBE_FACES {
                 let matrix = cube_face_matrix(position, radius, face);
-                self.write_cascade(gpu, CASCADES * SHADOWED_VIEWS + face, &matrix, surface.glowing);
+                self.write_cascade(
+                    gpu,
+                    CASCADES * SHADOWED_VIEWS + face,
+                    &matrix,
+                    surface.glowing,
+                );
             }
         }
 
@@ -1644,15 +2206,38 @@ impl ScenePass {
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.shadow_layers[layer],
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: timers.render_pass(["shadows", "shadows 2", "shadows 3", "shadows 4", "shadows 5", "shadows 6"][layer]),
+                timestamp_writes: timers.render_pass(
+                    [
+                        "shadows",
+                        "shadows 2",
+                        "shadows 3",
+                        "shadows 4",
+                        "shadows 5",
+                        "shadows 6",
+                    ][layer],
+                ),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            pass.set_bind_group(0, &self.cascade_bind_group, &[(layer as u64 * self.cascade_stride) as u32]);
-            self.draw_scene(&mut pass, scene, 0, 1, &self.pipelines.shadow, &self.pipelines.tree_shadow);
+            pass.set_bind_group(
+                0,
+                &self.cascade_bind_group,
+                &[(layer as u64 * self.cascade_stride) as u32],
+            );
+            self.draw_scene(
+                &mut pass,
+                scene,
+                0,
+                1,
+                &self.pipelines.shadow,
+                &self.pipelines.tree_shadow,
+            );
             self.draw_letter_shadows(&mut pass, letter_count);
             if terrain.is_some() {
                 pass.set_pipeline(&self.pipelines.terrain_shadow);
@@ -1669,16 +2254,39 @@ impl ScenePass {
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.lights.cube_faces[cube * CUBE_FACES + face],
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
                     stencil_ops: None,
                 }),
-                timestamp_writes: timers.render_pass(["light shadow", "light shadow 2", "light shadow 3", "light shadow 4", "light shadow 5", "light shadow 6"][face]),
+                timestamp_writes: timers.render_pass(
+                    [
+                        "light shadow",
+                        "light shadow 2",
+                        "light shadow 3",
+                        "light shadow 4",
+                        "light shadow 5",
+                        "light shadow 6",
+                    ][face],
+                ),
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
             {
-                pass.set_bind_group(0, &self.cascade_bind_group, &[((CASCADES * SHADOWED_VIEWS + face) as u64 * self.cascade_stride) as u32]);
-                self.draw_scene(&mut pass, scene, 0, 1, &self.pipelines.shadow, &self.pipelines.tree_shadow);
+                pass.set_bind_group(
+                    0,
+                    &self.cascade_bind_group,
+                    &[((CASCADES * SHADOWED_VIEWS + face) as u64 * self.cascade_stride) as u32],
+                );
+                self.draw_scene(
+                    &mut pass,
+                    scene,
+                    0,
+                    1,
+                    &self.pipelines.shadow,
+                    &self.pipelines.tree_shadow,
+                );
                 self.draw_letter_shadows(&mut pass, letter_count);
             }
         }
@@ -1686,7 +2294,13 @@ impl ScenePass {
         self.targets(gpu, target_size);
         if let (Some(t), None) = (terrain, &self.water_group) {
             let tg = self.targets.as_ref().unwrap();
-            self.water_group = Some(t.water_group(&gpu.device, &self.water_layout, &tg.behind, &tg.depth_msaa, &self.water_sampler));
+            self.water_group = Some(t.water_group(
+                &gpu.device,
+                &self.water_layout,
+                &tg.behind,
+                &tg.depth_msaa,
+                &self.water_sampler,
+            ));
         }
         let cull_views: Vec<crate::cull::CullView> = views
             .iter()
@@ -1700,21 +2314,42 @@ impl ScenePass {
                 }
             })
             .collect();
-        self.culling.prepare(gpu, &headers, &cull_views, instance_count, &self.targets.as_ref().unwrap().pyramid);
+        self.culling.prepare(
+            gpu,
+            &headers,
+            &cull_views,
+            instance_count,
+            &self.targets.as_ref().unwrap().pyramid,
+        );
         let targets = self.targets.as_ref().unwrap();
-        let viewports: Vec<(f32, f32, f32, f32)> = views.iter().map(|v| v.viewport.pixels(scene_size)).collect();
+        let viewports: Vec<(f32, f32, f32, f32)> = views
+            .iter()
+            .map(|v| v.viewport.pixels(scene_size))
+            .collect();
 
         // Culling: each view's list of what it can see, against last frame's pyramid.
         {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("culling"), timestamp_writes: timers.compute_pass("culling") });
-            self.culling.cull(&mut pass, &targets.pyramid, views.len(), instance_count);
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("culling"),
+                timestamp_writes: timers.compute_pass("culling"),
+            });
+            self.culling
+                .cull(&mut pass, &targets.pyramid, views.len(), instance_count);
         }
 
         // The fog, now that the shadow maps it reads are drawn.
         {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("fog"), timestamp_writes: timers.compute_pass("fog") });
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("fog"),
+                timestamp_writes: timers.compute_pass("fog"),
+            });
             for v in 0..views.len().min(SHADOWED_VIEWS) {
-                self.fog.dispatch(&mut pass, v, (v as u64 * self.view_stride) as u32, frame.relief.fog_grid());
+                self.fog.dispatch(
+                    &mut pass,
+                    v,
+                    (v as u64 * self.view_stride) as u32,
+                    frame.relief.fog_grid(),
+                );
             }
         }
         {
@@ -1723,7 +2358,10 @@ impl ScenePass {
                 color_attachments: &[],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &targets.depth_msaa,
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
                     stencil_ops: None,
                 }),
                 timestamp_writes: timers.render_pass("depth"),
@@ -1733,8 +2371,19 @@ impl ScenePass {
             pass.set_bind_group(1, &surface.bind_group, &[]);
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
-                pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
-                self.draw_scene_culled(&mut pass, scene, i, 2, &self.pipelines.depth, &self.pipelines.tree_depth);
+                pass.set_bind_group(
+                    0,
+                    &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)],
+                    &[(i as u64 * self.view_stride) as u32],
+                );
+                self.draw_scene_culled(
+                    &mut pass,
+                    scene,
+                    i,
+                    2,
+                    &self.pipelines.depth,
+                    &self.pipelines.tree_depth,
+                );
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain_depth);
                     self.draw_terrain(&mut pass, terrain, 2);
@@ -1746,7 +2395,10 @@ impl ScenePass {
         }
         // The depth pyramid, from the depth just drawn, for the next frame's culling.
         {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("depth pyramid"), timestamp_writes: timers.compute_pass("depth pyramid") });
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("depth pyramid"),
+                timestamp_writes: timers.compute_pass("depth pyramid"),
+            });
             self.culling.build_pyramid(&mut pass, &targets.pyramid);
         }
         // Contact occlusion, from the depth just drawn.
@@ -1755,8 +2407,17 @@ impl ScenePass {
                 label: Some("contact occlusion"),
                 timestamp_writes: timers.compute_pass("contact occlusion"),
             });
-            for (i, &(_, _, w, h)) in viewports.iter().enumerate().filter(|_| frame.relief.contact() > 0.0) {
-                self.contact.dispatch(&mut pass, &targets.contact_group, (i as u64 * self.view_stride) as u32, (w as u32, h as u32));
+            for (i, &(_, _, w, h)) in viewports
+                .iter()
+                .enumerate()
+                .filter(|_| frame.relief.contact() > 0.0)
+            {
+                self.contact.dispatch(
+                    &mut pass,
+                    &targets.contact_group,
+                    (i as u64 * self.view_stride) as u32,
+                    (w as u32, h as u32),
+                );
             }
         }
         {
@@ -1766,11 +2427,17 @@ impl ScenePass {
                     view: &targets.colour_msaa,
                     depth_slice: None,
                     resolve_target: Some(&targets.resolved),
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Discard },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Discard,
+                    },
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &targets.depth_msaa,
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    }),
                     stencil_ops: None,
                 }),
                 timestamp_writes: timers.render_pass("opaque"),
@@ -1780,8 +2447,19 @@ impl ScenePass {
             pass.set_bind_group(1, &surface.bind_group, &[]);
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
-                pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
-                self.draw_scene_culled(&mut pass, scene, i, 2, &self.pipelines.opaque, &self.pipelines.tree);
+                pass.set_bind_group(
+                    0,
+                    &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)],
+                    &[(i as u64 * self.view_stride) as u32],
+                );
+                self.draw_scene_culled(
+                    &mut pass,
+                    scene,
+                    i,
+                    2,
+                    &self.pipelines.opaque,
+                    &self.pipelines.tree,
+                );
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain);
                     self.draw_terrain(&mut pass, terrain, 2);
@@ -1806,11 +2484,18 @@ impl ScenePass {
             }
         }
         // The water, over the scene it lies on, which it reads from a copy.
-        if let (Some(t), Some(group)) = (terrain.filter(|t| t.water_tile_count > 0), &self.water_group) {
+        if let (Some(t), Some(group)) = (
+            terrain.filter(|t| t.water_tile_count > 0),
+            &self.water_group,
+        ) {
             encoder.copy_texture_to_texture(
                 targets.resolved_texture.as_image_copy(),
                 targets.behind_texture.as_image_copy(),
-                wgpu::Extent3d { width: targets.size.0, height: targets.size.1, depth_or_array_layers: 1 },
+                wgpu::Extent3d {
+                    width: targets.size.0,
+                    height: targets.size.1,
+                    depth_or_array_layers: 1,
+                },
             );
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("water"),
@@ -1818,7 +2503,10 @@ impl ScenePass {
                     view: &targets.resolved,
                     depth_slice: None,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: timers.render_pass("water"),
@@ -1832,12 +2520,19 @@ impl ScenePass {
             pass.set_index_buffer(t.indices.slice(..), wgpu::IndexFormat::Uint32);
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
-                pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
+                pass.set_bind_group(
+                    0,
+                    &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)],
+                    &[(i as u64 * self.view_stride) as u32],
+                );
                 pass.draw_indexed(0..t.index_count, 0, 0..t.water_tile_count);
             }
         }
         // The rain, over everything, around each view.
-        if let (Some(t), Some(group)) = (terrain.filter(|_| frame.weather.rain > 0.0), &self.water_group) {
+        if let (Some(t), Some(group)) = (
+            terrain.filter(|_| frame.weather.rain > 0.0),
+            &self.water_group,
+        ) {
             let _ = t;
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("rain"),
@@ -1845,7 +2540,10 @@ impl ScenePass {
                     view: &targets.resolved,
                     depth_slice: None,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: timers.render_pass("rain"),
@@ -1858,19 +2556,32 @@ impl ScenePass {
             pass.set_bind_group(3, group, &[]);
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
-                pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
+                pass.set_bind_group(
+                    0,
+                    &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)],
+                    &[(i as u64 * self.view_stride) as u32],
+                );
                 pass.draw(0..6, 0..RAIN_DROPS);
             }
         }
         // Bloom: down the chain, then back up it, each level added to the one above.
-        let fullscreen = |encoder: &mut wgpu::CommandEncoder, name, target: &wgpu::TextureView, pipeline: &wgpu::RenderPipeline, source: &wgpu::BindGroup, load, timers: &mut PassTimers| {
+        let fullscreen = |encoder: &mut wgpu::CommandEncoder,
+                          name,
+                          target: &wgpu::TextureView,
+                          pipeline: &wgpu::RenderPipeline,
+                          source: &wgpu::BindGroup,
+                          load,
+                          timers: &mut PassTimers| {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("bloom"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: target,
                     depth_slice: None,
                     resolve_target: None,
-                    ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load,
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: timers.render_pass(name),
@@ -1882,14 +2593,50 @@ impl ScenePass {
             pass.draw(0..3, 0..1);
         };
         let clear = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
-        const DOWN: [&str; BLOOM_LEVELS] = ["bloom", "bloom down 2", "bloom down 3", "bloom down 4", "bloom down 5"];
-        const UP: [&str; BLOOM_LEVELS] = ["bloom up 1", "bloom up 2", "bloom up 3", "bloom up 4", "bloom up 5"];
-        fullscreen(encoder, DOWN[0], &targets.bloom_levels[0], &self.pipelines.bloom_first, &targets.scene_source, clear, timers);
+        const DOWN: [&str; BLOOM_LEVELS] = [
+            "bloom",
+            "bloom down 2",
+            "bloom down 3",
+            "bloom down 4",
+            "bloom down 5",
+        ];
+        const UP: [&str; BLOOM_LEVELS] = [
+            "bloom up 1",
+            "bloom up 2",
+            "bloom up 3",
+            "bloom up 4",
+            "bloom up 5",
+        ];
+        fullscreen(
+            encoder,
+            DOWN[0],
+            &targets.bloom_levels[0],
+            &self.pipelines.bloom_first,
+            &targets.scene_source,
+            clear,
+            timers,
+        );
         for level in 1..BLOOM_LEVELS {
-            fullscreen(encoder, DOWN[level], &targets.bloom_levels[level], &self.pipelines.bloom_down, &targets.bloom_sources[level - 1], clear, timers);
+            fullscreen(
+                encoder,
+                DOWN[level],
+                &targets.bloom_levels[level],
+                &self.pipelines.bloom_down,
+                &targets.bloom_sources[level - 1],
+                clear,
+                timers,
+            );
         }
         for level in (0..BLOOM_LEVELS - 1).rev() {
-            fullscreen(encoder, UP[level], &targets.bloom_levels[level], &self.pipelines.bloom_up, &targets.bloom_sources[level + 1], wgpu::LoadOp::Load, timers);
+            fullscreen(
+                encoder,
+                UP[level],
+                &targets.bloom_levels[level],
+                &self.pipelines.bloom_up,
+                &targets.bloom_sources[level + 1],
+                wgpu::LoadOp::Load,
+                timers,
+            );
         }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -1898,7 +2645,10 @@ impl ScenePass {
                     view: target,
                     depth_slice: None,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: timers.render_pass("post"),
@@ -1913,4 +2663,3 @@ impl ScenePass {
         self.culling.pyramid_ready = true;
     }
 }
-

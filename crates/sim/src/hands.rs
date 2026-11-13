@@ -68,7 +68,12 @@ impl Hands {
     pub fn interrupt(&mut self) {
         for h in [&mut self.main, &mut self.off] {
             if h.down {
-                *h = One { down: true, held: 0.0, holding: false, spent: true };
+                *h = One {
+                    down: true,
+                    held: 0.0,
+                    holding: false,
+                    spent: true,
+                };
             }
         }
         self.both = None;
@@ -88,13 +93,25 @@ impl Hands {
         // a hold.
         if self.both.is_none() {
             let pressing = |h: &One, down: bool| down && !h.down;
-            let early = |h: &One, down: bool| down && h.down && !h.holding && h.held < TOGETHER_SECONDS;
-            let together = (pressing(&self.main, main_down) && (early(&self.off, off_down) || pressing(&self.off, off_down)))
+            let early =
+                |h: &One, down: bool| down && h.down && !h.holding && h.held < TOGETHER_SECONDS;
+            let together = (pressing(&self.main, main_down)
+                && (early(&self.off, off_down) || pressing(&self.off, off_down)))
                 || (pressing(&self.off, off_down) && early(&self.main, main_down));
             if together {
                 self.both = Some(0.0);
-                self.main = One { down: true, held: 0.0, holding: true, spent: false };
-                self.off = One { down: true, held: 0.0, holding: true, spent: false };
+                self.main = One {
+                    down: true,
+                    held: 0.0,
+                    holding: true,
+                    spent: false,
+                };
+                self.off = One {
+                    down: true,
+                    held: 0.0,
+                    holding: true,
+                    spent: false,
+                };
                 out.push(HandEvent::BothBegin);
                 return;
             }
@@ -107,13 +124,33 @@ impl Hands {
             // Letting go of either ends it; the other must be pressed again to act.
             out.push(HandEvent::BothEnd(t));
             self.both = None;
-            self.main = One { down: main_down, held: 0.0, holding: false, spent: main_down };
-            self.off = One { down: off_down, held: 0.0, holding: false, spent: off_down };
+            self.main = One {
+                down: main_down,
+                held: 0.0,
+                holding: false,
+                spent: main_down,
+            };
+            self.off = One {
+                down: off_down,
+                held: 0.0,
+                holding: false,
+                spent: off_down,
+            };
             return;
         }
-        for (hand, h, down) in [(Hand::Main, &mut self.main, main_down), (Hand::Off, &mut self.off, off_down)] {
+        for (hand, h, down) in [
+            (Hand::Main, &mut self.main, main_down),
+            (Hand::Off, &mut self.off, off_down),
+        ] {
             match (h.down, down) {
-                (false, true) => *h = One { down: true, held: 0.0, holding: false, spent: false },
+                (false, true) => {
+                    *h = One {
+                        down: true,
+                        held: 0.0,
+                        holding: false,
+                        spent: false,
+                    }
+                }
                 (true, true) => {
                     h.held += dt;
                     if !h.holding && !h.spent && h.held >= HOLD_SECONDS {
@@ -158,38 +195,65 @@ mod tests {
 
     #[test]
     fn a_quick_press_is_a_tap() {
-        assert_eq!(run(&[(true, false, 3), (false, false, 2)]), vec![HandEvent::Tap(Hand::Main)]);
-        assert_eq!(run(&[(false, true, 3), (false, false, 2)]), vec![HandEvent::Tap(Hand::Off)]);
+        assert_eq!(
+            run(&[(true, false, 3), (false, false, 2)]),
+            vec![HandEvent::Tap(Hand::Main)]
+        );
+        assert_eq!(
+            run(&[(false, true, 3), (false, false, 2)]),
+            vec![HandEvent::Tap(Hand::Off)]
+        );
     }
 
     #[test]
     fn a_long_press_is_a_hold_that_charges() {
         let events = run(&[(false, true, STEPS_A_SECOND), (false, false, 1)]);
         assert_eq!(events[0], HandEvent::HoldBegin(Hand::Off));
-        let HandEvent::HoldEnd(Hand::Off, charged) = events[1] else { panic!("{events:?}") };
+        let HandEvent::HoldEnd(Hand::Off, charged) = events[1] else {
+            panic!("{events:?}")
+        };
         assert!((charged - (1.0 - HOLD_SECONDS)).abs() < 0.05, "{charged}");
     }
 
     #[test]
     fn each_hand_is_its_own() {
         // The main hand taps while the off hand holds.
-        let events = run(&[(false, true, STEPS_A_SECOND / 2), (true, true, 3), (false, true, 3), (false, false, 1)]);
+        let events = run(&[
+            (false, true, STEPS_A_SECOND / 2),
+            (true, true, 3),
+            (false, true, 3),
+            (false, false, 1),
+        ]);
         assert!(events.contains(&HandEvent::HoldBegin(Hand::Off)));
         assert!(events.contains(&HandEvent::Tap(Hand::Main)));
-        assert!(matches!(events.last(), Some(HandEvent::HoldEnd(Hand::Off, _))));
+        assert!(matches!(
+            events.last(),
+            Some(HandEvent::HoldEnd(Hand::Off, _))
+        ));
     }
 
     #[test]
     fn both_together_act_as_one() {
-        let events = run(&[(true, false, 2), (true, true, STEPS_A_SECOND), (false, false, 1)]);
+        let events = run(&[
+            (true, false, 2),
+            (true, true, STEPS_A_SECOND),
+            (false, false, 1),
+        ]);
         assert_eq!(events[0], HandEvent::BothBegin);
-        assert!(matches!(events[1], HandEvent::BothEnd(t) if t > 0.9), "{events:?}");
+        assert!(
+            matches!(events[1], HandEvent::BothEnd(t) if t > 0.9),
+            "{events:?}"
+        );
         assert_eq!(events.len(), 2, "no tap or hold of either hand: {events:?}");
     }
 
     #[test]
     fn a_second_hand_pressed_late_is_not_together() {
-        let events = run(&[(true, false, STEPS_A_SECOND / 2), (true, true, 3), (false, false, 1)]);
+        let events = run(&[
+            (true, false, STEPS_A_SECOND / 2),
+            (true, true, 3),
+            (false, false, 1),
+        ]);
         assert!(!events.contains(&HandEvent::BothBegin), "{events:?}");
     }
 }

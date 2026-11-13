@@ -18,6 +18,8 @@ use glam::{Quat, Vec3};
 
 /// How long a letter takes to come home when its thing is made whole.
 pub const MEND_SECONDS: f32 = 1.6;
+/// Seconds a metre: how fast a thing being mended knits outward from the word.
+pub const MEND_SPREAD: f32 = 0.11;
 /// The most loose letters alive at once. Older ones at rest are swept first.
 pub const MAX_LETTERS: usize = 60_000;
 /// The most letters one thing falls into, however big it is: a door is about this.
@@ -27,7 +29,10 @@ pub const THING_LETTERS: usize = 24_000;
 /// fall into no more than [`THING_LETTERS`].
 pub fn keep_for(boxes: impl Iterator<Item = (Vec3, Vec3)>) -> f32 {
     let spacing = LETTER_HALF * 2.0 * 1.25;
-    let cells: f32 = boxes.map(|(min, max)| ((max - min) / spacing).floor().max(Vec3::ONE)).map(|n| n.x * n.y * n.z).sum();
+    let cells: f32 = boxes
+        .map(|(min, max)| ((max - min) / spacing).floor().max(Vec3::ONE))
+        .map(|n| n.x * n.y * n.z)
+        .sum();
     (THING_LETTERS as f32 / cells.max(1.0)).min(0.7)
 }
 /// Half the side of a letter, in metres. Letters are the size of the 1.28 cm cells.
@@ -81,6 +86,8 @@ pub struct Letter {
     pub home: Vec3,
     /// The thing it broke from, by its permanent ID.
     pub owner: u64,
+    /// Which of the thing's boxes it was part of.
+    pub piece: u32,
     /// On its way home, being made whole: where it set out from, and how far along it
     /// is in seconds, below 0 while it waits its turn.
     pub returning: Option<(Vec3, f32)>,
@@ -102,19 +109,31 @@ pub struct Debris {
 }
 
 fn cell_of(p: Vec3) -> (i32, i32) {
-    ((p.x / PILE_CELL).floor() as i32, (p.z / PILE_CELL).floor() as i32)
+    (
+        (p.x / PILE_CELL).floor() as i32,
+        (p.z / PILE_CELL).floor() as i32,
+    )
 }
 
 impl Debris {
     /// The heap in a cell standing on the surface at `base`, if there is one.
     fn pile(&self, cell: (i32, i32), base: f32) -> Option<Pile> {
-        self.piles.get(&cell)?.iter().copied().find(|p| (p.base - base).abs() < 0.01)
+        self.piles
+            .get(&cell)?
+            .iter()
+            .copied()
+            .find(|p| (p.base - base).abs() < 0.01)
     }
 
     /// The heap in a cell that a letter at height `y` would land on: the highest one
     /// whose foot is below it.
     fn pile_under(&self, cell: (i32, i32), y: f32) -> Option<Pile> {
-        self.piles.get(&cell)?.iter().copied().filter(|p| p.base <= y + 0.005).max_by(|a, b| a.base.total_cmp(&b.base))
+        self.piles
+            .get(&cell)?
+            .iter()
+            .copied()
+            .filter(|p| p.base <= y + 0.005)
+            .max_by(|a, b| a.base.total_cmp(&b.base))
     }
 
     fn set_pile(&mut self, cell: (i32, i32), pile: Pile) {
@@ -132,7 +151,11 @@ impl Debris {
         let z = (cell.1 as f32 + 0.5) * PILE_CELL;
         let mut best = self.ground_at(x, z);
         for s in &self.solids {
-            if x < s.min.x - LETTER_HALF || x > s.max.x + LETTER_HALF || z < s.min.z - LETTER_HALF || z > s.max.z + LETTER_HALF {
+            if x < s.min.x - LETTER_HALF
+                || x > s.max.x + LETTER_HALF
+                || z < s.min.z - LETTER_HALF
+                || z > s.max.z + LETTER_HALF
+            {
                 continue;
             }
             if s.max.y <= y + 1.0e-3 {
@@ -153,17 +176,34 @@ impl Debris {
         let (mut base, mut top) = (base, top);
         for _ in 0..MOST_SLIDE {
             let mut lowest: Option<((i32, i32), f32, f32)> = None;
-            for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, -1), (-1, 1), (1, 1)] {
+            for (dx, dz) in [
+                (-1, 0),
+                (1, 0),
+                (0, -1),
+                (0, 1),
+                (-1, -1),
+                (1, -1),
+                (-1, 1),
+                (1, 1),
+            ] {
                 let next = (cell.0 + dx, cell.1 + dz);
-                let Some(surface) = self.surface(next, top) else { continue };
+                let Some(surface) = self.surface(next, top) else {
+                    continue;
+                };
                 let next_top = self.pile(next, surface).map_or(surface, |p| p.top);
                 // Corner cells are further away, so they must be lower still.
-                let reach = if dx != 0 && dz != 0 { REPOSE * std::f32::consts::SQRT_2 } else { REPOSE };
+                let reach = if dx != 0 && dz != 0 {
+                    REPOSE * std::f32::consts::SQRT_2
+                } else {
+                    REPOSE
+                };
                 if next_top < top - reach && lowest.is_none_or(|l| next_top < l.2) {
                     lowest = Some((next, surface, next_top));
                 }
             }
-            let Some((next, next_base, next_top)) = lowest else { break };
+            let Some((next, next_base, next_top)) = lowest else {
+                break;
+            };
             position.x += (next.0 - cell.0) as f32 * PILE_CELL;
             position.z += (next.1 - cell.1) as f32 * PILE_CELL;
             (cell, base, top) = (next, next_base, next_top);
@@ -173,22 +213,44 @@ impl Debris {
         // as nothing lies quite flat on a heap of other things.
         let turn = (letter.seed % 6283) as f32 / 1000.0;
         let tip = ((letter.seed >> 13) % 100) as f32 / 100.0 - 0.5;
-        let tip = if top > base + 1.0e-4 { tip * 0.5 } else { tip * 0.06 };
-        letter.rotation = Quat::from_rotation_y(turn) * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + tip);
+        let tip = if top > base + 1.0e-4 {
+            tip * 0.5
+        } else {
+            tip * 0.06
+        };
+        letter.rotation =
+            Quat::from_rotation_y(turn) * Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + tip);
         letter.position = Vec3::new(position.x, top + LETTER_THICK * 0.5, position.z);
         letter.velocity = Vec3::ZERO;
         letter.spin = 0.0;
         letter.resting = true;
         letter.floor = base;
-        self.set_pile(cell, Pile { base, top: top + LETTER_THICK });
+        self.set_pile(
+            cell,
+            Pile {
+                base,
+                top: top + LETTER_THICK,
+            },
+        );
     }
 
     /// Measures every heap again from the letters at rest in it.
     fn remeasure(&mut self) {
         self.piles.clear();
-        let resting: Vec<(Vec3, f32)> = self.letters.iter().filter(|l| l.resting).map(|l| (l.position, l.floor)).collect();
+        let resting: Vec<(Vec3, f32)> = self
+            .letters
+            .iter()
+            .filter(|l| l.resting)
+            .map(|l| (l.position, l.floor))
+            .collect();
         for (p, floor) in resting {
-            self.set_pile(cell_of(p), Pile { base: floor, top: p.y + LETTER_THICK * 0.5 });
+            self.set_pile(
+                cell_of(p),
+                Pile {
+                    base: floor,
+                    top: p.y + LETTER_THICK * 0.5,
+                },
+            );
         }
         self.piles_stale = false;
     }
@@ -197,12 +259,17 @@ impl Debris {
 impl Debris {
     /// Makes a broken thing whole: each of its letters sets out for home, the nearest to
     /// home first, along an arc back up the way it fell, its spin unwinding.
-    pub fn mend(&mut self, owner: u64) -> usize {
+    pub fn mend(&mut self, owner: u64, from: Vec3) -> usize {
         let mut n = 0;
-        for l in self.letters.iter_mut().filter(|l| l.owner == owner && l.returning.is_none()) {
+        for l in self
+            .letters
+            .iter_mut()
+            .filter(|l| l.owner == owner && l.returning.is_none())
+        {
             let away = l.position.distance(l.home);
-            // Further letters set out first, so that all arrive together.
-            let wait = -(0.6 - (away * 0.12).min(0.6));
+            // Further letters set out first, so that neighbours arrive together; and the
+            // thing knits outward from where the word was written.
+            let wait = -(0.6 - (away * 0.12).min(0.6)) - l.home.distance(from) * MEND_SPREAD;
             l.returning = Some((l.position, wait));
             if l.resting {
                 l.resting = false;
@@ -216,13 +283,39 @@ impl Debris {
         n
     }
 
+    /// The pieces of a thing being mended whose letters are all home.
+    pub fn pieces_home(&self, owner: u64) -> Vec<u32> {
+        let mut out: Vec<(u32, bool)> = Vec::new();
+        for l in self.letters.iter().filter(|l| l.owner == owner) {
+            let home = l.returning.is_some_and(|(_, t)| t >= MEND_SECONDS);
+            match out.iter_mut().find(|(p, _)| *p == l.piece) {
+                Some(e) => e.1 &= home,
+                None => out.push((l.piece, home)),
+            }
+        }
+        out.into_iter().filter(|e| e.1).map(|e| e.0).collect()
+    }
+
     /// The things whose letters have all come home since last asked. Their letters are
     /// gone: the thing stands whole again.
     pub fn take_mended(&mut self) -> Vec<u64> {
-        let mut owners: Vec<u64> = self.letters.iter().filter(|l| l.returning.is_some()).map(|l| l.owner).collect();
+        let mut owners: Vec<u64> = self
+            .letters
+            .iter()
+            .filter(|l| l.returning.is_some())
+            .map(|l| l.owner)
+            .collect();
         owners.sort_unstable();
         owners.dedup();
-        let done: Vec<u64> = owners.into_iter().filter(|o| self.letters.iter().filter(|l| l.owner == *o).all(|l| l.returning.is_some_and(|(_, t)| t >= MEND_SECONDS))).collect();
+        let done: Vec<u64> = owners
+            .into_iter()
+            .filter(|o| {
+                self.letters
+                    .iter()
+                    .filter(|l| l.owner == *o)
+                    .all(|l| l.returning.is_some_and(|(_, t)| t >= MEND_SECONDS))
+            })
+            .collect();
         if !done.is_empty() {
             let before = self.letters.len();
             self.letters.retain(|l| !done.contains(&l.owner));
@@ -248,7 +341,10 @@ impl Debris {
     }
 
     fn ground_at(&self, x: f32, z: f32) -> f32 {
-        self.ground.as_ref().and_then(|g| g.height(x, z)).unwrap_or(0.0)
+        self.ground
+            .as_ref()
+            .and_then(|g| g.height(x, z))
+            .unwrap_or(0.0)
     }
 
     pub fn set_solids(&mut self, solids: Vec<Solid>) {
@@ -310,12 +406,18 @@ impl Debris {
             // A little drag, so that a burst does not carry letters across the valley.
             letter.velocity *= 1.0 - 0.35 * dt;
             letter.position += letter.velocity * dt;
-            letter.rotation = (Quat::from_axis_angle(letter.spin_axis, letter.spin * dt) * letter.rotation).normalize();
+            letter.rotation = (Quat::from_axis_angle(letter.spin_axis, letter.spin * dt)
+                * letter.rotation)
+                .normalize();
 
             // The surface it is lying on, if it is lying on one this step.
             let mut on: Option<f32> = None;
             // The ground.
-            let ground = self.ground.as_ref().and_then(|g| g.height(letter.position.x, letter.position.z)).unwrap_or(0.0);
+            let ground = self
+                .ground
+                .as_ref()
+                .and_then(|g| g.height(letter.position.x, letter.position.z))
+                .unwrap_or(0.0);
             if letter.position.y < ground + LETTER_HALF {
                 letter.position.y = ground + LETTER_HALF;
                 strike(letter, Vec3::Y);
@@ -324,7 +426,13 @@ impl Debris {
             for solid in solids {
                 let (min, max) = (solid.min - LETTER_HALF, solid.max + LETTER_HALF);
                 let p = letter.position;
-                if p.x <= min.x || p.x >= max.x || p.y <= min.y || p.y >= max.y || p.z <= min.z || p.z >= max.z {
+                if p.x <= min.x
+                    || p.x >= max.x
+                    || p.y <= min.y
+                    || p.y >= max.y
+                    || p.z <= min.z
+                    || p.z >= max.z
+                {
                     continue;
                 }
                 // Inside: put it back out through the nearest face.
@@ -410,12 +518,17 @@ pub fn shatter(
     burst: Vec3,
     strength: f32,
     owner: u64,
+    piece: u32,
     keep: f32,
     random: &mut dyn FnMut() -> u64,
 ) -> usize {
     let spacing = LETTER_HALF * 2.0 * 1.25;
     let count = |extent: f32| ((extent / spacing).floor() as usize).max(1);
-    let (nx, ny, nz) = (count(max.x - min.x), count(max.y - min.y), count(max.z - min.z));
+    let (nx, ny, nz) = (
+        count(max.x - min.x),
+        count(max.y - min.y),
+        count(max.z - min.z),
+    );
     let cells = nx * ny * nz;
     // Seven cells in ten hold a letter: a thing is not solid print. A big thing keeps
     // fewer, scattered through it, so that it does not bury the world in letters.
@@ -426,9 +539,25 @@ pub fn shatter(
     while if sparse { made < wanted } else { cell < cells } {
         let r = random();
         let local = if sparse {
+            // On the box's faces, by their area: its print is what is seen of it.
             let q = random();
-            let unit = |shift: u32| ((q >> shift) & 0x1f_ffff) as f32 / 2_097_151.0;
-            min + (max - min) * Vec3::new(unit(0), unit(21), unit(42))
+            let unit = |shift: u32| ((q >> shift) & 0xf_ffff) as f32 / 1_048_575.0;
+            let size = max - min;
+            let areas = Vec3::new(size.y * size.z, size.x * size.z, size.x * size.y);
+            let pick = unit(40) * (areas.x + areas.y + areas.z);
+            let axis = if pick < areas.x {
+                0
+            } else if pick < areas.x + areas.y {
+                1
+            } else {
+                2
+            };
+            let mut p = Vec3::ZERO;
+            p[(axis + 1) % 3] = unit(0);
+            p[(axis + 2) % 3] = unit(20);
+            p[axis] = if q >> 63 == 0 { 0.0 } else { 1.0 };
+            let inset = Vec3::splat(LETTER_HALF).min(size * 0.5);
+            (min + size * p).clamp(min + inset, max - inset)
         } else {
             let (iy, rest) = (cell / (nx * nz), cell % (nx * nz));
             let (ix, iz) = (rest / nz, rest % nz);
@@ -451,7 +580,8 @@ pub fn shatter(
                 let distance = away.length().max(0.05);
                 let push = away / distance * (2.6 / (0.4 + distance)) * (0.5 + unit(10));
                 let scatter = Vec3::new(unit(20) - 0.5, unit(30) * 0.8, unit(40) - 0.5) * 1.2;
-                let axis = Vec3::new(unit(14) - 0.5, unit(24) - 0.5, unit(34) - 0.5).normalize_or(Vec3::Y);
+                let axis =
+                    Vec3::new(unit(14) - 0.5, unit(24) - 0.5, unit(34) - 0.5).normalize_or(Vec3::Y);
                 debris.push(Letter {
                     position,
                     velocity: (push + scatter) * strength,
@@ -463,6 +593,7 @@ pub fn shatter(
                     resting: false,
                     home: position,
                     owner,
+                    piece,
                     returning: None,
                     floor: 0.0,
                 });
@@ -490,7 +621,10 @@ mod tests {
     fn broken_door() -> Debris {
         let mut debris = Debris::default();
         // A low wall for letters to strike and land on.
-        debris.set_solids(vec![Solid { min: Vec3::new(-2.0, 0.0, 1.0), max: Vec3::new(2.0, 0.9, 1.4) }]);
+        debris.set_solids(vec![Solid {
+            min: Vec3::new(-2.0, 0.0, 1.0),
+            max: Vec3::new(2.0, 0.9, 1.4),
+        }]);
         let mut random = random_from(11);
         let made = shatter(
             &mut debris,
@@ -501,10 +635,14 @@ mod tests {
             Vec3::new(0.0, 1.0, -0.4),
             1.0,
             7,
+            0,
             0.7,
             &mut random,
         );
-        assert!(made > 20_000, "a door is tens of thousands of letters: {made}");
+        assert!(
+            made > 20_000,
+            "a door is tens of thousands of letters: {made}"
+        );
         debris
     }
 
@@ -514,20 +652,41 @@ mod tests {
         for _ in 0..60 * 12 {
             debris.step(1.0 / 60.0);
         }
-        assert_eq!(debris.awake(), 0, "every letter has come to rest within twelve seconds");
+        assert_eq!(
+            debris.awake(),
+            0,
+            "every letter has come to rest within twelve seconds"
+        );
         let wall = debris.solids[0];
         for letter in &debris.letters {
             assert!(letter.resting);
-            assert!(letter.position.y > 0.0, "none has fallen through the ground");
+            assert!(
+                letter.position.y > 0.0,
+                "none has fallen through the ground"
+            );
             let p = letter.position;
-            let inside = p.x > wall.min.x && p.x < wall.max.x && p.y > wall.min.y && p.y < wall.max.y && p.z > wall.min.z && p.z < wall.max.z;
+            let inside = p.x > wall.min.x
+                && p.x < wall.max.x
+                && p.y > wall.min.y
+                && p.y < wall.max.y
+                && p.z > wall.min.z
+                && p.z < wall.max.z;
             assert!(!inside, "none is left inside the wall");
         }
         // They have spread across the floor, not stayed in a heap where the door stood.
-        let far = debris.letters.iter().filter(|l| l.position.z.abs() > 0.5).count();
+        let far = debris
+            .letters
+            .iter()
+            .filter(|l| l.position.z.abs() > 0.5)
+            .count();
         assert!(far > debris.letters.len() / 10);
         // And some came to rest on top of the wall.
-        assert!(debris.letters.iter().any(|l| l.floor == 0.9 && l.position.y > 0.9 && l.position.y < 1.0));
+        assert!(
+            debris
+                .letters
+                .iter()
+                .any(|l| l.floor == 0.9 && l.position.y > 0.9 && l.position.y < 1.0)
+        );
     }
 
     #[test]
@@ -548,6 +707,7 @@ mod tests {
                 resting: false,
                 home: Vec3::ZERO,
                 owner: 0,
+                piece: 0,
                 returning: None,
                 floor: 0.0,
             });
@@ -556,17 +716,37 @@ mod tests {
             debris.step(1.0 / 60.0);
         }
         assert_eq!(debris.awake(), 0);
-        let highest = debris.letters.iter().map(|l| l.position.y).fold(0.0, f32::max);
-        assert!(highest > 0.03, "the letters stand in a heap, not a single layer: {highest}");
+        let highest = debris
+            .letters
+            .iter()
+            .map(|l| l.position.y)
+            .fold(0.0, f32::max);
+        assert!(
+            highest > 0.03,
+            "the letters stand in a heap, not a single layer: {highest}"
+        );
         // It is a cone, not a column: it has spread wider than it is high.
-        let widest = debris.letters.iter().map(|l| l.position.x.abs().max(l.position.z.abs())).fold(0.0, f32::max);
-        assert!(widest > highest, "wider than high: {widest} against {highest}");
+        let widest = debris
+            .letters
+            .iter()
+            .map(|l| l.position.x.abs().max(l.position.z.abs()))
+            .fold(0.0, f32::max);
+        assert!(
+            widest > highest,
+            "wider than high: {widest} against {highest}"
+        );
         // Nowhere is one cell of the heap higher than its neighbour by more than letters stand.
         for (&(x, z), piles) in &debris.piles {
             let top = piles[0].top;
             for (dx, dz) in [(1, 0), (0, 1), (-1, 0), (0, -1)] {
-                let next = debris.piles.get(&(x + dx, z + dz)).map_or(0.0, |p| p[0].top);
-                assert!(top - next <= REPOSE + LETTER_THICK * 2.0 + 1.0e-4, "a cliff in the heap: {top} beside {next}");
+                let next = debris
+                    .piles
+                    .get(&(x + dx, z + dz))
+                    .map_or(0.0, |p| p[0].top);
+                assert!(
+                    top - next <= REPOSE + LETTER_THICK * 2.0 + 1.0e-4,
+                    "a cliff in the heap: {top} beside {next}"
+                );
             }
         }
         // And every letter lies on the heap's surface, where the map says it is.
@@ -583,7 +763,11 @@ mod tests {
             for _ in 0..300 {
                 debris.step(1.0 / 60.0);
             }
-            debris.letters.iter().map(|l| (l.position.to_array().map(f32::to_bits), l.resting)).collect::<Vec<_>>()
+            debris
+                .letters
+                .iter()
+                .map(|l| (l.position.to_array().map(f32::to_bits), l.resting))
+                .collect::<Vec<_>>()
         };
         assert!(run() == run());
     }
@@ -595,7 +779,7 @@ mod tests {
             debris.step(1.0 / 60.0);
         }
         let made = debris.letters.len();
-        assert_eq!(debris.mend(7), made);
+        assert_eq!(debris.mend(7, Vec3::ZERO), made);
         let mut seen_high = false;
         for step in 0..60 * 3 {
             debris.step(1.0 / 60.0);
@@ -627,6 +811,7 @@ mod tests {
             resting: true,
             home: Vec3::Y,
             owner: 0,
+            piece: 0,
             returning: None,
             floor: 0.0,
         };

@@ -16,7 +16,11 @@ pub const WORDS_KEY: &str = "words.table";
 pub enum Outcome {
     /// An effect the rules carry out, by its name, how strongly, and the plain words the
     /// crosshair shows before the cast.
-    Effect { effect: String, strength: f32, preview: StringId },
+    Effect {
+        effect: String,
+        strength: f32,
+        preview: StringId,
+    },
     /// The target declines, in this line.
     Refusal(StringId),
 }
@@ -92,7 +96,9 @@ impl WordTable {
 
     /// The compound two words make, in either order.
     pub fn compound(&self, a: &str, b: &str) -> Option<&Compound> {
-        self.compounds.iter().find(|c| (c.words[0] == a && c.words[1] == b) || (c.words[0] == b && c.words[1] == a))
+        self.compounds
+            .iter()
+            .find(|c| (c.words[0] == a && c.words[1] == b) || (c.words[0] == b && c.words[1] == a))
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -155,17 +161,48 @@ impl WordTable {
             let combat = StringId(r.u64()?);
             let weapon = r.outcome()?;
             let colour = [r.f32()?, r.f32()?, r.f32()?];
-            let look = EffectLook { colour, charge_glyphs: r.u32()?, flight_speed: r.f32()?, impact: r.str()?, wave_speed: r.f32()?, lasting: r.str()? };
+            let look = EffectLook {
+                colour,
+                charge_glyphs: r.u32()?,
+                flight_speed: r.f32()?,
+                impact: r.str()?,
+                wave_speed: r.f32()?,
+                lasting: r.str()?,
+            };
             let outcomes = r.outcomes()?;
-            let typo = Typo { word: r.str()?, caption: StringId(r.u64()?), outcomes: r.outcomes()? };
-            words.push(Word { word, class, ink, motif, caption, combat, weapon, look, outcomes, typo });
+            let typo = Typo {
+                word: r.str()?,
+                caption: StringId(r.u64()?),
+                outcomes: r.outcomes()?,
+            };
+            words.push(Word {
+                word,
+                class,
+                ink,
+                motif,
+                caption,
+                combat,
+                weapon,
+                look,
+                outcomes,
+                typo,
+            });
         }
         let n = r.u32()? as usize;
         let mut compounds = Vec::with_capacity(n.min(256));
         for _ in 0..n {
-            compounds.push(Compound { name: r.str()?, caption: StringId(r.u64()?), words: [r.str()?, r.str()?], outcomes: r.outcomes()? });
+            compounds.push(Compound {
+                name: r.str()?,
+                caption: StringId(r.u64()?),
+                words: [r.str()?, r.str()?],
+                outcomes: r.outcomes()?,
+            });
         }
-        Ok(Self { classes, words, compounds })
+        Ok(Self {
+            classes,
+            words,
+            compounds,
+        })
     }
 }
 
@@ -187,7 +224,11 @@ impl Writer {
     }
     fn outcome(&mut self, o: &Outcome) {
         match o {
-            Outcome::Effect { effect, strength, preview } => {
+            Outcome::Effect {
+                effect,
+                strength,
+                preview,
+            } => {
                 self.0.push(0);
                 self.str(effect);
                 self.f32(*strength);
@@ -211,7 +252,10 @@ struct Reader<'a>(&'a [u8], usize);
 
 impl Reader<'_> {
     fn take(&mut self, n: usize) -> Result<&[u8], String> {
-        let b = self.0.get(self.1..self.1 + n).ok_or_else(|| "the table of words is cut short".to_string())?;
+        let b = self
+            .0
+            .get(self.1..self.1 + n)
+            .ok_or_else(|| "the table of words is cut short".to_string())?;
         self.1 += n;
         Ok(b)
     }
@@ -226,11 +270,16 @@ impl Reader<'_> {
     }
     fn str(&mut self) -> Result<String, String> {
         let n = self.u32()? as usize;
-        String::from_utf8(self.take(n)?.to_vec()).map_err(|_| "a name in the table of words is not text".to_string())
+        String::from_utf8(self.take(n)?.to_vec())
+            .map_err(|_| "a name in the table of words is not text".to_string())
     }
     fn outcome(&mut self) -> Result<Outcome, String> {
         match self.take(1)?[0] {
-            0 => Ok(Outcome::Effect { effect: self.str()?, strength: self.f32()?, preview: StringId(self.u64()?) }),
+            0 => Ok(Outcome::Effect {
+                effect: self.str()?,
+                strength: self.f32()?,
+                preview: StringId(self.u64()?),
+            }),
             1 => Ok(Outcome::Refusal(StringId(self.u64()?))),
             _ => Err("an outcome in the table of words is neither an effect nor a refusal".into()),
         }
@@ -247,7 +296,14 @@ mod tests {
 
     #[test]
     fn the_table_round_trips() {
-        let o = vec![Outcome::Effect { effect: "open".into(), strength: 1.0, preview: StringId(5) }, Outcome::Refusal(StringId(6))];
+        let o = vec![
+            Outcome::Effect {
+                effect: "open".into(),
+                strength: 1.0,
+                preview: StringId(5),
+            },
+            Outcome::Refusal(StringId(6)),
+        ];
         let t = WordTable {
             classes: vec!["door".into(), "stone".into()],
             words: vec![Word {
@@ -258,11 +314,27 @@ mod tests {
                 caption: StringId(1),
                 combat: StringId(2),
                 weapon: Outcome::Refusal(StringId(3)),
-                look: EffectLook { colour: [1.0, 0.9, 0.5], charge_glyphs: 24, flight_speed: 14.0, impact: "burst".into(), wave_speed: 3.0, lasting: "glow".into() },
+                look: EffectLook {
+                    colour: [1.0, 0.9, 0.5],
+                    charge_glyphs: 24,
+                    flight_speed: 14.0,
+                    impact: "burst".into(),
+                    wave_speed: 3.0,
+                    lasting: "glow".into(),
+                },
                 outcomes: o.clone(),
-                typo: Typo { word: "OVEN".into(), caption: StringId(4), outcomes: o.clone() },
+                typo: Typo {
+                    word: "OVEN".into(),
+                    caption: StringId(4),
+                    outcomes: o.clone(),
+                },
             }],
-            compounds: vec![Compound { name: "Rapt".into(), caption: StringId(7), words: ["LIT".into(), "CALM".into()], outcomes: o }],
+            compounds: vec![Compound {
+                name: "Rapt".into(),
+                caption: StringId(7),
+                words: ["LIT".into(), "CALM".into()],
+                outcomes: o,
+            }],
         };
         assert_eq!(WordTable::from_bytes(&t.to_bytes()).unwrap(), t);
         assert!(t.compound("CALM", "LIT").is_some());

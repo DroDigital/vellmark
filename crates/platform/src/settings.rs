@@ -25,7 +25,15 @@ pub struct InputSettings {
 
 impl Default for InputSettings {
     fn default() -> Self {
-        Self { mouse_sensitivity: 1.0, stick_sensitivity: 1.0, invert_y: false, aim_assist: 0.5, keys: Vec::new(), mouse: Vec::new(), pad: Vec::new() }
+        Self {
+            mouse_sensitivity: 1.0,
+            stick_sensitivity: 1.0,
+            invert_y: false,
+            aim_assist: 0.5,
+            keys: Vec::new(),
+            mouse: Vec::new(),
+            pad: Vec::new(),
+        }
     }
 }
 
@@ -78,7 +86,11 @@ impl Bindings {
     /// Puts `action` on `key`. Whatever was on that key moves to where `action` was, so
     /// that no action is left without a button.
     pub fn rebind_key(&mut self, action: Action, key: Key) {
-        let old = self.keys.iter().find(|(_, a)| *a == action).map(|(k, _)| *k);
+        let old = self
+            .keys
+            .iter()
+            .find(|(_, a)| *a == action)
+            .map(|(k, _)| *k);
         let displaced = self.keys.iter().find(|(k, _)| *k == key).map(|(_, a)| *a);
         self.keys.retain(|(k, a)| *a != action && *k != key);
         self.keys.push((key, action));
@@ -90,8 +102,16 @@ impl Bindings {
     }
 
     pub fn rebind_mouse(&mut self, action: Action, button: MouseButton) {
-        let old = self.mouse.iter().find(|(_, a)| *a == action).map(|(b, _)| *b);
-        let displaced = self.mouse.iter().find(|(b, _)| *b == button).map(|(_, a)| *a);
+        let old = self
+            .mouse
+            .iter()
+            .find(|(_, a)| *a == action)
+            .map(|(b, _)| *b);
+        let displaced = self
+            .mouse
+            .iter()
+            .find(|(b, _)| *b == button)
+            .map(|(_, a)| *a);
         self.mouse.retain(|(b, a)| *a != action && *b != button);
         self.mouse.push((button, action));
         if let (Some(old), Some(other)) = (old, displaced) {
@@ -115,11 +135,17 @@ impl Bindings {
 
     /// The key an action is on, if any.
     pub fn key_for(&self, action: Action) -> Option<Key> {
-        self.keys.iter().find(|(_, a)| *a == action).map(|(k, _)| *k)
+        self.keys
+            .iter()
+            .find(|(_, a)| *a == action)
+            .map(|(k, _)| *k)
     }
 
     pub fn mouse_for(&self, action: Action) -> Option<MouseButton> {
-        self.mouse.iter().find(|(_, a)| *a == action).map(|(b, _)| *b)
+        self.mouse
+            .iter()
+            .find(|(_, a)| *a == action)
+            .map(|(b, _)| *b)
     }
 
     pub fn pad_for(&self, action: Action) -> Option<PadButton> {
@@ -133,7 +159,11 @@ mod tests {
 
     #[test]
     fn settings_round_trip_and_unknown_fields_fall_back() {
-        let mut s = InputSettings { mouse_sensitivity: 1.5, invert_y: true, ..Default::default() };
+        let mut s = InputSettings {
+            mouse_sensitivity: 1.5,
+            invert_y: true,
+            ..Default::default()
+        };
         s.remap_key(Action::Jump, Key::C);
         let back = InputSettings::parse(&s.to_text()).unwrap();
         assert_eq!(back, s);
@@ -165,7 +195,13 @@ mod tests {
     #[test]
     fn sensitivity_and_invert_reach_the_bindings() {
         let d = Bindings::default();
-        let b = InputSettings { mouse_sensitivity: 2.0, stick_sensitivity: 0.5, invert_y: true, ..Default::default() }.bindings();
+        let b = InputSettings {
+            mouse_sensitivity: 2.0,
+            stick_sensitivity: 0.5,
+            invert_y: true,
+            ..Default::default()
+        }
+        .bindings();
         assert!((b.mouse_sensitivity - d.mouse_sensitivity * 2.0).abs() < 1e-6);
         assert!((b.stick_turn_rate - d.stick_turn_rate * 0.5).abs() < 1e-6);
         assert!(b.invert_y);

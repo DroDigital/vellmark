@@ -18,7 +18,10 @@ pub struct MeshLevels {
 impl MeshLevels {
     /// The chain that starts at `finest`, if any.
     pub fn chain(&self, finest: AssetId) -> Option<&[AssetId]> {
-        self.chains.iter().find(|c| c.first() == Some(&finest)).map(|c| c.as_slice())
+        self.chains
+            .iter()
+            .find(|c| c.first() == Some(&finest))
+            .map(|c| c.as_slice())
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -39,7 +42,9 @@ impl MeshLevels {
         }
         let mut at = 8;
         let u32_at = |at: &mut usize| -> Result<u32, String> {
-            let b = bytes.get(*at..*at + 4).ok_or("the table of mesh levels is cut short")?;
+            let b = bytes
+                .get(*at..*at + 4)
+                .ok_or("the table of mesh levels is cut short")?;
             *at += 4;
             Ok(u32::from_le_bytes(b.try_into().unwrap()))
         };
@@ -49,7 +54,9 @@ impl MeshLevels {
             let n = u32_at(&mut at)? as usize;
             let mut chain = Vec::with_capacity(n.min(16));
             for _ in 0..n {
-                let b = bytes.get(at..at + 8).ok_or("the table of mesh levels is cut short")?;
+                let b = bytes
+                    .get(at..at + 8)
+                    .ok_or("the table of mesh levels is cut short")?;
                 at += 8;
                 chain.push(AssetId(u64::from_le_bytes(b.try_into().unwrap())));
             }
@@ -65,7 +72,12 @@ mod tests {
 
     #[test]
     fn levels_round_trip() {
-        let t = MeshLevels { chains: vec![vec![AssetId(1), AssetId(2), AssetId(3), AssetId(4)], vec![AssetId(9), AssetId(8), AssetId(7), AssetId(6)]] };
+        let t = MeshLevels {
+            chains: vec![
+                vec![AssetId(1), AssetId(2), AssetId(3), AssetId(4)],
+                vec![AssetId(9), AssetId(8), AssetId(7), AssetId(6)],
+            ],
+        };
         let back = MeshLevels::from_bytes(&t.to_bytes()).unwrap();
         assert_eq!(back, t);
         assert_eq!(back.chain(AssetId(9)).unwrap()[3], AssetId(6));

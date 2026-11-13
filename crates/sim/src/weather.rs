@@ -24,7 +24,13 @@ impl Default for Weather {
     /// Dry, with the wind as `WeatherState::step` has it at the clock's start.
     fn default() -> Self {
         let angle = WIND_ANGLE;
-        Self { rain: 0.0, wetness: 0.0, wind: [angle.cos(), angle.sin()], wind_strength: 0.45, fog: 0.0 }
+        Self {
+            rain: 0.0,
+            wetness: 0.0,
+            wind: [angle.cos(), angle.sin()],
+            wind_strength: 0.45,
+            fog: 0.0,
+        }
     }
 }
 
@@ -66,7 +72,8 @@ impl WeatherState {
         let angle = WIND_ANGLE + 0.35 * (t / 47.0).sin() + 0.1 * (t / 13.0).sin();
         w.wind = [angle.cos(), angle.sin()];
         // Fog comes in still air.
-        w.wind_strength = ((0.45 + 0.2 * (t / 23.0).sin() + 0.25 * w.rain) * (1.0 - 0.7 * w.fog)).clamp(0.0, 1.0);
+        w.wind_strength =
+            ((0.45 + 0.2 * (t / 23.0).sin() + 0.25 * w.rain) * (1.0 - 0.7 * w.fog)).clamp(0.0, 1.0);
     }
 
     /// Sets the weather at once, wet as long rain would leave it: for tools and tests.
@@ -83,38 +90,59 @@ mod tests {
 
     #[test]
     fn rain_soaks_the_ground_then_it_dries() {
-        let mut s = WeatherState { rain_wanted: 1.0, ..Default::default() };
+        let mut s = WeatherState {
+            rain_wanted: 1.0,
+            ..Default::default()
+        };
         let mut t = 0.0;
         for _ in 0..(90.0 / STEP_SECONDS) as usize {
             s.step(t);
             t += STEP_SECONDS as f64;
         }
         assert_eq!(s.now.rain, 1.0);
-        assert!(s.now.wetness > 0.95, "ninety seconds of rain soak the ground: {}", s.now.wetness);
+        assert!(
+            s.now.wetness > 0.95,
+            "ninety seconds of rain soak the ground: {}",
+            s.now.wetness
+        );
         s.rain_wanted = 0.0;
         for _ in 0..(60.0 / STEP_SECONDS) as usize {
             s.step(t);
             t += STEP_SECONDS as f64;
         }
         assert_eq!(s.now.rain, 0.0);
-        assert!(s.now.wetness > 0.5 && s.now.wetness < 1.0, "the ground dries slowly: {}", s.now.wetness);
+        assert!(
+            s.now.wetness > 0.5 && s.now.wetness < 1.0,
+            "the ground dries slowly: {}",
+            s.now.wetness
+        );
     }
 
     #[test]
     fn fog_gathers_slowly_and_stills_the_wind() {
-        let mut s = WeatherState { fog_wanted: 1.0, ..Default::default() };
+        let mut s = WeatherState {
+            fog_wanted: 1.0,
+            ..Default::default()
+        };
         let mut t = 0.0;
         for _ in 0..(5.0 / STEP_SECONDS) as usize {
             s.step(t);
             t += STEP_SECONDS as f64;
         }
-        assert!(s.now.fog > 0.05 && s.now.fog < 0.2, "five seconds is the start of it: {}", s.now.fog);
+        assert!(
+            s.now.fog > 0.05 && s.now.fog < 0.2,
+            "five seconds is the start of it: {}",
+            s.now.fog
+        );
         let breezy = s.now.wind_strength;
         for _ in 0..(60.0 / STEP_SECONDS) as usize {
             s.step(t);
             t += STEP_SECONDS as f64;
         }
         assert_eq!(s.now.fog, 1.0);
-        assert!(s.now.wind_strength < breezy, "the air is stiller in thick fog");
+        assert!(
+            s.now.wind_strength < breezy,
+            "the air is stiller in thick fog"
+        );
     }
 }

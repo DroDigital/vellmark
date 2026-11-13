@@ -31,7 +31,10 @@ impl Default for FixedClock {
 
 impl FixedClock {
     pub fn new() -> Self {
-        Self { accumulator_ns: 0, max_steps_per_frame: 5 }
+        Self {
+            accumulator_ns: 0,
+            max_steps_per_frame: 5,
+        }
     }
 
     /// Feed the real time since the last frame. A long stall is clamped: the game slows
@@ -44,12 +47,18 @@ impl FixedClock {
             self.accumulator_ns = steps as u64 * STEP_NS;
         }
         self.accumulator_ns -= steps as u64 * STEP_NS;
-        StepPlan { steps, alpha: self.accumulator_ns as f32 / STEP_NS as f32 }
+        StepPlan {
+            steps,
+            alpha: self.accumulator_ns as f32 / STEP_NS as f32,
+        }
     }
 
     /// A capture or a test: exactly one step each frame, drawn at the newest snapshot.
     pub fn fixed() -> StepPlan {
-        StepPlan { steps: 1, alpha: 1.0 }
+        StepPlan {
+            steps: 1,
+            alpha: 1.0,
+        }
     }
 }
 
@@ -81,7 +90,12 @@ mod tests {
         let times = [16_000_000u64, 17_300_000, 15_900_000, 33_000_000, 8_000_000];
         let run = || {
             let mut c = FixedClock::new();
-            times.iter().cycle().take(1000).map(|&t| c.advance(t).steps).collect::<Vec<_>>()
+            times
+                .iter()
+                .cycle()
+                .take(1000)
+                .map(|&t| c.advance(t).steps)
+                .collect::<Vec<_>>()
         };
         assert_eq!(run(), run());
     }
