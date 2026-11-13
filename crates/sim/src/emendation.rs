@@ -146,6 +146,8 @@ pub struct Target {
     pub link: u32,
     /// Burnt: it cannot catch fire from a neighbour again until this time.
     pub burnt_until: f64,
+    /// Since when it has been alight, if it is.
+    pub alight_since: Option<f64>,
 }
 
 impl Target {
@@ -161,6 +163,7 @@ impl Target {
             off_guard: false,
             link: 0,
             burnt_until: 0.0,
+            alight_since: None,
         }
     }
 
@@ -260,6 +263,8 @@ pub fn write_stroke(rules: &WordRules, word: usize, target: &mut Target, stroke:
     if target.resists() == Resistance::Sealed {
         return Landing::Sealed;
     }
+    // Mending lasts: a thing made whole stays whole until something breaks it again.
+    let lasts = effect == "mend";
     let hold = if typo { TYPO_HOLD } else { (HOLD_TAP + (HOLD_CHARGED - HOLD_TAP) * charge.clamp(0.0, 1.0)) * if both { BOTH_HANDS_HOLD } else { 1.0 } };
     let until = now + hold as f64;
     let strength = strength * (1.0 + 0.5 * charge) * if both { BOTH_HANDS_STRENGTH } else { 1.0 } * if typed { TYPED_BONUS } else { 1.0 };
@@ -280,8 +285,9 @@ pub fn write_stroke(rules: &WordRules, word: usize, target: &mut Target, stroke:
         target.effects.retain(|e| e.by != r.spelling);
     }
     let original = replaced.map(|r| r.replaced.unwrap_or((r.spelling, r.class)));
-    target.words.push(InscribedWord { spelling: spelling.clone(), class: rule.class.clone(), fades_at: Some(until), replaced: original });
-    target.effects.push(ActiveEffect { effect: effect.clone(), strength, by: spelling, until: Some(until) });
+    let (fades_at, replaced) = if lasts { (None, None) } else { (Some(until), original) };
+    target.words.push(InscribedWord { spelling: spelling.clone(), class: rule.class.clone(), fades_at, replaced });
+    target.effects.push(ActiveEffect { effect: effect.clone(), strength, by: spelling, until: if lasts { Some(now + 3.0) } else { Some(until) } });
     Landing::Took { effect, strength }
 }
 

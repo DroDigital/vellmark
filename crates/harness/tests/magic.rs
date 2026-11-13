@@ -59,7 +59,7 @@ fn a_words_magic_is_drawn_in_its_five_parts() {
     let hud = Hud { atlas: &assets.glyphs, strings: &strings, rules: &rules, size: (640, 360), density: 1.0 };
     let dt = 1.0 / 60.0;
     let mut seconds = 0.0f32;
-    let mut step = |world: &mut World, buttons: u32, seconds: &mut f32| {
+    let step = |world: &mut World, buttons: u32, seconds: &mut f32| {
         world.step(&[PlayerInput { buttons, ..Default::default() }]);
         *seconds += dt;
     };

@@ -42,7 +42,7 @@ fn open_is_written_on_the_yards_door_and_it_swings_open() {
     };
     let out = vellmark_harness::repo_root().join("build/captures/casting");
     std::fs::create_dir_all(&out).unwrap();
-    let mut shoot = |offscreen: &mut Offscreen, world: &World, name: &str| {
+    let shoot = |offscreen: &mut Offscreen, world: &World, name: &str| {
         let s = world.snapshot();
         let mut canvas = Canvas::new();
         Hud { atlas: &assets.glyphs, strings: &strings, rules: &rules, size: (960, 540), density: 1.0 }.draw(&mut canvas, &s.players[0]);

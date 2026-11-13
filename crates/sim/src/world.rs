@@ -10,6 +10,8 @@ use std::sync::Arc;
 pub const EYE_HEIGHT: f32 = 1.68;
 
 const MAX_PITCH: f32 = 1.48;
+/// A breakable thing burning longer than this, in seconds, falls to its letters.
+const BURN_TO_BREAK: f64 = 15.0;
 
 /// Identifies a player for the whole session. Never reused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -101,6 +103,10 @@ pub struct World {
     targets_snap: Arc<Vec<crate::snapshot::TargetSnap>>,
     flights: Vec<crate::emendation::Flight>,
     landings: Vec<crate::casting::CastEvent>,
+    /// Breakable things that bodies cannot walk through while they are whole: bridges.
+    solid_things: Vec<u64>,
+    /// Things authored broken have been broken.
+    authored_broken: bool,
 }
 
 impl World {
@@ -133,6 +139,8 @@ impl World {
             targets_snap: Arc::default(),
             flights: Vec::new(),
             landings: Vec::new(),
+            solid_things: Vec::new(),
+            authored_broken: false,
         }
     }
 
@@ -166,6 +174,13 @@ impl World {
     pub fn set_targets(&mut self, targets: Vec<crate::emendation::Target>) {
         self.targets = targets;
         self.refresh_targets();
+        self.rebuild_statics();
+    }
+
+    /// A breakable thing that bodies stand on and cannot walk through while it is whole:
+    /// a marked structure, or one named so.
+    fn solid(&self, id: u64) -> bool {
+        self.solid_things.contains(&id) || self.targets.iter().any(|t| t.id == id && self.rules.classes.get(t.class).is_some_and(|c| c == "structure"))
     }
 
     /// A blow lands on a player: a full charge in either hand smudges into its typo and
@@ -248,13 +263,55 @@ impl World {
         self.rebuild_statics();
     }
 
+    /// Marks breakable things that bodies stand on and cannot walk through while whole.
+    pub fn set_solid_things(&mut self, ids: Vec<u64>) {
+        self.solid_things = ids;
+        self.rebuild_statics();
+    }
+
     fn rebuild_statics(&mut self) {
         let patches = self.ground.as_ref().map(|g| g.patches()).unwrap_or_default();
-        if patches.is_empty() && self.solids.is_empty() && self.trunks.is_empty() {
+        // The scene's boxes, and the boxes of solid things that are whole, as they stand.
+        let mut solids = self.solids.clone();
+        for b in self.breakables.iter().filter(|b| self.solid(b.id) && !self.broken.contains(&b.id)) {
+            for (min, max, _) in &b.boxes {
+                let mut lo = Vec3::splat(f32::MAX);
+                let mut hi = Vec3::splat(f32::MIN);
+                for corner in 0..8 {
+                    let p = Vec3::new(if corner & 1 == 0 { min.x } else { max.x }, if corner & 2 == 0 { min.y } else { max.y }, if corner & 4 == 0 { min.z } else { max.z });
+                    let w = b.to_world.transform_point3(p);
+                    lo = lo.min(w);
+                    hi = hi.max(w);
+                }
+                solids.push(Solid { min: lo, max: hi });
+            }
+        }
+        if patches.is_empty() && solids.is_empty() && self.trunks.is_empty() {
             self.statics = None;
             return;
         }
-        self.statics = Some(Arc::new(crate::character::Statics::new(&patches, &self.solids, &self.trunks)));
+        self.statics = Some(Arc::new(crate::character::Statics::new(&patches, &solids, &self.trunks)));
+    }
+
+    /// Things authored broken are broken now, their letters already at rest, as though
+    /// they fell long ago. Their state is their Inscription.
+    fn break_authored(&mut self) {
+        self.authored_broken = true;
+        let ids: Vec<(u64, Vec3)> = self.targets.iter().filter(|t| t.words.iter().any(|w| w.spelling == "BROKEN")).map(|t| (t.id, t.centre)).collect();
+        for (id, centre) in ids {
+            self.break_thing_with(id, centre + Vec3::Y * 0.5, 0.25);
+        }
+        self.debris.settle(STEP_SECONDS);
+        self.refresh_letters();
+    }
+
+    /// The thing's Inscription says it is broken, or whole.
+    fn inscribe_state(&mut self, id: u64, spelling: &str) {
+        if let Some(t) = self.targets.iter_mut().find(|t| t.id == id) {
+            t.words.retain(|w| w.class != "Integrity");
+            t.words.push(crate::emendation::InscribedWord { spelling: spelling.into(), class: "Integrity".into(), fades_at: None, replaced: None });
+            t.effects.retain(|e| e.effect != "mend");
+        }
     }
 
     /// Breaks a thing into its letters, thrown outwards from `blow`. Returns how many
@@ -271,6 +328,7 @@ impl World {
         }
         let thing = self.breakables.iter().find(|b| b.id == id)?.clone();
         let mut made = 0;
+        let keep = crate::debris::keep_for(thing.boxes.iter().map(|(min, max, _)| (*min, *max)));
         for (min, max, material) in &thing.boxes {
             let mut rng = self.rng;
             let mut random = || {
@@ -280,13 +338,20 @@ impl World {
                 z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
                 z ^ (z >> 31)
             };
-            made += shatter(&mut self.debris, *min, *max, thing.to_world, *material, blow, strength, &mut random);
+            made += shatter(&mut self.debris, *min, *max, thing.to_world, *material, blow, strength, id, keep, &mut random);
             self.rng = rng;
         }
         let mut broken = (*self.broken).clone();
         broken.push(id);
         self.broken = Arc::new(broken);
         self.refresh_letters();
+        if self.targets.iter().any(|t| t.id == id && !t.words.iter().any(|w| w.spelling == "BROKEN")) {
+            self.inscribe_state(id, "BROKEN");
+            self.refresh_targets();
+        }
+        if self.solid(id) {
+            self.rebuild_statics();
+        }
         Some(made)
     }
 
@@ -319,6 +384,7 @@ impl World {
     }
 
     pub fn set_ground(&mut self, ground: Arc<dyn crate::Ground>) {
+        self.debris.set_ground(ground.clone());
         self.ground = Some(ground);
         for p in &mut self.players {
             if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.body.feet.x, p.body.feet.z)) {
@@ -372,6 +438,9 @@ impl World {
     /// were added. A missing input is treated as no input.
     pub fn step(&mut self, inputs: &[PlayerInput]) {
         use crate::input::buttons;
+        if !self.authored_broken {
+            self.break_authored();
+        }
         use crate::reading::{focus, Reading, CLOSE_READING_PACE};
         // What each player reads. A text in focus is read while Read is held; with none,
         // Read is close reading.
@@ -451,6 +520,60 @@ impl World {
             };
             crate::casting::spread(&mut self.targets, &self.rules, self.seconds, 0.35 * self.pace, &mut roll, &mut self.landings);
             self.rng = rng;
+        }
+        // A word that mends landing on a broken thing calls its letters home.
+        let mending: Vec<u64> = self.landings[landed_before..]
+            .iter()
+            .filter(|l| matches!(&l.landing, crate::emendation::Landing::Took { effect, .. } if effect == "mend"))
+            .map(|l| l.target)
+            .filter(|id| self.broken.contains(id))
+            .collect();
+        for id in mending {
+            self.debris.mend(id);
+        }
+        // Its typo knocks a hole: a whole breakable thing falls to its letters.
+        let holed: Vec<(u64, Vec3)> = self.landings[landed_before..]
+            .iter()
+            .filter(|l| matches!(&l.landing, crate::emendation::Landing::Took { effect, .. } if effect == "gap"))
+            .filter(|l| !self.broken.contains(&l.target) && self.breakables.iter().any(|b| b.id == l.target))
+            .map(|l| (l.target, l.at))
+            .collect();
+        for (id, at) in holed {
+            self.break_thing_with(id, at, 0.6);
+        }
+        // Things whose letters have all come home stand whole again.
+        let mended = self.debris.take_mended();
+        if !mended.is_empty() {
+            self.broken = Arc::new(self.broken.iter().copied().filter(|b| !mended.contains(b)).collect());
+            for id in &mended {
+                self.inscribe_state(*id, "WHOLE");
+            }
+            self.refresh_letters();
+            self.refresh_targets();
+            if mended.iter().any(|id| self.solid(*id)) {
+                self.rebuild_statics();
+            }
+        }
+        // A breakable thing that has burned long enough falls to its letters.
+        if self.step % 30 == 0 {
+            let burning_long: Vec<(u64, Vec3)> = self
+                .targets
+                .iter_mut()
+                .filter_map(|t| {
+                    let alight = t.effects.iter().any(|e| matches!(e.effect.as_str(), "ignite" | "flare" | "blaze"));
+                    if !alight {
+                        t.alight_since = None;
+                        return None;
+                    }
+                    let since = *t.alight_since.get_or_insert(self.seconds);
+                    (self.seconds - since > BURN_TO_BREAK).then_some((t.id, t.centre))
+                })
+                .collect();
+            for (id, centre) in burning_long {
+                if self.breakables.iter().any(|b| b.id == id) && !self.broken.contains(&id) {
+                    self.break_thing_with(id, centre + Vec3::Y, 0.3);
+                }
+            }
         }
         let faded = crate::casting::fade_all(&mut self.targets, self.seconds);
         if faded || self.landings.len() > landed_before {

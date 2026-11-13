@@ -5,4 +5,49 @@
 (
     terrain: "valley",
     spawn: (eye: (-104.0, 40.0, 112.0), yaw: 20.0, pitch: -6.0),
+    objects: [
+        // The Mended Bridge: timber planks on two stringers, posts and rails, and two
+        // masonry piers into the bed of the Quill. Its deck runs from the bridge road on
+        // the south bank to the far bank's track. It lies broken until `WHOLE` is written
+        // on it, and is solid to walk on once it is whole.
+        (
+            key: "mended_bridge",
+            position: (132.25, 4.35, -113.25),
+            yaw: 173.19,
+            boxes: [
+                (material: "timber", min: (-1.1, -0.12, -12.20), max: (1.1, 0.0, -10.20)),
+                (material: "timber", min: (-1.1, -0.12, -10.17), max: (1.1, 0.0, -8.17)),
+                (material: "timber", min: (-1.1, -0.12, -8.13), max: (1.1, 0.0, -6.13)),
+                (material: "timber", min: (-1.1, -0.12, -6.10), max: (1.1, 0.0, -4.10)),
+                (material: "timber", min: (-1.1, -0.12, -4.07), max: (1.1, 0.0, -2.07)),
+                (material: "timber", min: (-1.1, -0.12, -2.04), max: (1.1, 0.0, -0.04)),
+                (material: "timber", min: (-1.1, -0.12, -0.00), max: (1.1, 0.0, 2.00)),
+                (material: "timber", min: (-1.1, -0.12, 2.03), max: (1.1, 0.0, 4.03)),
+                (material: "timber", min: (-1.1, -0.12, 4.06), max: (1.1, 0.0, 6.06)),
+                (material: "timber", min: (-1.1, -0.12, 6.10), max: (1.1, 0.0, 8.10)),
+                (material: "timber", min: (-1.1, -0.12, 8.13), max: (1.1, 0.0, 10.13)),
+                (material: "timber", min: (-1.1, -0.12, 10.16), max: (1.1, 0.0, 12.16)),
+                (material: "timber", min: (-1.00, -0.36, -12.2), max: (-0.80, -0.12, 12.2)),
+                (material: "timber", min: (0.80, -0.36, -12.2), max: (1.00, -0.12, 12.2)),
+                (material: "timber", min: (-1.11, 0.0, -12.06), max: (-0.99, 1.0, -11.94)),
+                (material: "timber", min: (0.99, 0.0, -12.06), max: (1.11, 1.0, -11.94)),
+                (material: "timber", min: (-1.11, 0.0, -6.06), max: (-0.99, 1.0, -5.94)),
+                (material: "timber", min: (0.99, 0.0, -6.06), max: (1.11, 1.0, -5.94)),
+                (material: "timber", min: (-1.11, 0.0, -0.06), max: (-0.99, 1.0, 0.06)),
+                (material: "timber", min: (0.99, 0.0, -0.06), max: (1.11, 1.0, 0.06)),
+                (material: "timber", min: (-1.11, 0.0, 5.94), max: (-0.99, 1.0, 6.06)),
+                (material: "timber", min: (0.99, 0.0, 5.94), max: (1.11, 1.0, 6.06)),
+                (material: "timber", min: (-1.11, 0.0, 11.94), max: (-0.99, 1.0, 12.06)),
+                (material: "timber", min: (0.99, 0.0, 11.94), max: (1.11, 1.0, 12.06)),
+                (material: "timber", min: (-1.10, 0.9, -12.2), max: (-1.00, 1.0, 12.2)),
+                (material: "timber", min: (1.00, 0.9, -12.2), max: (1.10, 1.0, 12.2)),
+                (material: "masonry", min: (-1.0, -4.7, -4.3), max: (1.0, -0.36, -3.7)),
+                (material: "masonry", min: (-1.0, -4.7, 3.7), max: (1.0, -0.36, 4.3)),
+            ],
+        ),
+    ],
+    // A marked structure: broken, as authored, and a little tough to mend.
+    inscribed: [
+        (thing: "mended_bridge", class: "structure", words: [("BROKEN", "Integrity")], resistance: 1),
+    ],
 )
