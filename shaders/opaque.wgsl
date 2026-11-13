@@ -9,6 +9,7 @@
 struct Instance {
     model: mat4x4<f32>,
     // x: heat, -1 (frozen) to 1 (as hot as it gets). y: 1 if it is not drawn (broken).
+    // w: the generated page its surface reads, counted from 1; 0 for none.
     state: vec4<f32>,
     // The sphere that holds it, in the world.
     bounds: vec4<f32>,
@@ -157,6 +158,11 @@ fn vs(in: VertexInput) -> Varyings {
     out.anchor = in.anchor;
     out.material = in.material;
     out.page = in.page;
+    // Generated truth: a surface with no authored page reads the one written for this
+    // thing, as a tree's bark reads its record. Never its leaves.
+    if in.page == 0u && object.state.w > 0.5 && in.material + 1u != batch.base.z {
+        out.page = u32(object.state.w + 0.5);
+    }
     out.thickness = in.thickness;
     out.sky = in.sky;
     return out;
