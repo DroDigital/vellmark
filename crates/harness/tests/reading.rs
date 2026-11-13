@@ -11,7 +11,22 @@ use vellmark_ui::reading_view::ReadingView;
 use vellmark_ui::Canvas;
 
 fn player(reading: ReadingSnap, in_focus: Option<u64>) -> PlayerSnap {
-    PlayerSnap { id: PlayerId(0), feet: Vec3::ZERO, yaw: 0.0, pitch: 0.0, grounded: true, crouching: false, swimming: false, untouchable: false, reading, in_focus }
+    PlayerSnap {
+        id: PlayerId(0),
+        feet: Vec3::ZERO,
+        yaw: 0.0,
+        pitch: 0.0,
+        grounded: true,
+        crouching: false,
+        swimming: false,
+        untouchable: false,
+        reading,
+        in_focus,
+        ink: 100.0,
+        holding: [vellmark_sim::casting::Holding::Weapon, vellmark_sim::casting::Holding::Empty],
+        charge: [0.0; 3],
+        preview: [None, None],
+    }
 }
 
 #[test]
