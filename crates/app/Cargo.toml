@@ -24,6 +24,7 @@ vellmark-render.workspace = true
 vellmark-sim.workspace = true
 vellmark-content.workspace = true
 vellmark-ui.workspace = true
+vellmark-audio.workspace = true
 glam.workspace = true
 vellmark-harness = { path = "../harness", optional = true }
 vellmark-bake = { path = "../bake", optional = true }

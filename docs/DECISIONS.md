@@ -2,6 +2,25 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: the ambience is synthesized until the samples come (S02-T13)
+
+**Our own mixer, on SDL3's audio stream.** `vellmark-audio` holds a mixer that the
+platform crate's SDL3 playback stream calls on the audio thread. It reads what the game
+wants through atomics and renders into a buffer made once: nothing is allocated or
+locked there, and a test holds it to that. No `fundsp`: the few building blocks needed
+(pink noise, a state-variable filter, a sine, smoothing) are a hundred lines.
+
+**Four layers, all chance.** Wind is band-passed noise whose band rises with gusts that
+come and go every one to four seconds, a low roll under it and a whistle in a strong
+gust; leaves hiss and flutter in it near trees. Rain is a hiss and drops striking at
+random pitches and places, more of them as it rains harder. The river is a low run of
+water and resonances that jump about as it turns over stones, louder as it is nearer.
+Birds are calls of two to six notes from three kinds of bird, falling, rising, or
+trilled, by day, in the open, and not in rain or a hard wind. The game sets them from
+the weather, the hour, water found in rings about the listener, and the trees near.
+Recorded beds from the approved packs go under them when the owner fetches them
+(`third_party/DOWNLOADS.md`).
+
 ## 2026-11-13: a tree's bark records its age (S02-T08d)
 
 **The truth is data.** The bake records each placed tree's kind, age, and girth in a

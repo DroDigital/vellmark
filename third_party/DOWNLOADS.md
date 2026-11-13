@@ -36,6 +36,19 @@ allow and which the textures replace without any change to the renderer.
 | Bark | ambientCG or Poly Haven | Trees (S02) |
 | Thatch and roof tile | ambientCG or Poly Haven | Roofs (S02, S06) |
 
+## Sound the owner needs to fetch
+
+The Showcase's ambience is synthesized until these arrive (S02-T13); each recorded layer
+joins its synthesized one when it is in `third_party/inbox/`. Kenney's site refuses this
+machine, and Freesound needs the owner's account. All are CC0.
+
+| Put in | What | From | For |
+|---|---|---|---|
+| `third_party/inbox/kenney/rpg-audio/` | Kenney RPG Audio, the whole pack | https://kenney.nl/assets/rpg-audio | Footsteps, foley, weapons (S03, S04) |
+| `third_party/inbox/kenney/impact-sounds/` | Kenney Impact Sounds, the whole pack | https://kenney.nl/assets/impact-sounds | Hits and breaking (S03) |
+| `third_party/inbox/kenney/interface-sounds/` | Kenney Interface Sounds, the whole pack | https://kenney.nl/assets/interface-sounds | Menus and pages (S05) |
+| `third_party/inbox/freesound/` | CC0 only: a long wind through grass, a light rain on leaves, a shallow river over stones, a meadow at morning with birds; each 30 s or longer, 44.1 kHz or better | https://freesound.org (filter: Creative Commons 0) | Ambience beds under the synthesis (S02) |
+
 ## What this machine can reach
 
 Checked on 2026-11-10 from a cloud session.

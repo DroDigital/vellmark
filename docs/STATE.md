@@ -1,15 +1,13 @@
 # Build state
 
-**Phase file:** `phases/S02-the-ground.md` (S01's Look Gate deferred by the owner)
-**Status:** In progress. The owner asked to continue; the flat look stays the default until they choose one
+**Phase file:** `phases/S03-hands.md`. S02's exit gate and S01's Look Gate wait on the owner (see `docs/PLAN_CHANGES.md`, 2026-11-13).
+**Status:** In progress. The owner asked for the phases to go on without stopping; each gate is run as far as a cloud session can, and what only the Mac can prove waits below.
 
 ## Integration
 
-**Branch:** `claude/charming-bardeen-5aqf5c`, restarted from `main` after pull request 2 was merged.
-**Current task:** the depth looks, at the owner's direction (see `docs/PLAN_CHANGES.md`, 2026-11-11). Three variants are built and switchable; captures are in `docs/looks/`.
-**Also done:** broken things scatter as their letters (F7, or `break door`), at the owner's direction; see `docs/PLAN_CHANGES.md`.
-**Done, at the owner's direction:** the living lattice, now the default look (see `docs/PLAN_CHANGES.md`, 2026-11-11), and every material's words in `assets/materials/lexicon.ron`. Captures: `captures/living.ron`, `living_motion.ron`, `names.ron`.
-**Exact next step:** the owner picks a look (atoms, lattice, or source) or asks for changes. Make the pick the default in `GlyphTuning`, re-accept the yard's reference images, and adjust the capture limits for the depth range. Then begin `phases/S02-the-ground.md` at S02-T01.
+**Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
+**S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
+**Current task:** S03-T01, the first-person controller.
 
 ## Lane: Render
 
@@ -45,7 +43,7 @@ Nothing yet.
 
 ## Lane: Shell
 
-Nothing yet.
+**Done:** S02-T13, the ambience: our own mixer on SDL3's audio stream, never allocating on the audio thread, with wind in gusts, leaves near trees, rain and its drops, the river by how near its water is, and birds by day, all synthesized and set from the world each frame. Evidence: `docs/evidence/S02/ambience.wav`. Tests: `crates/audio/tests/`. Recorded beds wait on the owner's downloads (`third_party/DOWNLOADS.md`).
 
 ## Requests between lanes
 
@@ -56,6 +54,8 @@ None.
 0. **Choose a depth look.** See `docs/looks/`, or press F6 in the build. Atoms, lattice, or source.
 1. **Look Gate.** Download the macOS build from the newest green CI run and follow "Phase S01: the Look Gate" in `docs/PLAYTEST_CHECKLIST.md`. Five minutes.
 2. **The performance run.** Right-click `perf-run.command`, Open, and send back `vellmark-perf-report.txt`. This closes S00-T16 and S01-T12.
+4. **S02's exit gate.** On the Mac: the performance run along the tour's path (closes S02-T15), dusk from Tithe Hill (`hour 17.8`), the wind that reads (S02-T10b, console `wind 0` to `wind 5`), and the rows for S02 in `docs/PLAYTEST_CHECKLIST.md`.
+5. **Sound downloads.** Kenney's three packs and four CC0 beds from Freesound, as `third_party/DOWNLOADS.md` lists. The ambience is synthesized until then.
 3. **Texture approval.** Say yes to the list in `third_party/DOWNLOADS.md`, or change it. The yard is on generated materials until then, and it will not look its best without real ones.
 
 ## Blockers

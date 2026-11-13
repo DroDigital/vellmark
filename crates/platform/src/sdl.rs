@@ -57,6 +57,33 @@ impl Window {
     }
 }
 
+/// The sound going out. Dropping it stops the sound.
+pub struct AudioOut {
+    _stream: sdl3::audio::AudioStreamWithCallback<Feed>,
+}
+
+/// Fills SDL's requests from a buffer made once, so that the audio thread never allocates.
+pub struct Feed {
+    fill: Box<dyn FnMut(&mut [f32]) + Send>,
+    buffer: Vec<f32>,
+}
+
+impl sdl3::audio::AudioCallback<f32> for Feed {
+    fn callback(&mut self, stream: &mut sdl3::audio::AudioStream, requested: i32) {
+        // `requested` is in samples. Whole stereo frames, a buffer at a time.
+        let mut left = (requested.max(0) as usize) & !1;
+        while left > 0 {
+            let n = left.min(self.buffer.len());
+            let chunk = &mut self.buffer[..n];
+            (self.fill)(chunk);
+            if stream.put_data_f32(chunk).is_err() {
+                return;
+            }
+            left -= n;
+        }
+    }
+}
+
 /// The SDL context: video, events, and controllers.
 pub struct Platform {
     _sdl: sdl3::Sdl,
@@ -76,6 +103,21 @@ impl Platform {
         let pump = sdl.event_pump().map_err(|e| e.to_string())?;
         let mouse = sdl.mouse();
         Ok(Self { _sdl: sdl, video, gamepads, pump, mouse, open_pads: Vec::new(), events: Vec::new() })
+    }
+
+    /// Opens the default output for interleaved stereo at `rate` and starts it. `fill` is
+    /// called on the audio thread to fill each buffer: it must not allocate or lock. The
+    /// sound stops when the returned value is dropped.
+    pub fn open_audio<F>(&self, rate: i32, fill: F) -> Result<AudioOut, String>
+    where
+        F: FnMut(&mut [f32]) + Send + 'static,
+    {
+        let audio = self._sdl.audio().map_err(|e| e.to_string())?;
+        let spec = sdl3::audio::AudioSpec { freq: Some(rate), channels: Some(2), format: Some(sdl3::audio::AudioFormat::f32_sys()) };
+        let feed = Feed { fill: Box::new(fill), buffer: vec![0.0; 8192] };
+        let stream = audio.open_playback_stream(&spec, feed).map_err(|e| e.to_string())?;
+        stream.resume().map_err(|e| e.to_string())?;
+        Ok(AudioOut { _stream: stream })
     }
 
     pub fn create_window(&self, options: &WindowOptions<'_>) -> Result<Window, String> {

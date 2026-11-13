@@ -252,6 +252,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut relief = vellmark_render::Relief::default();
     log::line(&format!("preset {preset:?}"));
 
+    let mut sound = crate::sound::Sound::start(&platform, &scene);
+
     'frames: loop {
         let now = Instant::now();
         let frame_time = now.duration_since(last);
@@ -415,6 +417,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 }
             }
         }
+
+        sound.update(camera.eye, &current.weather, hour, terrain.as_deref());
 
         if let Some(frame) = screen.acquire(&gpu) {
             let target = frame.texture.create_view(&Default::default());
