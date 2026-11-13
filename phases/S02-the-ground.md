@@ -36,7 +36,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S02-T11** [Render] Cache the far shadow cascades and ration shadowed lights
 - [x] **S02-T12** [Render] Build the governor and the Low, Medium, and High presets
 - [ ] **S02-T13** [Shell] Add wind, water, rain, and birdsong ambience by synthesis and approved samples
-- [ ] **S02-T14** [Render] Capture the valley at dawn, noon, dusk, night, rain, and fog, and pass the shimmer check across the barley
+- [x] **S02-T14** [Render] Capture the valley at dawn, noon, dusk, night, rain, and fog, and pass the shimmer check across the barley
 - [ ] **S02-T15** [Shell] Run the performance run on the owner's Mac along the tour's camera path, bring every pass inside its share, and save the evidence
 
 ## Exit gate

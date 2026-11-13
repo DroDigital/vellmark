@@ -2,6 +2,41 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: every weather, and the shimmer across the barley (S02-T14)
+
+**Fog is weather.** The rules keep a fog amount beside the rain; it gathers and lifts at
+a quarter of the rain's pace and stills the wind. It adds 0.012 a metre at full to the
+hour's own mist, raises how high the mist reaches, and dims the sun by up to 60%.
+Console: `fog 0..1`.
+
+**The exit captures** are `captures/s02_weathers.ron`: the valley from Tithe Hill at
+dawn (6:24), noon, dusk (17:48, the hour of the golden barley; 18:18 is already night
+in this sky), night, rain, and fog, and the shimmer check across the barley in clear
+air, at dusk, in rain, and in fog. Every shot is also a glyph-off comparison.
+
+**A shimmer run moves the eye 12 mm over 24 frames.** The check assumes the picture
+moves less than a pixel a frame; grass a metre from the eye moves four pixels a frame
+at the yard's runs' speed, which is motion, not shimmer.
+
+**What the check found, and what fixed it:**
+
+- Grass blades are never drawn thinner than about a pixel, tips included. An edge finer
+  than a pixel switches its samples on and off as it moves.
+- Wet blades shine broadly (roughness no less than 0.55), and the ground under a sward
+  is matte where blades are drawn: sharp sun glints on narrow swaying blades, and on
+  ground blinking between them, sparkle.
+- Wet surfaces gloss to roughness 0.28 at most; only standing water is a mirror.
+- A puddle's edge is softened to the pixel's footprint, since multisampling does not
+  smooth an edge drawn by a shader.
+- Rain streaks fade in and out along their length, so a pixel brightens and dims as a
+  streak passes instead of switching on.
+- Blade words crossfade when a blade moves on to its next word, and the instant flicker
+  of single letters is gone.
+
+**Measured:** p99 0.0176 clear, 0.0113 dusk, 0.0175 rain, 0.0192 fog, all under 0.020.
+Wet ground in full sun after rain, which is not one of the gate's weathers, measures
+0.0214; it is listed in `docs/STATE.md`.
+
 ## 2026-11-12: the governor and the presets (S02-T12)
 
 **One governor** (`render::governor`), fed every frame the sum of the GPU's pass timers

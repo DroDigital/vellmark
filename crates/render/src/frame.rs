@@ -82,8 +82,9 @@ impl Atmosphere {
         if f <= 0.0 {
             return self;
         }
-        self.fog[0] = self.fog[0].max(0.002) * (1.0 + 30.0 * f);
-        self.fog[2] = self.fog[2].max(20.0) * (1.0 + 3.0 * f);
+        // Added to the hour's own mist: at full, things a few hundred metres off are lost.
+        self.fog[0] += 0.012 * f;
+        self.fog[2] = self.fog[2].max(20.0) * (1.0 + 2.0 * f);
         self.light_colour *= 1.0 - 0.6 * f;
         self.cloud_cover = self.cloud_cover.max(0.3 * f);
         self

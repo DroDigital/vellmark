@@ -25,7 +25,8 @@
 **In progress:** S02-T10b, the wind that reads. Built: six canon sentences in `assets/text/en/wind.ron`; a gust at most once in each 150 s, in a strong enough wind, laid where the gaze meets the grass; the blades in its strokes bow and shine, and the ground's grass with them. Not yet: it is not legible in a still capture on the software renderer (`captures/s02_wind.ron`). It must be judged in motion on the Mac (console `wind 0`..`wind 5`), and tuned there: strength, size, and where it is laid.
 **Done:** S02-T11: the far cascade drawn once and kept until the light, the eye's cell, or a still thing changes; three shadowed lights in a cube array, each cube kept until its surroundings change, at most one drawn a frame. Test: `crates/harness/tests/shadows.rs`.
 **Done:** S02-T12: the governor, giving up six things in order a tenth at a time and logging each step into the performance report, and the Low, Medium (default), and High presets (`--preset`, console `preset`). Tests: the governor's own, and `crates/harness/tests/governor.rs`. Evidence: `docs/evidence/S02/governor.jpg`.
-**Current task:** S02-T14. Plan: fog as weather (rules, console, captures); `captures/s02_weathers.ron` with the valley at dawn, noon, dusk, night, in rain, and in fog, and the shimmer check across the barley in four weathers; every shot a glyph-off comparison; fix what fails. S02-T10b waits for the owner's eye.
+**Done:** S02-T14: fog as weather; the valley at dawn, noon, dusk, night, rain, and fog; the shimmer check across the barley passing in clear air, dusk, rain, and fog; the glyph-off comparison passing in every one. Evidence: `docs/evidence/S02/weathers.jpg`, `captures/s02_weathers.ron`.
+**Next for Render:** nothing unblocked in S02. S02-T10b waits for the owner's eye on the wind that reads; S02-T13 (ambience) and S02-T15 (the performance run on the Mac) are the Shell lane's, and S02-T08 (trees) the Content lane's.
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
@@ -58,6 +59,8 @@ None.
 None.
 
 ## Known issues
+
+- Wet ground in full sun after rain shimmers a little across near grass (p99 0.0214, limit 0.020). Rain, fog, dusk, and clear air pass. Grass casting shadows would likely settle it.
 
 - The grass `letters` capture passes the glyph-off comparison with little room (max 0.008, limit 0.020). Where a near blade dissolves into letters against bright sky, the bloom carries the change a few pixels beyond the edge filter's three, and a small change in the blades' places once took it to 0.024. S02-T14 runs the comparison in every weather and must look at this; widening the band the comparison exempts would be the owner's decision.
 

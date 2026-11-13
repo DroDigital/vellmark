@@ -280,9 +280,11 @@ fn wet_at(seen: f32, n: vec3<f32>) -> f32 {
     return view.weather.y * smoothstep(0.15, 0.55, seen) * smoothstep(-0.4, 0.2, n.y);
 }
 
-// A surface as rain leaves it: darker, as soaked things are, and glossy.
+// A surface as rain leaves it: darker, as soaked things are, and glossy, though never
+// so sharp that its fine relief breaks into crawling points of light. Only standing
+// water, which is flat, is a mirror.
 fn wetted(s: Surface, wet: f32) -> Surface {
-    return Surface(s.albedo * (1.0 - 0.5 * wet * (1.0 - s.metal)), s.normal, mix(s.roughness, 0.12, wet * 0.85), s.metal);
+    return Surface(s.albedo * (1.0 - 0.5 * wet * (1.0 - s.metal)), s.normal, mix(s.roughness, min(s.roughness, 0.28), wet), s.metal);
 }
 
 // Rain running down a wall: here and there a rivulet, written as a column of `|` that
@@ -750,7 +752,11 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     let low = sky_noise(in.world.xz * 0.35 + vec2<f32>(3.1, 7.7)) * 0.65 + sky_noise(in.world.xz * 1.3) * 0.35;
     // Roads, bare earth, and banks hold water; pasture and fields drink it.
     let holds = mix(0.25, 1.0, clamp(weights[2] + weights[3] + weights[4], 0.0, 1.0));
-    let puddle = smoothstep(0.96, 0.995, n.y) * smoothstep(0.0, 0.03, wet * 0.34 * holds - low + 0.05) * (1.0 - weights[7]);
+    // Its edge is softened to the pixel's footprint: an edge drawn by the shader is not
+    // smoothed by multisampling, and a hard one crawls as the eye moves.
+    let rise = wet * 0.34 * holds - low + 0.05;
+    let soft = max(fwidth(rise), 0.03);
+    let puddle = smoothstep(0.96, 0.995, n.y) * smoothstep(-soft * 0.5, soft, rise) * (1.0 - weights[7]);
     let written_as = select(material, terrain_material(9u), puddle > 0.5);
 
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
@@ -770,12 +776,16 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     // blades above it, so the strokes read whole where the blades thin out.
     let bowed = sentence_press(in.world.xz) * clamp(weights[0] + weights[1], 0.0, 1.0);
     var surface = wetted(Surface(colour_texel.rgb * glyphs.tone * (1.0 + 0.9 * bowed), normal, normal_texel.z, colour_texel.a), wet);
+    // Ground under a sward, where blades are drawn, is shaded and matte: what glints
+    // between swaying blades blinks, and that is shimmer.
+    let sward = clamp(weights[0] + weights[1], 0.0, 1.0) * (1.0 - smoothstep(55.0, 72.0, length(in.world - view.eye_time.xyz)));
+    surface.roughness = mix(surface.roughness, max(surface.roughness, 0.75), sward);
     if puddle > 0.0 {
         // Still water over the ground: dark, smooth, and ringed while it rains.
         let rings = rain_rings(in.world.xz, view.weather.x);
-        let still = normalize(vec3<f32>(-rings.x, 1.0, -rings.y) + vec3<f32>(glyphs.relief.x, 0.0, -glyphs.relief.y) * 0.5);
+        let still = normalize(vec3<f32>(-rings.x, 1.0, -rings.y) + vec3<f32>(glyphs.relief.x, 0.0, -glyphs.relief.y) * 0.25);
         normal = normalize(mix(normal, still, puddle));
-        surface = Surface(mix(surface.albedo, surface.albedo * 0.35, puddle), normal, mix(surface.roughness, 0.03, puddle), 0.0);
+        surface = Surface(mix(surface.albedo, surface.albedo * 0.35, puddle), normal, mix(surface.roughness, 0.06, puddle), 0.0);
     }
     let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, written_as, 0u, 1.2, 1.0, 0u);
     var colour = light_surface(surface, as_surface, n, 0.0, seen);
@@ -1005,7 +1015,10 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     let along = mix(mix(root, knee, s), mix(knee, tip, s), s);
     let tangent = normalize(mix(knee - root, tip - knee, s) + up * 1.0e-4);
     let sign = select(select(-1.0, 1.0, (k & 1u) == 1u), 0.0, k == 6u);
-    let half = wide * widths[level] * 0.5;
+    // Never thinner than about a pixel, tip included: an edge finer than a pixel turns its
+    // samples on and off as it moves, and that is shimmer.
+    let pixel = 1.3e-3 * 1080.0 / view.viewport.y * dist;
+    let half = max(wide * widths[level] * 0.5, pixel * 0.55 * select(1.0, 0.6, k == 6u));
     out.world = along + across * sign * half;
     // Rounded across its width, so it catches the light as a real blade does, and bent
     // towards the sky, as the sward together faces it: a field is lit as the ground it
@@ -1032,6 +1045,27 @@ struct BladeLetters {
     // Below one half, the pixel is not part of the blade: at arm's length the blade is
     // nothing but its characters.
     keep: f32,
+}
+
+// The `i`th character up a blade's line in a given epoch: its words in turn, a space
+// between.
+fn blade_char(material: u32, seed: u32, i: i32, epoch: u32) -> u32 {
+    let words = 1u + materials.entries[material].info.y;
+    var slot = (seed >> 4u) + epoch;
+    var pos = i + i32((seed >> 12u) % 7u);
+    for (var n = 0; n < 16; n++) {
+        let s = slot % words;
+        let count = i32(word_length(material, s));
+        if pos <= count {
+            if pos < count {
+                return word_char(material, s, u32(pos));
+            }
+            return 32u;
+        }
+        pos -= count + 1;
+        slot += 1u;
+    }
+    return 32u;
 }
 
 // Each blade is a line of characters, running from its root to its tip: the words of its
@@ -1062,30 +1096,18 @@ fn blade_letters(in: GrassVaryings, front: bool) -> BladeLetters {
 
     // The line: the blade's words one after another, a space between: its name and what
     // it is made of, `grass C6H12O6 grass C6H10O5`. Every few seconds a blade moves on to
-    // the next of its words, and now and then a letter flickers to another.
+    // the next of its words, the old line fading out as the new one fades in, so that no
+    // letter ever jumps from one frame to the next.
     let m = materials.entries[in.material];
-    let words = 1u + m.info.y;
-    let epoch = u32(floor(view.eye_time.w / 7.0 + unit(in.seed >> 3u) * 7.0));
-    var slot = (in.seed >> 4u) + epoch;
-    var pos = i + i32((in.seed >> 12u) % 7u);
-    var character = 32u;
-    for (var n = 0; n < 16; n++) {
-        let s = slot % words;
-        let count = i32(word_length(in.material, s));
-        if pos <= count {
-            if pos < count {
-                character = word_char(in.material, s, u32(pos));
-            }
-            break;
-        }
-        pos -= count + 1;
-        slot += 1u;
+    let clock = view.eye_time.w / 7.0 + unit(in.seed >> 3u) * 7.0;
+    let epoch = u32(floor(clock));
+    let change = smoothstep(0.85, 1.0, fract(clock));
+    let old = blade_char(in.material, in.seed, i, epoch);
+    var g = cell_glyph(old - 32u, uv, du, dv, h, 0.42);
+    if change > 0.0 {
+        let next = cell_glyph(blade_char(in.material, in.seed, i, epoch + 1u) - 32u, uv, du, dv, h, 0.42);
+        g = CellGlyph(mix(g.cover, next.cover, change), mix(g.mean, next.mean, change), mix(g.distance, next.distance, change), mix(g.threshold, next.threshold, change));
     }
-    let tick = hash_cell(vec2<i32>(i, i32(floor(view.eye_time.w * 8.0)) & 0xffff), 0, in.seed);
-    if character != 32u && unit(tick) < 0.015 {
-        character = 33u + (tick >> 16u) % 94u;
-    }
-    let g = cell_glyph(character - 32u, uv, du, dv, h, 0.42);
     let w = influence_rise(h);
     let contrast = m.surface.y * view.switches.z;
     out.tone = max(1.0 + contrast * w * nearness(h) * (g.mean - g.cover), 0.05);
@@ -1130,7 +1152,10 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
     albedo = mix(albedo, albedo * vec3<f32>(1.25, 1.18, 0.85), in.up * in.up * 0.6) * ao;
     // Grass bowed by the wind shows its paler, shinier side.
     albedo *= 1.0 + 1.0 * in.pressed;
-    let surface = wetted(Surface(albedo * letters.tone, n, 0.6, 0.0), wet_at(in.blade.x, vec3<f32>(0.0, 1.0, 0.0)) * 0.8);
+    // Wet blades shine, but broadly: a blade is too narrow to hold a sharp highlight
+    // still, and one that sparkles as it sways is shimmer.
+    var surface = wetted(Surface(albedo * letters.tone, n, 0.6, 0.0), wet_at(in.blade.x, vec3<f32>(0.0, 1.0, 0.0)) * 0.8);
+    surface.roughness = max(surface.roughness, 0.55);
     let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0, 0u);
     var colour = light_surface(surface, as_surface, n, 0.0, in.blade.x);
     // Light through the blade: a blade lit from behind glows.
@@ -1565,8 +1590,11 @@ fn fs_rain(in: RainVaryings) -> @location(0) vec4<f32> {
         if view.viewport.w > 0.5 {
             discard;
         }
+        // Soft at both ends: a pixel the streak passes over brightens and fades over the
+        // frames it takes to pass, rather than switching on when the head arrives.
         let across = 1.0 - abs(in.uv.x);
-        return vec4<f32>(light * 1.3, 0.28 * in.fade * across * in.uv.y);
+        let along = sin(3.14159265 * in.uv.y);
+        return vec4<f32>(light * 1.3, 0.36 * in.fade * across * along * along);
     }
     // Close by, a splash is a `'`; further off, a fleck of spray.
     let h = 1.0 / max(max(length(du), length(dv)), 1.0e-5);

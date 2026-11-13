@@ -99,4 +99,22 @@ mod tests {
         assert_eq!(s.now.rain, 0.0);
         assert!(s.now.wetness > 0.5 && s.now.wetness < 1.0, "the ground dries slowly: {}", s.now.wetness);
     }
+
+    #[test]
+    fn fog_gathers_slowly_and_stills_the_wind() {
+        let mut s = WeatherState { fog_wanted: 1.0, ..Default::default() };
+        let mut t = 0.0;
+        for _ in 0..(5.0 / STEP_SECONDS) as usize {
+            s.step(t);
+            t += STEP_SECONDS as f64;
+        }
+        assert!(s.now.fog > 0.05 && s.now.fog < 0.2, "five seconds is the start of it: {}", s.now.fog);
+        let breezy = s.now.wind_strength;
+        for _ in 0..(60.0 / STEP_SECONDS) as usize {
+            s.step(t);
+            t += STEP_SECONDS as f64;
+        }
+        assert_eq!(s.now.fog, 1.0);
+        assert!(s.now.wind_strength < breezy, "the air is stiller in thick fog");
+    }
 }

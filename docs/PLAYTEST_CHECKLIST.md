@@ -72,3 +72,5 @@ Added as each system is built.
 | Rain inside its budget | S02-T10a | With `rain 1`, read the `rain` and `water` lines of the report |
 | Shadows inside 2.0 ms, and no pop when the far cascade is redrawn | S02-T11 | In the valley, read the `shadows` lines of the report. Watch the far hills' shadows as the sun moves: they should step so little that you cannot see it |
 | The governor and the presets | S02-T12 | `perf-run.command` runs on Medium. In its report, the `[governor]` part says what was given up and when; nothing given up is best. In play, the console's `preset high` and `preset low` should change grass density with no stall |
+| Fog, and no shimmer anywhere | S02-T14 | In the valley, console `fog 0.5`, then `fog 0`. Walk slowly past the barley at noon, at dusk (`hour 17.8`), in rain, and in fog: nothing should crawl or sparkle |
+| Dusk from the hill is a picture worth keeping | S02 exit gate | Stand on Tithe Hill at `hour 17.8` and look north over the barley. Yes or no |
