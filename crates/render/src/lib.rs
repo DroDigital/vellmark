@@ -3,6 +3,7 @@
 //! addition and not a rewrite.
 
 mod atlas;
+pub mod bark;
 mod camera;
 mod contact;
 mod cull;
@@ -83,6 +84,8 @@ pub struct RenderAssets<'a> {
     pub grade: &'a vellmark_content::Grade,
     /// The sentences the wind writes in the grass, from the string table.
     pub wind: &'a [String],
+    /// The words a tree's bark records itself in, from the string table.
+    pub bark: &'a bark::BarkWords,
 }
 
 /// The renderer's assets as read from a pack.
@@ -91,6 +94,7 @@ pub struct LoadedAssets {
     pub materials: MaterialSet,
     pub grade: vellmark_content::Grade,
     pub wind: Vec<String>,
+    pub bark: bark::BarkWords,
 }
 
 impl LoadedAssets {
@@ -112,11 +116,12 @@ impl LoadedAssets {
                 None => vellmark_content::Grade::default(),
             },
             wind: wind_sentences(pack),
+            bark: bark_words(pack),
         })
     }
 
     pub fn borrow(&self) -> RenderAssets<'_> {
-        RenderAssets { glyphs: &self.glyphs, materials: &self.materials, grade: &self.grade, wind: &self.wind }
+        RenderAssets { glyphs: &self.glyphs, materials: &self.materials, grade: &self.grade, wind: &self.wind, bark: &self.bark }
     }
 }
 
@@ -130,6 +135,20 @@ fn wind_sentences(pack: &vellmark_content::Pack) -> Vec<String> {
     (0..crate::grass::MAX_SENTENCES)
         .map_while(|i| table.get(StringId::from_key(&format!("wind.vale.{i}"))).map(str::to_owned))
         .collect()
+}
+
+/// The words a tree's bark is written in, from the base language's string table: the
+/// record, `tree.bark.record`, and each kind's name, `tree.kind.<kind>`.
+fn bark_words(pack: &vellmark_content::Pack) -> bark::BarkWords {
+    use vellmark_content::{AssetId, AssetKind, StringId, StringTable};
+    let Some(table) = pack.get(AssetKind::StringTable, AssetId::from_key("strings.en")).and_then(|b| StringTable::from_bytes(b).ok()) else {
+        return bark::BarkWords::default();
+    };
+    let kinds = ["oak", "ash", "apple", "hawthorn"]
+        .iter()
+        .filter_map(|k| table.get(StringId::from_key(&format!("tree.kind.{k}"))).map(|n| (k.to_string(), n.to_owned())))
+        .collect();
+    bark::BarkWords { record: table.get(StringId::from_key("tree.bark.record")).unwrap_or_default().to_owned(), kinds }
 }
 
 /// Reads a scene and its meshes from a pack. `key` is the scene's authored key, such as
@@ -146,7 +165,10 @@ pub fn load_scene(gpu: &Gpu, pack: &vellmark_content::Pack, key: &str) -> Result
         Some(bytes) => vellmark_content::MeshLevels::from_bytes(bytes)?,
         None => vellmark_content::MeshLevels::default(),
     };
-    let on_gpu = SceneGpu::new(gpu, &scene, pages, &levels, &|id| pack.get(AssetKind::Mesh, id).and_then(|b| Mesh::from_bytes(b).ok()))?;
+    let mut on_gpu = SceneGpu::new(gpu, &scene, pages, &levels, &|id| pack.get(AssetKind::Mesh, id).and_then(|b| Mesh::from_bytes(b).ok()))?;
+    if let Some(bytes) = pack.get(AssetKind::Table, AssetId::from_key(vellmark_content::TREE_RECORDS_KEY)) {
+        on_gpu.records = vellmark_content::TreeRecords::from_bytes(bytes)?;
+    }
     Ok((scene, on_gpu))
 }
 
@@ -186,6 +208,8 @@ pub struct Renderer {
     scene: SceneGpu,
     terrain: Option<terrain::TerrainGpu>,
     target_format: wgpu::TextureFormat,
+    bark_words: bark::BarkWords,
+    bark: bark::Bark,
 }
 
 impl Renderer {
@@ -208,6 +232,8 @@ impl Renderer {
             scene: SceneGpu::default(),
             terrain: None,
             target_format,
+            bark_words: assets.bark.clone(),
+            bark: bark::Bark::default(),
         })
     }
 
@@ -218,6 +244,8 @@ impl Renderer {
     /// Replaces the scene being drawn. Buffers, not pipelines, so it is safe in play.
     pub fn set_scene(&mut self, gpu: &Gpu, scene: SceneGpu) {
         self.surface.set_pages(gpu, &scene.pages);
+        // Setting the pages cleared the generated ones too: the bark starts afresh.
+        self.bark = bark::Bark::new(&scene, &scene.records, &self.bark_words);
         self.scene = scene;
     }
 
@@ -302,6 +330,12 @@ impl Renderer {
         frame: &FrameInput<'_>,
         timers: &mut PassTimers,
     ) {
+        // The bark of the trees nearest the eyes reads their records.
+        let eyes: Vec<glam::Vec3> = frame.views.iter().map(|v| v.camera.eye).collect();
+        for written in self.bark.update(&eyes) {
+            self.surface.set_generated_page(gpu, &written);
+        }
+        self.scene.set_generated(self.bark.pages());
         self.world.render(gpu, encoder, target, target_size, frame, &self.scene, &self.surface, self.terrain.as_ref(), timers);
 
         if let Some(canvas) = frame.ui.filter(|c| !c.quads.is_empty()) {

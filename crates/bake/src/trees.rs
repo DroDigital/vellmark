@@ -27,6 +27,9 @@ pub struct Kind {
     pub cards_per_twig: u32,
     pub lean: f32,
     pub seed: u32,
+    /// How many years a tree of this kind has stood when it has grown to its size at a
+    /// scale of 1. Generated truth: its bark records it.
+    pub age: f32,
 }
 
 #[derive(Deserialize)]
@@ -307,6 +310,19 @@ pub fn meshes(kind: &Kind, bark: u32, leaves: u32, impostor: u32) -> Vec<(AssetI
     far_form(&mut far, impostor, crown_half_width(&tree), top_of(&tree));
     out.push((mesh_id(&kind.key, LEVELS[3]), far));
     out
+}
+
+/// Round the trunk at its foot, in the metres of the bark's page: the page runs round
+/// each branch at the radius of its foot.
+pub fn girth(kind: &Kind) -> f32 {
+    std::f32::consts::TAU * grow(kind).branches[0].radii[0]
+}
+
+/// How many years a placed tree has stood: its kind's age at full size, older as it is
+/// larger, and a little older or younger by where it stands.
+pub fn years(kind: &Kind, scale: f32, x: f32, z: f32) -> u32 {
+    let mut rng = Rng((x.round() as i32 as u32).wrapping_mul(0x9e37_79b9) ^ (z.round() as i32 as u32).wrapping_mul(0x85eb_ca6b) ^ kind.seed);
+    (kind.age * scale.powf(1.6) * rng.range(0.85, 1.15)).round().max(3.0) as u32
 }
 
 /// Whether a point of a card, in the card's own square from 0 to 1, is leaf: a few

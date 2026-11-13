@@ -96,6 +96,11 @@ pub struct SceneGpu {
     pub pages: TextPages,
     /// Where the scene's batches end in a list; what follows (grass) starts here.
     pub list_end: u32,
+    /// For each placed thing, the generated page its surface reads, counted from 1; 0
+    /// for none.
+    pub generated: Vec<u32>,
+    /// What is true of the scene's trees, for their bark.
+    pub records: vellmark_content::TreeRecords,
 }
 
 fn bounds_of(mesh: &Mesh) -> (glam::Vec3, f32) {
@@ -210,6 +215,8 @@ impl SceneGpu {
             lights: scene.lights.clone(),
             pages,
             list_end,
+            generated: Vec::new(),
+            records: Default::default(),
         })
     }
 
@@ -221,10 +228,22 @@ impl SceneGpu {
     }
 
     /// Every instance as the GPU reads it, with this frame's heat and breakage.
+    /// Which placed things read which generated pages: (place, page counted from 1).
+    pub fn set_generated(&mut self, pages: impl Iterator<Item = (usize, u32)>) {
+        self.generated.clear();
+        self.generated.resize(self.placed.len(), 0);
+        for (placed, page) in pages {
+            if let Some(g) = self.generated.get_mut(placed) {
+                *g = page;
+            }
+        }
+    }
+
     pub fn instances(&self, heat: &[(u64, f32)], broken: &[u64]) -> Vec<InstanceGpu> {
         self.placed
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(i, p)| {
                 let mesh = &self.meshes[p.group];
                 let centre = p.transform.transform_point3(mesh.centre);
                 let scale = p.transform.x_axis.truncate().length().max(p.transform.y_axis.truncate().length()).max(p.transform.z_axis.truncate().length());
@@ -232,7 +251,7 @@ impl SceneGpu {
                 let hidden = if broken.contains(&p.key.0) { 1.0 } else { 0.0 };
                 InstanceGpu {
                     model: p.transform.to_cols_array(),
-                    state: [heat, hidden, 0.0, 0.0],
+                    state: [heat, hidden, 0.0, self.generated.get(i).copied().unwrap_or(0) as f32],
                     bounds: [centre.x, centre.y, centre.z, mesh.radius * scale],
                     group: {
                         let g = &self.groups[p.group];
@@ -479,6 +498,22 @@ impl SurfaceResources {
         let resources = Self { layout, bind_group, page_table, page_sheet, glowing, leaves };
         resources.set_pages(gpu, &TextPages::default());
         Ok(resources)
+    }
+
+    /// Writes one of the generated pages: its entry at the end of the table and its
+    /// characters at the bottom of the sheet.
+    pub fn set_generated_page(&self, gpu: &Gpu, written: &crate::bark::Written) {
+        let e = &written.entry;
+        let params = PageParams { place: [e.left, e.top, e.width as i32, e.height as i32], sheet_level: [e.sheet_x, e.sheet_y, e.level, 0] };
+        let index = crate::bark::FIRST_ENTRY + written.slot;
+        gpu.queue.write_buffer(&self.page_table, (index * std::mem::size_of::<PageParams>()) as u64, bytemuck::bytes_of(&params));
+        let side = crate::bark::SIDE;
+        gpu.queue.write_texture(
+            wgpu::TexelCopyTextureInfo { texture: &self.page_sheet, mip_level: 0, origin: wgpu::Origin3d { x: e.sheet_x, y: e.sheet_y, z: 0 }, aspect: wgpu::TextureAspect::All },
+            &written.chars,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(side), rows_per_image: Some(side) },
+            wgpu::Extent3d { width: side, height: side, depth_or_array_layers: 1 },
+        );
     }
 
     /// Replaces the authored text with a scene's. Text travels with its scene, so this

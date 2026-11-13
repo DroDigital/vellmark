@@ -135,6 +135,7 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
         base.add(AssetKind::Tile, id, bytes).map_err(|e| BakeError(e.to_string()))?;
     }
 
+    let mut records = vellmark_content::TreeRecords::default();
     for mut baked in scene::bake_all(&inputs.assets.join("scenes"), &set, &table.text)? {
         // The valley's trees, each with an ID from where it stands, which never changes.
         if baked.scene.terrain == AssetId::from_key("terrain.valley") {
@@ -142,8 +143,12 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
                 let Some(y) = ground(p.x, p.z) else { continue };
                 let (s, c) = p.yaw.sin_cos();
                 let k = p.scale;
+                let key = AssetId::from_key(&format!("{}.tree.{}.{}.{}", baked.key, p.kind, p.x.round() as i32, p.z.round() as i32));
+                // What its bark records.
+                let kind = kinds.iter().find(|k| k.key == p.kind).ok_or_else(|| BakeError(format!("no tree kind `{}`", p.kind)))?;
+                records.trees.push(vellmark_content::TreeRecord { tree: key, kind: kind.key.clone(), years: trees::years(kind, k, p.x, p.z), girth: trees::girth(kind) });
                 baked.scene.objects.push(vellmark_content::Object {
-                    key: AssetId::from_key(&format!("{}.tree.{}.{}.{}", baked.key, p.kind, p.x.round() as i32, p.z.round() as i32)),
+                    key,
                     mesh: trees::mesh_id(p.kind, trees::LEVELS[0]),
                     transform: [c * k, 0.0, s * k, p.x, 0.0, k, 0.0, y - 0.1, -s * k, 0.0, c * k, p.z],
                 });
@@ -161,6 +166,8 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
         }
         base.add(AssetKind::Scene, AssetId::from_key(&baked.key), baked.scene.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
     }
+    report.push(format!("{}: {} trees", vellmark_content::TREE_RECORDS_KEY, records.trees.len()));
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::TREE_RECORDS_KEY), records.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
     base.add(AssetKind::MaterialSet, AssetId::from_key(materials::MATERIAL_SET_KEY), set.to_bytes())
         .map_err(|e| BakeError(e.to_string()))?;
 

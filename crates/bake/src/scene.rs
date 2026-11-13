@@ -335,7 +335,7 @@ fn lay_out_texts(
                 shelf_y += shelf_h;
                 shelf_h = 0;
             }
-            if layout.width > SHEET || shelf_y + layout.height > SHEET {
+            if layout.width > SHEET || shelf_y + layout.height > SHEET - TextPages::GENERATED_ROWS {
                 return Err(BakeError(format!("{}: the text `{}` needs a page larger than the sheet", file.display(), text.string)));
             }
             for row in 0..layout.height {
@@ -368,8 +368,8 @@ fn lay_out_texts(
             )));
         }
     }
-    if pages.entries.len() > TextPages::MAX_PAGES {
-        return Err(BakeError(format!("{}: more than {} text pages", file.display(), TextPages::MAX_PAGES)));
+    if pages.entries.len() > TextPages::MAX_PAGES - TextPages::GENERATED_PAGES {
+        return Err(BakeError(format!("{}: more than {} text pages", file.display(), TextPages::MAX_PAGES - TextPages::GENERATED_PAGES)));
     }
     Ok((pages, page_of))
 }

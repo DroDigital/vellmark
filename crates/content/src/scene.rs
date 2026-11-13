@@ -280,6 +280,11 @@ pub struct TextPages {
 impl TextPages {
     const MAGIC: &'static [u8; 8] = b"VLMKTXT1";
     pub const MAX_PAGES: usize = 64;
+    /// Of the table's pages, how many at its end are kept for generated truth, written
+    /// by the renderer for the things nearest the eye, and how many rows at the bottom
+    /// of the sheet they take. Authored text uses the rest.
+    pub const GENERATED_PAGES: usize = 8;
+    pub const GENERATED_ROWS: u32 = 128;
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
