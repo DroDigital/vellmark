@@ -247,9 +247,16 @@ fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>
 // lantern, and its own glow.
 // `seen` is the share of the sky the place can see, baked: it scales the sky's light.
 fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32, seen: f32) -> vec3<f32> {
+    return light_surface_at(surface, in, flat_normal, glow, seen, in.world);
+}
+
+// As `light_surface`, with the sun's shadow taken at `shadow_at`: where a surface stands
+// for more than is drawn of it, as the ground under a sward does, the shadow is that of
+// what it stands for.
+fn light_surface_at(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32, seen: f32, shadow_at: vec3<f32>) -> vec3<f32> {
     let to_eye = normalize(view.eye_time.xyz - in.world);
     let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
-    let shadow = sun_shadow(in.world, flat_normal, depth_in_view);
+    let shadow = sun_shadow(shadow_at, flat_normal, depth_in_view);
     var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
     // Contact occlusion: the fine darkening where things meet, at half resolution.
     let contact = mix(1.0, textureSampleLevel(contact_occlusion, fog_sampler, in.position.xy * 0.5 / vec2<f32>(textureDimensions(contact_occlusion)), 0.0).r, view.quality.y);
@@ -360,6 +367,11 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
 }
 
 // ---- trees ----
+
+// How high above the ground a sward takes the sun's shadow, in metres: partway up its
+// blades. Pasture, then barley.
+const SWARD_SHADOW: f32 = 0.15;
+const BARLEY_SHADOW: f32 = 0.6;
 
 // A tree's coarsest level: the crossed cards of its far form.
 const FAR_LEVEL: u32 = 3u;
@@ -895,14 +907,19 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
         surface = Surface(mix(surface.albedo, surface.albedo * 0.35, puddle), normal, mix(surface.roughness, 0.06, puddle), 0.0);
     }
     let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, written_as, 0u, 1.2, 1.0, 0u);
-    var colour = light_surface(surface, as_surface, n, 0.0, seen);
+    // The ground under a sward stands for the sward, and takes the sun's shadow where the
+    // blades drawn over it take theirs.
+    let crop = weights[0] + weights[1];
+    let sward_height = select(SWARD_SHADOW, (weights[0] * SWARD_SHADOW + weights[1] * BARLEY_SHADOW) / crop, crop > 1.0e-4);
+    let shadow_at = in.world + vec3<f32>(0.0, sward_height * sward, 0.0);
+    var colour = light_surface_at(surface, as_surface, n, 0.0, seen, shadow_at);
     // Against a low sun a sward glows, the light coming through its blades. The ground
     // the sward stands for glows with the blades drawn over it, so that each blade is not
     // a bright line on dark ground, which flickers as the eye moves.
     let backlit = pow(max(dot(normalize(in.world - view.eye_time.xyz), view.light_dir_hour.xyz), 0.0), 6.0) * 0.8 * sward;
     if backlit > 1.0e-3 {
         let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
-        colour += surface.albedo * view.light_colour.rgb * sun_shadow(in.world, n, depth_in_view) * backlit * 0.6;
+        colour += surface.albedo * view.light_colour.rgb * sun_shadow(shadow_at, n, depth_in_view) * backlit;
     }
     let look = u32(view.effects.z + 0.5);
     if look > 0u && glyphs.revealed > 0.0 {
@@ -995,6 +1012,8 @@ struct GrassVaryings {
     // How well the blade is seen: 0 where it is about a pixel wide and is shaded as the
     // sward's average, 1 where it is wide enough to show its own light and shade.
     @location(8) @interpolate(flat) seen: f32,
+    // The blade's height, in metres.
+    @location(9) @interpolate(flat) tall: f32,
 }
 
 @vertex
@@ -1010,6 +1029,7 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     out.blade = vec2<f32>(0.0);
     out.pressed = 0.0;
     out.seen = 0.0;
+    out.tall = 0.0;
 
     let object = instances[instance_of(index)];
     let origin = object.model[3].xyz;
@@ -1087,6 +1107,7 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     }
     let cell_side = wide;
     tall *= mix(0.25, 1.0, fade);
+    out.tall = tall;
     // Beyond the near distance each blade stands for several, so it is wider: about the
     // same width on screen at any distance, and the field keeps its cover.
     wide *= max(1.0, dist / near) * fade;
@@ -1281,12 +1302,18 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
     var surface = wetted(Surface(albedo * letters.tone, n, 0.6, 0.0), wet_at(in.blade.x, vec3<f32>(0.0, 1.0, 0.0)) * 0.8);
     surface.roughness = max(surface.roughness, 0.55);
     let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0, 0u);
-    var colour = light_surface(surface, as_surface, n, 0.0, in.blade.x);
+    // A blade about a pixel wide is in the sun or the shade as a whole, as the sward is:
+    // its shadow is taken partway up it, where the ground under it takes it too. Against
+    // a low sun, a lit tip over a shaded root is finer than the pixels.
+    let sward_height = select(SWARD_SHADOW, BARLEY_SHADOW, in.material == terrain_material(1u));
+    let shadow_at = in.world + vec3<f32>(0.0, (sward_height - in.up * in.tall) * (1.0 - in.seen), 0.0);
+    var colour = light_surface_at(surface, as_surface, n, 0.0, in.blade.x, shadow_at);
     // Light through the blade: a blade lit from behind glows.
     let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
     let l = view.light_dir_hour.xyz;
-    let through = max(dot(-n, l), 0.0) * 0.3 + pow(max(dot(-to_eye, l), 0.0), 6.0) * 0.8;
-    colour += albedo * letters.tone * view.light_colour.rgb * sun_shadow(in.world, n, depth_in_view) * through;
+    // A blade about a pixel wide passes the sward's average light, not its own.
+    let through = mix(0.12, max(dot(-n, l), 0.0) * 0.3, in.seen) + pow(max(dot(-to_eye, l), 0.0), 6.0) * 0.8;
+    colour += albedo * letters.tone * view.light_colour.rgb * sun_shadow(shadow_at, n, depth_in_view) * through;
     colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
     if view.switches.y > 0.0 {
         let text = mix(paper_of(texel.rgb), ink_of(texel.rgb), letters.ink) / view.viewport.z;
