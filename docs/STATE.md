@@ -25,7 +25,7 @@
 **In progress:** S02-T10b, the wind that reads. Built: six canon sentences in `assets/text/en/wind.ron`; a gust at most once in each 150 s, in a strong enough wind, laid where the gaze meets the grass; the blades in its strokes bow and shine, and the ground's grass with them. Not yet: it is not legible in a still capture on the software renderer (`captures/s02_wind.ron`). It must be judged in motion on the Mac (console `wind 0`..`wind 5`), and tuned there: strength, size, and where it is laid.
 **Done:** S02-T11: the far cascade drawn once and kept until the light, the eye's cell, or a still thing changes; three shadowed lights in a cube array, each cube kept until its surroundings change, at most one drawn a frame. Test: `crates/harness/tests/shadows.rs`.
 **Done:** S02-T12: the governor, giving up six things in order a tenth at a time and logging each step into the performance report, and the Low, Medium (default), and High presets (`--preset`, console `preset`). Tests: the governor's own, and `crates/harness/tests/governor.rs`. Evidence: `docs/evidence/S02/governor.jpg`.
-**Next:** S02-T14, the valley in every weather and the shimmer check across the barley (S02-T13 is the Shell lane's). S02-T10b waits for the owner's eye.
+**Current task:** S02-T14. Plan: fog as weather (rules, console, captures); `captures/s02_weathers.ron` with the valley at dawn, noon, dusk, night, in rain, and in fog, and the shimmer check across the barley in four weathers; every shot a glyph-off comparison; fix what fails. S02-T10b waits for the owner's eye.
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim

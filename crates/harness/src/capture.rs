@@ -99,6 +99,9 @@ pub struct Shot {
     /// Rain, 0 to 1, with the ground as wet as long rain leaves it. None is dry.
     #[serde(default)]
     pub rain: Option<f32>,
+    /// Fog, 0 to 1. None is the hour's own mist.
+    #[serde(default)]
+    pub fog: Option<f32>,
     /// How wet the world is, if not as the rain leaves it: after rain, for instance.
     #[serde(default)]
     pub wetness: Option<f32>,
@@ -431,6 +434,7 @@ pub fn run(script: &Script, options: &Options) -> Result<Report, String> {
                     vellmark_sim::Weather {
                         rain,
                         wetness: shot.wetness.unwrap_or(if rain > 0.0 { 1.0 } else { 0.0 }),
+                        fog: shot.fog.unwrap_or(0.0),
                         ..Default::default()
                     }
                 },

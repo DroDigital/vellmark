@@ -75,6 +75,20 @@ pub struct Atmosphere {
 }
 
 impl Atmosphere {
+    /// The same hour in fog, 0 to 1: the mist thickens many times over and climbs, and
+    /// the sun reaches the ground dimmed and spread.
+    pub fn with_fog(mut self, fog: f32) -> Self {
+        let f = fog.clamp(0.0, 1.0);
+        if f <= 0.0 {
+            return self;
+        }
+        self.fog[0] = self.fog[0].max(0.002) * (1.0 + 30.0 * f);
+        self.fog[2] = self.fog[2].max(20.0) * (1.0 + 3.0 * f);
+        self.light_colour *= 1.0 - 0.6 * f;
+        self.cloud_cover = self.cloud_cover.max(0.3 * f);
+        self
+    }
+
     /// The same hour under rain, 0 to 1: the sky closes over, the sun is lost behind it,
     /// the sky's own light greys and dims, and the air thickens.
     pub fn with_rain(mut self, rain: f32) -> Self {

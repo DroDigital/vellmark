@@ -26,6 +26,8 @@ pub enum Command {
     Heat(String, f32),
     /// Ask for rain, 0 to 1.
     Rain(f32),
+    /// Ask for fog, 0 to 1.
+    Fog(f32),
     /// A gust that writes one of the wind's sentences, by number.
     Wind(u32),
     /// Choose a preset: low, medium, or high.
@@ -180,6 +182,10 @@ impl Overlay {
             (Some("rain"), Some(v)) => match v.parse::<f32>() {
                 Ok(r) if (0.0..=1.0).contains(&r) => self.commands.push(Command::Rain(r)),
                 _ => self.say("rain takes a number from 0 (dry) to 1 (a downpour)"),
+            },
+            (Some("fog"), Some(v)) => match v.parse::<f32>() {
+                Ok(f) if (0.0..=1.0).contains(&f) => self.commands.push(Command::Fog(f)),
+                _ => self.say("fog takes a number from 0 (clear) to 1 (thick)"),
             },
             (Some("wind"), Some(v)) => match v.parse::<u32>() {
                 Ok(n) => self.commands.push(Command::Wind(n)),

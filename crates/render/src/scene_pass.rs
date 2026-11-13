@@ -1267,7 +1267,7 @@ impl ScenePass {
         let mut atmosphere = Atmosphere::at(frame.time_of_day);
         let air = self.grade.at(frame.time_of_day);
         atmosphere.fog = [air.fog_density, air.fog_floor, air.fog_falloff];
-        let atmosphere = atmosphere.with_rain(frame.weather.rain);
+        let atmosphere = atmosphere.with_rain(frame.weather.rain).with_fog(frame.weather.fog);
         let views = &frame.views[..frame.views.len().min(MAX_VIEWS)];
         let letter_count = frame.letters.len().min(vellmark_sim::debris::MAX_LETTERS);
         if self.letters_sent != Some((frame.letters_step, letter_count)) {

@@ -16,13 +16,15 @@ pub struct Weather {
     pub wind: [f32; 2],
     /// Its strength: 0 still to 1 a gale.
     pub wind_strength: f32,
+    /// How thick the fog is: 0 none beyond the hour's own mist, to 1 a white-out.
+    pub fog: f32,
 }
 
 impl Default for Weather {
     /// Dry, with the wind as `WeatherState::step` has it at the clock's start.
     fn default() -> Self {
         let angle = WIND_ANGLE;
-        Self { rain: 0.0, wetness: 0.0, wind: [angle.cos(), angle.sin()], wind_strength: 0.45 }
+        Self { rain: 0.0, wetness: 0.0, wind: [angle.cos(), angle.sin()], wind_strength: 0.45, fog: 0.0 }
     }
 }
 
@@ -40,6 +42,7 @@ const DRY_SECONDS: f32 = 480.0;
 pub struct WeatherState {
     pub now: Weather,
     pub rain_wanted: f32,
+    pub fog_wanted: f32,
 }
 
 impl WeatherState {
@@ -51,6 +54,9 @@ impl WeatherState {
         let to = self.rain_wanted.clamp(0.0, 1.0);
         let most = RAIN_RATE * STEP_SECONDS;
         w.rain += (to - w.rain).clamp(-most, most);
+        // Fog gathers and lifts more slowly than rain comes and goes.
+        let fog_most = RAIN_RATE * 0.25 * STEP_SECONDS;
+        w.fog += (self.fog_wanted.clamp(0.0, 1.0) - w.fog).clamp(-fog_most, fog_most);
         if w.rain > 0.0 {
             w.wetness = (w.wetness + w.rain * STEP_SECONDS / SOAK_SECONDS).min(1.0);
         } else {
@@ -59,7 +65,8 @@ impl WeatherState {
         let t = seconds as f32;
         let angle = WIND_ANGLE + 0.35 * (t / 47.0).sin() + 0.1 * (t / 13.0).sin();
         w.wind = [angle.cos(), angle.sin()];
-        w.wind_strength = (0.45 + 0.2 * (t / 23.0).sin() + 0.25 * w.rain).clamp(0.0, 1.0);
+        // Fog comes in still air.
+        w.wind_strength = ((0.45 + 0.2 * (t / 23.0).sin() + 0.25 * w.rain) * (1.0 - 0.7 * w.fog)).clamp(0.0, 1.0);
     }
 
     /// Sets the weather at once, wet as long rain would leave it: for tools and tests.

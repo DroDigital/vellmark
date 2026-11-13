@@ -319,6 +319,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         }
                     }
                     Command::Rain(r) => world.set_rain(r),
+                    Command::Fog(f) => world.set_fog(f),
                     Command::Preset(p) => {
                         preset = p;
                         renderer.set_quality(p.quality());

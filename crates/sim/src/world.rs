@@ -157,6 +157,11 @@ impl World {
         self.weather.rain_wanted = rain.clamp(0.0, 1.0);
     }
 
+    /// Asks for fog, 0 to 1. It gathers and lifts over a minute or so.
+    pub fn set_fog(&mut self, fog: f32) {
+        self.weather.fog_wanted = fog.clamp(0.0, 1.0);
+    }
+
     /// The weather of this step.
     pub fn weather(&self) -> crate::Weather {
         self.weather.now
@@ -284,6 +289,8 @@ impl World {
         h.f32(self.weather.now.rain);
         h.f32(self.weather.now.wetness);
         h.f32(self.weather.rain_wanted);
+        h.f32(self.weather.now.fog);
+        h.f32(self.weather.fog_wanted);
         h.u32(self.next_player);
         h.u32(self.players.len() as u32);
         for p in &self.players {

@@ -1,0 +1,23 @@
+// Phase S02's exit captures: the valley from Tithe Hill at dawn, noon, dusk, and night,
+// in rain, and in fog; and the shimmer check across the barley from the road, a slow
+// sideways move of a small part of a pixel a frame, in clear air, at dusk, in rain, and
+// in fog. Every shot is also a glyph-off comparison.
+#![enable(implicit_some)]
+(
+    name: "s02_weathers",
+    scene: "scene.valley",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "dawn", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 6.4, above_ground: true, pair: true),
+        (name: "noon", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 12.5, above_ground: true, pair: true),
+        (name: "dusk", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 18.3, above_ground: true, pair: true),
+        (name: "night", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 23.0, above_ground: true, pair: true),
+        (name: "rain", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 14.0, above_ground: true, rain: 0.8, pair: true),
+        (name: "fog", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 8.0, above_ground: true, fog: 0.8, pair: true),
+        (name: "shimmer_barley", from: (eye: (-60.0, 1.7, 44.0), yaw: 50.0, pitch: -6.0), to: (eye: (-59.88, 1.7, 44.0), yaw: 50.0, pitch: -6.0), hour: 12.5, above_ground: true, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_barley_dusk", from: (eye: (-60.0, 1.7, 44.0), yaw: 50.0, pitch: -6.0), to: (eye: (-59.88, 1.7, 44.0), yaw: 50.0, pitch: -6.0), hour: 18.3, above_ground: true, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_barley_rain", from: (eye: (-60.0, 1.7, 44.0), yaw: 50.0, pitch: -6.0), to: (eye: (-59.88, 1.7, 44.0), yaw: 50.0, pitch: -6.0), hour: 14.0, above_ground: true, rain: 0.8, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_barley_fog", from: (eye: (-60.0, 1.7, 44.0), yaw: 50.0, pitch: -6.0), to: (eye: (-59.88, 1.7, 44.0), yaw: 50.0, pitch: -6.0), hour: 8.0, above_ground: true, fog: 0.8, frames: 24, shimmer: true, pair: true),
+    ],
+)
