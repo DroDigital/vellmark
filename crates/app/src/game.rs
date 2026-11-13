@@ -219,6 +219,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let breakable_places: Vec<(u64, Vec3)> = breakables.iter().map(|b| (b.id, Vec3::from(b.to_world.translation))).collect();
     world.set_scene(solids, breakables);
     world.set_trunks(vellmark_render::tree_trunks(&base, &scene));
+    world.set_readables(vellmark_render::scene_readables(&base, &scene_key));
     // The simulation holds the feet; the scene's spawn is given as an eye.
     let spawn = scene.spawn;
     world.add_player(Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]), spawn[3]);
@@ -391,7 +392,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         #[cfg(feature = "dev")]
         dev_tools.tune(&mut tuning, &actions);
         // Holding Read eases from the realistic frame into the text frame, and back.
-        let wanted = if actions.held(Action::Read) { 1.0 } else { 0.0 };
+        // Close reading is the rules' to decide: Read with no text in focus.
+        let wanted = if current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::Close) { 1.0 } else { 0.0 };
         let ease = (frame_time.as_secs_f32() / 0.35).min(1.0);
         close_reading += (wanted - close_reading).clamp(-ease, ease);
         #[cfg(feature = "dev")]
@@ -433,6 +435,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
+        if let Some(player) = current.players.first() {
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() }
+                .draw(&mut canvas, player, &actions, &bindings, style);
+        }
         #[cfg(feature = "dev")]
         dev_tools.draw(&mut canvas, &assets.glyphs, screen.size(), window.pixel_density(), frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), &registry, &tuning);
 

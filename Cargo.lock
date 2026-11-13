@@ -1738,6 +1738,8 @@ name = "vellmark-ui"
 version = "0.1.0"
 dependencies = [
  "vellmark-content",
+ "vellmark-platform",
+ "vellmark-sim",
 ]
 
 [[package]]

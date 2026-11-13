@@ -45,6 +45,11 @@ struct Player {
     body: crate::character::Body,
     yaw: f32,
     pitch: f32,
+    reading: crate::reading::Reading,
+    /// The text in focus, for prompts.
+    in_focus: Option<usize>,
+    /// How sharp a reader: hidden lines up to this are seen.
+    perception: u32,
 }
 
 /// The ground as the body asks about it.
@@ -82,6 +87,12 @@ pub struct World {
     trunks: Vec<crate::character::Trunk>,
     /// The still world the bodies move against, rebuilt when the ground or scene changes.
     statics: Option<Arc<crate::character::Statics>>,
+    /// The texts that can be read.
+    readables: Arc<Vec<crate::reading::ReadableText>>,
+    /// The world's own clock, in seconds: it runs slow while time is slowed.
+    seconds: f64,
+    /// The share of a step's time that passed in the last step: 1, or less while slowed.
+    pace: f32,
 }
 
 impl World {
@@ -106,6 +117,9 @@ impl World {
             solids: Vec::new(),
             trunks: Vec::new(),
             statics: None,
+            readables: Arc::default(),
+            seconds: 0.0,
+            pace: 1.0,
         }
     }
 
@@ -114,7 +128,7 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0 });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0 });
         id
     }
 
@@ -124,6 +138,18 @@ impl World {
         self.debris.set_solids(solids);
         self.breakables = breakables;
         self.rebuild_statics();
+    }
+
+    /// Gives the world the texts that can be read.
+    pub fn set_readables(&mut self, texts: Vec<crate::reading::ReadableText>) {
+        self.readables = Arc::new(texts);
+    }
+
+    /// Sets how sharp a reader a player is.
+    pub fn set_perception(&mut self, id: PlayerId, perception: u32) {
+        if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+            p.perception = perception;
+        }
     }
 
     /// Gives the world the trunks of the scene's trees, which bodies cannot walk through.
@@ -255,20 +281,44 @@ impl World {
     /// Advances one fixed step. `inputs[i]` belongs to the i-th player in the order they
     /// were added. A missing input is treated as no input.
     pub fn step(&mut self, inputs: &[PlayerInput]) {
+        use crate::input::buttons;
+        use crate::reading::{focus, Reading, CLOSE_READING_PACE};
+        // What each player reads. A text in focus is read while Read is held; with none,
+        // Read is close reading.
+        for (i, p) in self.players.iter_mut().enumerate() {
+            let input = inputs.get(i).copied().unwrap_or_default();
+            let eye = p.body.feet + Vec3::Y * p.body.eye;
+            let (sy, cy) = p.yaw.sin_cos();
+            let (sp, cp) = p.pitch.sin_cos();
+            let gaze = Vec3::new(sy * cp, sp, -cy * cp);
+            p.in_focus = focus(eye, gaze, &self.readables, self.statics.as_deref());
+            p.reading = if !input.held(buttons::READ) {
+                Reading::None
+            } else {
+                match (&p.reading, p.in_focus) {
+                    // Holding on a text keeps reading it, though the eye wanders.
+                    (Reading::Text(t), _) => Reading::Text(*t),
+                    (Reading::None, Some(t)) => Reading::Text(t),
+                    _ => Reading::Close,
+                }
+            };
+        }
+        // In solo play, close reading slows time. In co-op the shared world never slows.
+        self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close { CLOSE_READING_PACE } else { 1.0 };
+        let dt = STEP_SECONDS * self.pace;
         for (i, p) in self.players.iter_mut().enumerate() {
             let input = inputs.get(i).copied().unwrap_or_default();
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
-
-            p.body.step(&input, p.yaw, self.statics.as_deref(), &Around(self.ground.as_deref()));
+            p.body.step(&input, p.yaw, self.statics.as_deref(), &Around(self.ground.as_deref()), dt);
         }
         if self.debris.awake() > 0 {
-            self.debris.step(STEP_SECONDS);
+            self.debris.step(dt);
             self.refresh_letters();
         }
-        self.weather.step(self.step as f64 * STEP_SECONDS as f64);
-        self.time_of_day =
-            (self.time_of_day + self.config.hours_per_second * STEP_SECONDS).rem_euclid(24.0);
+        self.seconds += dt as f64;
+        self.weather.step(self.seconds);
+        self.time_of_day = (self.time_of_day + self.config.hours_per_second * dt).rem_euclid(24.0);
         self.step += 1;
     }
 
@@ -286,6 +336,19 @@ impl World {
                 crouching: p.body.crouching,
                 swimming: p.body.swimming,
                 untouchable: p.body.untouchable(),
+                reading: match &p.reading {
+                    crate::reading::Reading::None => crate::reading::ReadingSnap::None,
+                    crate::reading::Reading::Close => crate::reading::ReadingSnap::Close,
+                    crate::reading::Reading::Text(t) => {
+                        let r = &self.readables[*t];
+                        crate::reading::ReadingSnap::Text {
+                            id: r.id,
+                            text: r.text,
+                            hidden: r.hidden.iter().filter(|(_, need)| p.perception >= *need).map(|(s, _)| *s).collect(),
+                        }
+                    }
+                },
+                in_focus: p.in_focus.map(|t| self.readables[t].id),
             })
             .collect();
         let views = self
@@ -317,6 +380,7 @@ impl World {
         let mut h = Fnv64::new();
         h.u64(self.step);
         h.u64(self.rng);
+        h.u64(self.seconds.to_bits());
         h.f32(self.time_of_day);
         h.f32(self.weather.now.rain);
         h.f32(self.weather.now.wetness);

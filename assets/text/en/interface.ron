@@ -1,0 +1,5 @@
+// Words of the interface: prompts' verbs and the like. Keys are permanent: add, never
+// rename.
+{
+    "ui.read": "Read",
+}

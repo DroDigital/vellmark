@@ -164,6 +164,10 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
             report.push(format!("{}.pages: {} pages", baked.key, pages.entries.len()));
             base.add(AssetKind::TextPage, baked.scene.pages, pages.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
         }
+        if !baked.readables.items.is_empty() {
+            report.push(format!("{}: {} texts to read", baked.key, baked.readables.items.len()));
+            base.add(AssetKind::Table, AssetId::from_key(&vellmark_content::readables_key(&baked.key)), baked.readables.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+        }
         base.add(AssetKind::Scene, AssetId::from_key(&baked.key), baked.scene.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
     }
     report.push(format!("{}: {} trees", vellmark_content::TREE_RECORDS_KEY, records.trees.len()));

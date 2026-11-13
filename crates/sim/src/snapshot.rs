@@ -2,7 +2,7 @@ use crate::world::PlayerId;
 use glam::{Quat, Vec3};
 
 /// One player as drawn.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlayerSnap {
     pub id: PlayerId,
     pub feet: Vec3,
@@ -13,6 +13,10 @@ pub struct PlayerSnap {
     pub swimming: bool,
     /// Attacks pass through it now: the first moments of a sidestep.
     pub untouchable: bool,
+    /// What it is reading, if anything.
+    pub reading: crate::reading::ReadingSnap,
+    /// The text it would read if it held Read now, by its ID.
+    pub in_focus: Option<u64>,
 }
 
 /// One camera. There is one for each player, and the renderer draws the whole list.

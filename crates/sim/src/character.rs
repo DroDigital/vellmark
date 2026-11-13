@@ -12,7 +12,6 @@ use rapier3d::control::{CharacterAutostep, CharacterLength, KinematicCharacterCo
 use rapier3d::math::{Pose, Vector};
 use rapier3d::prelude::{Array2, ColliderBuilder, HeightField, HeightFieldCellStatus, PhysicsWorld, QueryFilter, Ray, SharedShape};
 
-use crate::clock::STEP_SECONDS;
 use crate::input::{buttons, PlayerInput};
 
 // The body's measures, in metres.
@@ -245,9 +244,9 @@ impl Body {
         }
     }
 
-    /// One fixed step. `yaw` is the body's facing.
-    pub fn step(&mut self, input: &PlayerInput, yaw: f32, statics: Option<&Statics>, around: &dyn Surroundings) {
-        let dt = STEP_SECONDS;
+    /// One fixed step of `dt` seconds of the world's time: a full step, or less while
+    /// time is slowed. `yaw` is the body's facing.
+    pub fn step(&mut self, input: &PlayerInput, yaw: f32, statics: Option<&Statics>, around: &dyn Surroundings, dt: f32) {
         let pressed = input.buttons & !self.last_buttons;
         self.last_buttons = input.buttons;
         let (sin, cos) = yaw.sin_cos();

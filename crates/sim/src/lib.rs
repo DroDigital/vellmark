@@ -23,6 +23,7 @@ pub trait Ground: Send + Sync + std::fmt::Debug {
 }
 pub mod character;
 pub mod hands;
+pub mod reading;
 mod hash;
 mod input;
 mod snapshot;

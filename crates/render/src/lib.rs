@@ -224,6 +224,24 @@ pub fn tree_trunks(pack: &vellmark_content::Pack, scene: &vellmark_content::Scen
         .collect()
 }
 
+/// A scene's texts that can be read, for the rules.
+pub fn scene_readables(pack: &vellmark_content::Pack, scene_key: &str) -> Vec<vellmark_sim::reading::ReadableText> {
+    use vellmark_content::{readables_key, AssetId, AssetKind, Readables};
+    let Some(r) = pack.get(AssetKind::Table, AssetId::from_key(&readables_key(scene_key))).and_then(|b| Readables::from_bytes(b).ok()) else {
+        return Vec::new();
+    };
+    r.items
+        .iter()
+        .map(|t| vellmark_sim::reading::ReadableText {
+            id: t.id.0,
+            text: t.text.0,
+            min: t.min.into(),
+            max: t.max.into(),
+            hidden: t.hidden.iter().map(|(s, p)| (s.0, *p)).collect(),
+        })
+        .collect()
+}
+
 pub struct Renderer {
     world: ScenePass,
     surface: SurfaceResources,

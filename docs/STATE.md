@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T03, reading.
+**Current task:** S03-T04, the word sheets.
 
 ## Lane: Render
 
@@ -31,6 +31,7 @@
 
 ## Lane: Sim
 
+**Done:** S03-T03, reading (`crates/sim/src/reading.rs`): the text the eye is on within 2.6 m, unless something solid hides it, is read while Read is held, with the hidden lines the reader's Perception reaches; with no text in focus Read is close reading, and in solo play the world (bodies, debris, weather, the clock) runs at a third of its pace while it is held, never in co-op. Each scene's texts are baked into `readables.<scene>` with their hidden lines. Reading mode sets the text large on paper over the dimmed view, as large as fits, hidden lines in a red-brown ink beneath; a `[R] Read` prompt shows when a text is in focus. Stamina drain while close reading joins Stamina in S03-T09. Evidence: `docs/evidence/S03/reading.jpg`. Tests: `crates/sim/tests/reading.rs`, `crates/harness/tests/reading.rs`.
 **Done:** S03-T01, the first-person body on `rapier3d` (`crates/sim/src/character.rs`): jog 5 m/s and sprint 7.5 m/s with acceleration, a jump of about a metre with grace either side of an edge, crouch that stays down under a roof, a mantle onto ledges up to 1.9 m, wading and swimming with the eye just above the water, and the 2 m sidestep whose first 0.12 s attacks pass through. The terrain's finest tiles are heightfields split as the terrain is drawn, the scene's boxes and the trees' trunks are solid, and stepping stays deterministic. Tests: `crates/sim/tests/controller.rs`, `crates/harness/tests/walk.rs`.
 
 ## Lane: Content

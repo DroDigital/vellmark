@@ -69,6 +69,10 @@ struct AuthoredText {
     /// Rows from one line to the next. 2 leaves a blank row between lines.
     #[serde(default = "one_row")]
     leading: u32,
+    /// Lines only a sharp enough reader sees, shown when the text is read: each a string
+    /// key and the Perception it takes.
+    #[serde(default)]
+    hidden: Vec<(String, u32)>,
 }
 
 fn one_row() -> u32 {
@@ -281,6 +285,60 @@ pub struct BakedScene {
     pub scene: Scene,
     pub meshes: Vec<(AssetId, Mesh)>,
     pub pages: Option<TextPages>,
+    /// The texts that can be read with the Read action.
+    pub readables: vellmark_content::Readables,
+}
+
+/// Every authored text of a scene as a thing to be read: the box round the boxes its
+/// runs are set on, in the world.
+fn readables_of(authored: &Authored, name: &str, strings: &BTreeMap<String, String>, file: &Path) -> Result<vellmark_content::Readables, BakeError> {
+    use vellmark_content::{Readable, StringId};
+    let mut items = Vec::new();
+    for text in &authored.texts {
+        let mut lo = [f32::MAX; 3];
+        let mut hi = [f32::MIN; 3];
+        let mut grow = |p: [f32; 3]| {
+            for i in 0..3 {
+                lo[i] = lo[i].min(p[i]);
+                hi[i] = hi[i].max(p[i]);
+            }
+        };
+        for run in &text.runs {
+            for b in authored.boxes.iter().filter(|b| b.tag.as_deref() == Some(run.tag.as_str())) {
+                grow([b.min.0, b.min.1, b.min.2]);
+                grow([b.max.0, b.max.1, b.max.2]);
+            }
+            for o in &authored.objects {
+                let (s, c) = o.yaw.to_radians().sin_cos();
+                for b in o.boxes.iter().filter(|b| b.tag.as_deref() == Some(run.tag.as_str())) {
+                    for corner in 0..8 {
+                        let p = [
+                            if corner & 1 == 0 { b.min.0 } else { b.max.0 },
+                            if corner & 2 == 0 { b.min.1 } else { b.max.1 },
+                            if corner & 4 == 0 { b.min.2 } else { b.max.2 },
+                        ];
+                        grow([c * p[0] + s * p[2] + o.position.0, p[1] + o.position.1, -s * p[0] + c * p[2] + o.position.2]);
+                    }
+                }
+            }
+        }
+        if lo[0] > hi[0] {
+            continue;
+        }
+        for (key, _) in &text.hidden {
+            if !strings.contains_key(key) {
+                return Err(BakeError(format!("{}: no string `{key}` in assets/text", file.display())));
+            }
+        }
+        items.push(Readable {
+            id: AssetId::from_key(&format!("scene.{name}.text.{}", text.string)),
+            text: StringId::from_key(&text.string),
+            min: lo,
+            max: hi,
+            hidden: text.hidden.iter().map(|(k, p)| (StringId::from_key(k), *p)).collect(),
+        });
+    }
+    Ok(vellmark_content::Readables { items })
 }
 
 /// The rectangle a box's face covers on its page, in metres: left, bottom, right, top.
@@ -462,7 +520,8 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
             ],
         };
         let pages = (!pages.entries.is_empty()).then_some(pages);
-        out.push(BakedScene { key: format!("scene.{name}"), scene, meshes, pages });
+        let readables = readables_of(&authored, &name, strings, &file)?;
+        out.push(BakedScene { key: format!("scene.{name}"), scene, meshes, pages, readables });
     }
     Ok(out)
 }
