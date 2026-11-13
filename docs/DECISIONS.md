@@ -2,6 +2,26 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: the word sheets (S03-T04)
+
+**Thirteen target classes.** The brief asks for a result or a refusal for every word on
+every target class but does not list the classes. The Showcase's are door, container,
+lamp, fire, water, structure, plant, creature, inkling, person, weapon, paper, and stone,
+in `assets/data/words/targets.ron`; the full game adds to the list, and every sheet must
+then answer the new class before the bake passes.
+
+**Sheets name effects; the rules carry them out.** A sheet says which effect a word has
+on a class (`open`, `ignite`, `freeze`, and 33 more, listed in `bake::words::EFFECTS`),
+how strongly, and the preview; the rules hold the effects' mechanics. The preview is the
+effect's own (`preview.open`, "Opens it") unless the sheet names another. People refuse
+harm and Mind words other than `CALM`; `OPEN` and `HOLE` on a person refuse with the
+canon's "Not without a signature."
+
+**Motifs in D Dorian.** `OPEN` D A D, `LIT` A C E G, `WHOLE` D F E D, `CALM` A G E D,
+`BURNING` E F E B C, `COLD` B F B (falling tritones), `SHARP` C G F. The Vale's four
+Standing Page words (`OPEN`, `LIT`, `WHOLE`, `CALM`) will make the main theme. The bake
+refuses two motifs with the same intervals.
+
 ## 2026-11-13: the hands and the settings (S03-T02)
 
 **The rules read the hands.** Which hand tapped, held, or let go is worked out in `sim`

@@ -1,0 +1,21 @@
+// Blazing: LIT and BURNING on one target at once.
+(
+    name: "Blazing",
+    words: ("LIT", "BURNING"),
+    caption: "caption.compound.blazing",
+    targets: {
+        "door": Do(effect: "blaze"),
+        "container": Do(effect: "blaze"),
+        "lamp": Do(effect: "blaze"),
+        "fire": Do(effect: "blaze"),
+        "water": Refuse("refuse.compound.blazing"),
+        "structure": Do(effect: "blaze"),
+        "plant": Do(effect: "blaze"),
+        "creature": Do(effect: "blaze"),
+        "inkling": Do(effect: "blaze"),
+        "person": Refuse("refuse.compound.blazing"),
+        "weapon": Do(effect: "blaze"),
+        "paper": Do(effect: "blaze"),
+        "stone": Refuse("refuse.compound.blazing"),
+    },
+)

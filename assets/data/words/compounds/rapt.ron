@@ -1,0 +1,21 @@
+// Rapt: LIT and CALM on one target at once.
+(
+    name: "Rapt",
+    words: ("LIT", "CALM"),
+    caption: "caption.compound.rapt",
+    targets: {
+        "door": Refuse("refuse.compound.rapt"),
+        "container": Refuse("refuse.compound.rapt"),
+        "lamp": Refuse("refuse.compound.rapt"),
+        "fire": Refuse("refuse.compound.rapt"),
+        "water": Refuse("refuse.compound.rapt"),
+        "structure": Refuse("refuse.compound.rapt"),
+        "plant": Refuse("refuse.compound.rapt"),
+        "creature": Do(effect: "rapt"),
+        "inkling": Do(effect: "rapt"),
+        "person": Do(effect: "rapt"),
+        "weapon": Refuse("refuse.compound.rapt"),
+        "paper": Refuse("refuse.compound.rapt"),
+        "stone": Refuse("refuse.compound.rapt"),
+    },
+)

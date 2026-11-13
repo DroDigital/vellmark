@@ -1,0 +1,21 @@
+// Grateful: WHOLE and CALM on one target at once.
+(
+    name: "Grateful",
+    words: ("WHOLE", "CALM"),
+    caption: "caption.compound.grateful",
+    targets: {
+        "door": Refuse("refuse.compound.grateful"),
+        "container": Refuse("refuse.compound.grateful"),
+        "lamp": Refuse("refuse.compound.grateful"),
+        "fire": Refuse("refuse.compound.grateful"),
+        "water": Refuse("refuse.compound.grateful"),
+        "structure": Refuse("refuse.compound.grateful"),
+        "plant": Refuse("refuse.compound.grateful"),
+        "creature": Do(effect: "grateful"),
+        "inkling": Refuse("refuse.compound.grateful.inkling"),
+        "person": Refuse("refuse.compound.grateful.person"),
+        "weapon": Refuse("refuse.compound.grateful"),
+        "paper": Refuse("refuse.compound.grateful"),
+        "stone": Refuse("refuse.compound.grateful"),
+    },
+)

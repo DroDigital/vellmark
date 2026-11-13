@@ -68,3 +68,12 @@ fn every_button_prompt_is_in_the_table() {
         assert!(text.starts_with('[') && text.ends_with(']') && text.is_ascii(), "{key}: {text}");
     }
 }
+
+#[test]
+fn the_words_page_is_written_from_the_sheets() {
+    // `docs/WORDS.md` is the bake's, never edited by hand: it must be what the sheets say.
+    let output = bake(&inputs()).unwrap();
+    let (_, page) = output.docs.iter().find(|(name, _)| name == "WORDS.md").expect("the bake writes WORDS.md");
+    let on_disk = std::fs::read_to_string(repo_root().join("docs/WORDS.md")).unwrap_or_default();
+    assert!(on_disk == *page, "docs/WORDS.md is out of date: run the bake (`cargo run -p vellmark-bake`)");
+}

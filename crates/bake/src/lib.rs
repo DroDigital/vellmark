@@ -14,6 +14,7 @@ pub mod sha256;
 pub mod strings;
 pub mod terrain;
 pub mod trees;
+pub mod words;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -52,6 +53,8 @@ pub struct BakeOutput {
     pub packs: Vec<(String, Vec<u8>)>,
     /// One line for each thing baked, for the log.
     pub report: Vec<String>,
+    /// Pages the bake writes for the owner to read, by their path under `docs/`.
+    pub docs: Vec<(String, String)>,
 }
 
 /// The language the Showcase ships in. Translation is left for the full game, but the
@@ -96,6 +99,12 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     report.push(format!("strings.{BASE_LANGUAGE}: {} entries", table.count));
     base.add(AssetKind::StringTable, string_table_id(BASE_LANGUAGE), table.bytes)
         .map_err(|e| BakeError(e.to_string()))?;
+
+    // The words, from their sheets.
+    let words = words::bake_words(&inputs.assets.join("data/words"), &table.text)?;
+    report.push(format!("{}: {} words, {} compounds, {} target classes", vellmark_content::WORDS_KEY, words.table.words.len(), words.table.compounds.len(), words.table.classes.len()));
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::WORDS_KEY), words.table.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+    let docs = vec![("WORDS.md".to_string(), words.page)];
 
     let atlas = glyphs::bake_atlas(&inputs.third_party, inputs.cache.as_deref())?;
     report.push(format!("{GLYPH_ATLAS_KEY}: {} bytes", atlas.len()));
@@ -186,13 +195,22 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
         base.add(AssetKind::CameraPath, AssetId::from_key(&key), bytes).map_err(|e| BakeError(e.to_string()))?;
     }
 
-    Ok(BakeOutput { packs: vec![("base.vpk".to_owned(), base.finish())], report })
+    Ok(BakeOutput { packs: vec![("base.vpk".to_owned(), base.finish())], report, docs })
 }
 
 /// Bakes and writes the packs into `out`.
 pub fn bake_to_dir(inputs: &BakeInputs, out: &Path) -> Result<BakeOutput, BakeError> {
     let output = bake(inputs)?;
     std::fs::create_dir_all(out).map_err(|e| BakeError(format!("cannot create {}: {e}", out.display())))?;
+    // The owner's pages, beside the assets they are written from.
+    if let Some(docs) = inputs.assets.parent().map(|p| p.join("docs")).filter(|d| d.is_dir()) {
+        for (name, text) in &output.docs {
+            let path = docs.join(name);
+            if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+                std::fs::write(&path, text).map_err(|e| BakeError(format!("cannot write {}: {e}", path.display())))?;
+            }
+        }
+    }
     for (name, bytes) in &output.packs {
         let path = out.join(name);
         // Leave an unchanged pack untouched so that nothing downstream is rebuilt.

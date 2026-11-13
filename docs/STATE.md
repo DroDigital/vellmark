@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T04, the word sheets.
+**Current task:** S03-T05, Inscriptions and casting.
 
 ## Lane: Render
 
@@ -35,6 +35,8 @@
 **Done:** S03-T01, the first-person body on `rapier3d` (`crates/sim/src/character.rs`): jog 5 m/s and sprint 7.5 m/s with acceleration, a jump of about a metre with grace either side of an edge, crouch that stays down under a roof, a mantle onto ledges up to 1.9 m, wading and swimming with the eye just above the water, and the 2 m sidestep whose first 0.12 s attacks pass through. The terrain's finest tiles are heightfields split as the terrain is drawn, the scene's boxes and the trees' trunks are solid, and stepping stays deterministic. Tests: `crates/sim/tests/controller.rs`, `crates/harness/tests/walk.rs`.
 
 ## Lane: Content
+
+**Done:** S03-T04, the word sheets: one sheet per word in `assets/data/words/` for the seven (`OPEN`, `LIT`, `WHOLE`, `CALM`, `BURNING`, `COLD`, `SHARP`) with their typos, a file for each of the five compounds, and thirteen target classes in `targets.ron`. Each sheet holds the class, Ink, a result or a refusal for every target class, its typo's likewise, its combat line, what it does on a held weapon, its motif and caption, and its five-part effect's settings; every line is in `assets/text/en/words.ron`. The bake fails on a missing field or class, an unknown effect, a missing string, or two motifs with the same intervals, compiles `words.table`, and writes `docs/WORDS.md` (kept current by a test). The lines are drafts in the Ledger's voice for the owner to correct there.
 
 **Done:** S02-T08a, trees grown in the bake: oak, ash, apple, and hawthorn, three levels and a far form each, bark that carries a page, leaf cards, and an impostor material per kind. Evidence: `docs/evidence/S02/tree_far_forms.png`. **Done:** S02-T08b, 612 trees in the valley: the two woods (oak, ash, hawthorn on a jittered seven-metre grid), the Quiet Orchard's rows of apples, and hawthorn hedges along the roads, each an object with an ID from where it stands. **Done:** S02-T08d, the bark records each tree's age as generated truth: kind, age, and girth kept in the `trees.records` table; the eight trees nearest the eye carry their record round the trunk in pages the renderer writes, worded from `assets/text/en/trees.ron` (`Oak. Stood 130 years.`). Evidence: `docs/evidence/S02/bark.jpg`, `captures/s02_trees.ron`. Tests: `bark` in the render crate, `records` in content.
 

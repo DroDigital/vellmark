@@ -6,6 +6,7 @@
 pub mod levels;
 pub mod records;
 pub mod readables;
+pub mod words;
 pub mod camera_path;
 pub mod glyph_atlas;
 pub mod grade;
@@ -21,6 +22,7 @@ pub use grade::{Grade, GradeKey};
 pub use levels::{MeshLevels, MESH_LEVELS_KEY};
 pub use records::{TreeRecord, TreeRecords, TREE_RECORDS_KEY};
 pub use readables::{readables_key, Readable, Readables};
+pub use words::{Compound, EffectLook, Outcome, Typo, Word, WordTable, WORDS_KEY};
 pub use glyph_atlas::{glyph_index, Face, FaceInfo, GlyphAtlas, GlyphInfo, FACES, GLYPHS_PER_FACE, TONE_STEPS};
 pub use id::{fnv1a64, AssetId, AssetKind, StringId};
 pub use scene::{Breakable, Lexicon, Light, Material, MaterialSet, Mesh, Object, PageEntry, Scene, SolidBox, TextPages, Vertex};

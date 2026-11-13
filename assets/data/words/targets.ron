@@ -1,0 +1,18 @@
+// The classes of target a word can be written on. Every word, typo, and compound
+// has a result or a refusal for each, and the bake fails on any it lacks. Keys are
+// permanent: add, never rename.
+[
+    (key: "door", what: "Doors, gates, and shutters"),
+    (key: "container", what: "Chests, barrels, crates, and cupboards"),
+    (key: "lamp", what: "Lanterns, lamps, and candles"),
+    (key: "fire", what: "Forges, hearths, and open fires"),
+    (key: "water", what: "The river, the pond, the mill race, and puddles"),
+    (key: "structure", what: "Bridges, walls, fences, and posts"),
+    (key: "plant", what: "Trees, hedges, and crops"),
+    (key: "creature", what: "Beasts: hounds, crows, goats"),
+    (key: "inkling", what: "Creatures of loose ink"),
+    (key: "person", what: "The Vale's people"),
+    (key: "weapon", what: "Blades and other weapons, lying or held by others"),
+    (key: "paper", what: "Paper: documents, ledgers, and books"),
+    (key: "stone", what: "Rock, gravestones, and Standing Pages"),
+]
