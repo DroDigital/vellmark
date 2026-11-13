@@ -896,6 +896,14 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     }
     let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, written_as, 0u, 1.2, 1.0, 0u);
     var colour = light_surface(surface, as_surface, n, 0.0, seen);
+    // Against a low sun a sward glows, the light coming through its blades. The ground
+    // the sward stands for glows with the blades drawn over it, so that each blade is not
+    // a bright line on dark ground, which flickers as the eye moves.
+    let backlit = pow(max(dot(normalize(in.world - view.eye_time.xyz), view.light_dir_hour.xyz), 0.0), 6.0) * 0.8 * sward;
+    if backlit > 1.0e-3 {
+        let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
+        colour += surface.albedo * view.light_colour.rgb * sun_shadow(in.world, n, depth_in_view) * backlit * 0.6;
+    }
     let look = u32(view.effects.z + 0.5);
     if look > 0u && glyphs.revealed > 0.0 {
         let to_eye = normalize(view.eye_time.xyz - in.world);
