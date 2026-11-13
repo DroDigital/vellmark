@@ -374,7 +374,7 @@ const SWARD_SHADOW: f32 = 0.15;
 const BARLEY_SHADOW: f32 = 0.6;
 // What a blade about a pixel wide, shaded as the sward's average, is darkened by, and
 // the share of the sky it sees.
-const THIN_BLADE_SHADE: f32 = 0.92;
+const THIN_BLADE_SHADE: f32 = 0.8;
 const THIN_BLADE_SKY: f32 = 0.55;
 
 // A tree's coarsest level: the crossed cards of its far form.
@@ -1171,12 +1171,7 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     // than the pixels cannot be drawn, and drawn anyway it flickers as the eye moves.
     out.seen = smoothstep(1.5, 4.0, 2.0 * max(wide * 0.5, pixel * 0.55) / pixel);
     let own = normalize(cross(across, tangent) + across * sign * 0.5 * out.seen);
-    // A blade too narrow to show its own facing faces as upright blades seen together do
-    // on average: towards the eye, and half up with the sward.
-    let to_eye_flat = vec3<f32>(eye.x - root.x, 0.0, eye.z - root.z);
-    let seen_together = normalize(to_eye_flat / max(length(to_eye_flat), 1.0e-3) * 0.8 + slope);
-    let as_sward = normalize(mix(own, slope, 0.55));
-    out.normal = normalize(mix(seen_together, as_sward, out.seen * out.seen));
+    out.normal = normalize(mix(own, slope, mix(0.9, 0.55, out.seen)));
     out.page = vec2<f32>(s * tall, sign * cell_side * widths[level] * 0.5);
     out.up = s;
     out.seed = seed;
