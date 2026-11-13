@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T02, the two-hand input model and settings.
+**Current task:** S03-T03, reading.
 
 ## Lane: Render
 
@@ -43,6 +43,7 @@
 
 ## Lane: Shell
 
+**Done:** S03-T02, the two hands and the settings: tap, hold that charges, and both hands together, worked out in the rules step by step (`crates/sim/src/hands.rs`); input settings saved in the user's `settings.ron` (mouse and stick sensitivity, invert, aim assist, remaps that swap so no action is lost), and console `sensitivity`, `invert`, `bind` until the settings menu; button prompts drawn in letters from `assets/text/en/prompts.ron`, following the last device and the pad's maker. The settings menu itself comes with the menus. Tests: the hands', the settings', the prompts', and `every_button_prompt_is_in_the_table`.
 **Done:** S02-T13, the ambience: our own mixer on SDL3's audio stream, never allocating on the audio thread, with wind in gusts, leaves near trees, rain and its drops, the river by how near its water is, and birds by day, all synthesized and set from the world each frame. Evidence: `docs/evidence/S02/ambience.wav`. Tests: `crates/audio/tests/`. Recorded beds wait on the owner's downloads (`third_party/DOWNLOADS.md`).
 
 ## Requests between lanes

@@ -32,6 +32,11 @@ pub enum Command {
     Wind(u32),
     /// Choose a preset: low, medium, or high.
     Preset(vellmark_render::Preset),
+    /// Mouse sensitivity, as a multiple of the default.
+    Sensitivity(f32),
+    InvertY(bool),
+    /// Move an action to a button: a key, `mouse_left`, or a pad button such as `south`.
+    Bind(String, String),
     Quit,
 }
 
@@ -194,6 +199,16 @@ impl Overlay {
             (Some("preset"), Some(v)) => match vellmark_render::Preset::parse(v) {
                 Some(p) => self.commands.push(Command::Preset(p)),
                 None => self.say("preset takes low, medium, or high"),
+            },
+            (Some("sensitivity"), Some(v)) => match v.parse::<f32>() {
+                Ok(n) if (0.2..=4.0).contains(&n) => self.commands.push(Command::Sensitivity(n)),
+                _ => self.say("sensitivity takes a multiple of the default, from 0.2 to 4"),
+            },
+            (Some("invert"), Some("on")) => self.commands.push(Command::InvertY(true)),
+            (Some("invert"), Some("off")) => self.commands.push(Command::InvertY(false)),
+            (Some("bind"), Some(action)) => match words.next() {
+                Some(button) => self.commands.push(Command::Bind(action.to_string(), button.to_string())),
+                None => self.say("bind takes an action, then a key, `mouse_left`, or a pad button such as `south`"),
             },
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),

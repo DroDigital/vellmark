@@ -120,6 +120,20 @@ impl Platform {
         Ok(AudioOut { _stream: stream })
     }
 
+    /// How the controller `pad` names its buttons, for its prompts.
+    pub fn pad_style(&self, pad: u32) -> crate::prompts::PadStyle {
+        use crate::prompts::PadStyle;
+        use sdl3::gamepad::GamepadType as T;
+        let Some(open) = self.open_pads.iter().find(|p| p.id().is_ok_and(|id| id.raw() == pad)) else {
+            return PadStyle::Xbox;
+        };
+        match open.r#type() {
+            T::PS3 | T::PS4 | T::PS5 => PadStyle::PlayStation,
+            T::NintendoSwitchPro | T::NintendoSwitchJoyconLeft | T::NintendoSwitchJoyconRight | T::NintendoSwitchJoyconPair => PadStyle::Nintendo,
+            _ => PadStyle::Xbox,
+        }
+    }
+
     pub fn create_window(&self, options: &WindowOptions<'_>) -> Result<Window, String> {
         let mut builder = self.video.window(options.title, options.width, options.height);
         builder.resizable().high_pixel_density();

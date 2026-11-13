@@ -2,6 +2,21 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: the hands and the settings (S03-T02)
+
+**The rules read the hands.** Which hand tapped, held, or let go is worked out in `sim`
+from the buttons each step, so bots and replays see exactly what a player's hands did:
+a press let go within 0.22 s is a tap; held longer it is a hold that charges until let
+go; the second hand pressed within 0.12 s of the first, before either is a hold, makes
+both hands act as one until either is let go.
+
+**Settings are multipliers and differences.** The settings file holds sensitivity as a
+multiple of the default and only the buttons the player moved, so a later change of a
+default reaches every player. Moving an action onto a button swaps whatever was there
+onto the action's old button: nothing is left without one. Prompts are string keys
+(`prompt.key.space`, `prompt.pad.playstation.south`), so their letters are in the
+string table, and every key the code can build is checked to be there.
+
 ## 2026-11-13: the body (S03-T01)
 
 **Rapier for the still world; the body's own state for the rest.** The terrain's finest

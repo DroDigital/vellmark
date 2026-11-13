@@ -1691,6 +1691,7 @@ dependencies = [
  "vellmark-bake",
  "vellmark-content",
  "vellmark-gpu",
+ "vellmark-platform",
  "vellmark-render",
  "vellmark-sim",
  "vellmark-ui",
@@ -1702,7 +1703,9 @@ name = "vellmark-platform"
 version = "0.1.0"
 dependencies = [
  "raw-window-handle",
+ "ron",
  "sdl3",
+ "serde",
 ]
 
 [[package]]

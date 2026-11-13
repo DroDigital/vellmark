@@ -228,7 +228,18 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut previous: Arc<Snapshot> = world.snapshot();
     let mut current: Arc<Snapshot> = previous.clone();
 
-    let bindings = Bindings::default();
+    // The player's input settings, if they have saved any.
+    let settings_path = crate::paths::user_data_dir().join("settings.ron");
+    #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
+    let mut input_settings = match std::fs::read_to_string(&settings_path) {
+        Ok(text) => vellmark_platform::InputSettings::parse(&text).unwrap_or_else(|e| {
+            log::line(&format!("the settings could not be read, so the defaults are used: {e}"));
+            Default::default()
+        }),
+        Err(_) => Default::default(),
+    };
+    #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
+    let mut bindings = input_settings.bindings();
     let mut actions = ActionState::default();
     let mut raw: Vec<RawInput> = Vec::new();
     let mut clock = FixedClock::new();
@@ -302,6 +313,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 let open = dev_tools.toggle_console();
                 platform.text_entry(&window, open);
             }
+            let settings_before = input_settings.clone();
             for command in dev_tools.take_commands() {
                 use crate::dev::Command;
                 match command {
@@ -330,7 +342,33 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         log::line(&format!("preset {p:?}"));
                     }
                     Command::Wind(n) => forced_gust = Some((n, started.elapsed().as_secs_f32())),
+                    Command::Sensitivity(n) => input_settings.mouse_sensitivity = n,
+                    Command::InvertY(on) => input_settings.invert_y = on,
+                    Command::Bind(action, button) => {
+                        use vellmark_platform::prompts::{action_named, key_named, mouse_button_named, pad_button_named};
+                        match action_named(&action) {
+                            None => log::line(&format!("no action called `{action}`")),
+                            Some(a) => {
+                                if let Some(k) = key_named(&button) {
+                                    input_settings.remap_key(a, k);
+                                } else if let Some(m) = mouse_button_named(&button) {
+                                    input_settings.remap_mouse(a, m);
+                                } else if let Some(p) = pad_button_named(&button) {
+                                    input_settings.remap_pad(a, p);
+                                } else {
+                                    log::line(&format!("no button called `{button}`"));
+                                }
+                            }
+                        }
+                    }
                     Command::Quit => break 'frames,
+                }
+            }
+            if input_settings != settings_before {
+                bindings = input_settings.bindings();
+                match std::fs::write(&settings_path, input_settings.to_text()) {
+                    Ok(()) => log::line("settings saved"),
+                    Err(e) => log::line(&format!("the settings could not be saved: {e}")),
                 }
             }
         }
