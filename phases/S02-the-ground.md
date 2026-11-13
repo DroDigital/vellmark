@@ -29,7 +29,10 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S02-T05** [Content] Bake sky visibility for every surface, and use it for ambient light with contact occlusion at half resolution
 - [x] **S02-T06** [Render] Add GPU culling and instancing through one instance buffer, with the depth pyramid from the last frame
 - [x] **S02-T07** [Render] Add grass as instanced blades that sway and bend around a moving point, with each blade a line of characters up close
-- [ ] **S02-T08** [Content] Generate trees with bark that carries text and leaf cards, with levels of detail and far forms that crossfade
+- [ ] **S02-T08a** [Content] Generate tree meshes in the bake: trunks and branches in bark, leaf cards, three levels of detail and a far form, for a few kinds
+- [ ] **S02-T08b** [Content] Place the woods, the orchard, and hedgerow trees in the valley as instances with permanent IDs
+- [ ] **S02-T08c** [Render] Draw trees through the instance buffer, the level chosen in culling and crossfaded; leaf cards cut out, their leaves written as `^ A v` at arm's length (after T08a)
+- [ ] **S02-T08d** [Content] Bark that records each tree's age, as generated truth (after T08b)
 - [x] **S02-T09** [Render] Add water for the river and pond: flow, reflection, refraction, foam, and ripples that resolve into characters at the edge
 - [x] **S02-T10a** [Render] Add rain with its close-up characters and wet surfaces
 - [ ] **S02-T10b** [Render] Add the wind that reads, from a pool of six sentences, legible in motion on the owner's screen
