@@ -411,7 +411,9 @@ fn tree_samples(in: Varyings) -> u32 {
     // Leaves too small to tell apart are seen as a card of their average cover.
     if in.material + 1u == batch.base.z && batch.base.y != FAR_LEVEL {
         let sharp = clamp((1.0 - leaf) / max(leaf_width, 1.0e-4) + 0.5, 0.0, 1.0);
-        let cover = mix(sharp, LEAF_SHARE, smoothstep(0.6, 2.5, leaf_width));
+        // A card seen edge on is a line, not leaves: it fades out as it turns away.
+        let facing = abs(dot(normalize(in.normal), normalize(view.eye_time.xyz - in.world)));
+        let cover = mix(sharp, LEAF_SHARE, smoothstep(0.6, 2.5, leaf_width)) * smoothstep(0.05, 0.2, facing);
         mask &= samples_from(samples_of(cover, 0.5), (start + 1u) % PIXEL_SAMPLES);
     }
     if batch.base.y == FAR_LEVEL {

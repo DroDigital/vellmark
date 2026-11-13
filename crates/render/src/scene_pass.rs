@@ -1186,6 +1186,24 @@ impl ScenePass {
             .collect()
     }
 
+    /// For tests: how many instances of meshes with levels of detail view 0 drew last
+    /// frame at each level.
+    #[cfg(feature = "dev")]
+    pub fn tree_levels_drawn_last_frame(&self, gpu: &Gpu, scene: &SceneGpu) -> [u32; 4] {
+        let words = self.read_draws(gpu, scene.groups.len());
+        let mut levels = [0u32; 4];
+        let mut finest = 0;
+        for (g, group) in scene.groups.iter().enumerate() {
+            if !group.is_coarser_level() {
+                finest = g;
+            }
+            if scene.groups[finest].levels > 1 && g - finest < 4 {
+                levels[g - finest] += words[g * 5 + 1];
+            }
+        }
+        levels
+    }
+
     /// For tests: how many grass patches view 0 drew last frame at each level of detail.
     #[cfg(feature = "dev")]
     pub fn grass_drawn_last_frame(&self, gpu: &Gpu, scene: &SceneGpu) -> [u32; crate::grass::LEVELS] {

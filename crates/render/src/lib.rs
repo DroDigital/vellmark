@@ -261,6 +261,13 @@ impl Renderer {
         self.world.grass_drawn_last_frame(gpu, &self.scene)
     }
 
+    /// For tests: how many trees view 0 drew last frame at each level of detail. A tree
+    /// in a crossfade is counted at both its levels.
+    #[cfg(feature = "dev")]
+    pub fn tree_levels_drawn_last_frame(&self, gpu: &Gpu) -> [u32; 4] {
+        self.world.tree_levels_drawn_last_frame(gpu, &self.scene)
+    }
+
     pub fn scene_mut(&mut self) -> &mut SceneGpu {
         &mut self.scene
     }
