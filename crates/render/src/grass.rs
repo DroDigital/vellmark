@@ -14,8 +14,8 @@
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use std::collections::HashMap;
-use vellmark_content::{Ground, TILE_SAMPLES, TerrainTile};
-use vellmark_gpu::{Gpu, wgpu};
+use vellmark_content::{Ground, TerrainTile, TILE_SAMPLES};
+use vellmark_gpu::{wgpu, Gpu};
 
 use crate::world_gpu::InstanceGpu;
 
@@ -50,10 +50,7 @@ pub struct GrassTuning {
 
 impl Default for GrassTuning {
     fn default() -> Self {
-        Self {
-            density: 160.0,
-            near: 8.0,
-        }
+        Self { density: 160.0, near: 8.0 }
     }
 }
 
@@ -135,23 +132,7 @@ fn blade_indices(blades: u32) -> Vec<u32> {
     let mut out = Vec::with_capacity((blades * BLADE_INDICES) as usize);
     for b in 0..blades {
         let v = b * BLADE_VERTICES;
-        out.extend_from_slice(&[
-            v,
-            v + 1,
-            v + 2,
-            v + 2,
-            v + 1,
-            v + 3,
-            v + 2,
-            v + 3,
-            v + 4,
-            v + 4,
-            v + 3,
-            v + 5,
-            v + 4,
-            v + 5,
-            v + 6,
-        ]);
+        out.extend_from_slice(&[v, v + 1, v + 2, v + 2, v + 1, v + 3, v + 2, v + 3, v + 4, v + 4, v + 3, v + 5, v + 4, v + 5, v + 6]);
     }
     out
 }
@@ -185,51 +166,26 @@ impl GrassField {
                         }
                     }
                     if any {
-                        let cell = (
-                            (x0 / PATCH).round() as i32 + pi,
-                            (z0 / PATCH).round() as i32 + pj,
-                        );
-                        patches.insert(
-                            cell,
-                            PatchInfo {
-                                layer: layer as u32,
-                                low,
-                                high,
-                                tall,
-                            },
-                        );
+                        let cell = ((x0 / PATCH).round() as i32 + pi, (z0 / PATCH).round() as i32 + pj);
+                        patches.insert(cell, PatchInfo { layer: layer as u32, low, high, tall });
                     }
                 }
             }
         }
-        let indices = blade_indices(
-            GrassTuning {
-                density: MAX_DENSITY,
-                ..tuning
-            }
-            .blades(),
-        );
+        let indices = blade_indices(GrassTuning { density: MAX_DENSITY, ..tuning }.blades());
         let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("grass blades"),
             size: (indices.len() * 4).max(4) as u64,
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        gpu.queue
-            .write_buffer(&buffer, 0, bytemuck::cast_slice(&indices));
-        Self {
-            patches,
-            indices: buffer,
-            tuning,
-        }
+        gpu.queue.write_buffer(&buffer, 0, bytemuck::cast_slice(&indices));
+        Self { patches, indices: buffer, tuning }
     }
 
     /// Changes the density, within what the shared indices hold.
     pub fn set_tuning(&mut self, tuning: GrassTuning) {
-        self.tuning = GrassTuning {
-            density: tuning.density.min(MAX_DENSITY),
-            ..tuning
-        };
+        self.tuning = GrassTuning { density: tuning.density.min(MAX_DENSITY), ..tuning };
     }
 
     /// The patches within reach of any eye, each at the level of detail its nearest eye
@@ -238,23 +194,14 @@ impl GrassField {
         let mut found: HashMap<(i32, i32), f32> = HashMap::new();
         let span = (REACH / PATCH).ceil() as i32 + 1;
         for eye in eyes {
-            let centre = (
-                (eye.x / PATCH).floor() as i32,
-                (eye.z / PATCH).floor() as i32,
-            );
+            let centre = ((eye.x / PATCH).floor() as i32, (eye.z / PATCH).floor() as i32);
             for dz in -span..=span {
                 for dx in -span..=span {
                     let cell = (centre.0 + dx, centre.1 + dz);
-                    let Some(info) = self.patches.get(&cell) else {
-                        continue;
-                    };
+                    let Some(info) = self.patches.get(&cell) else { continue };
                     // The nearest point of the patch's box to the eye.
                     let lo = Vec3::new(cell.0 as f32 * PATCH, info.low, cell.1 as f32 * PATCH);
-                    let hi = Vec3::new(
-                        lo.x + PATCH,
-                        info.high + if info.tall { BARLEY_TALL } else { GRASS_TALL },
-                        lo.z + PATCH,
-                    );
+                    let hi = Vec3::new(lo.x + PATCH, info.high + if info.tall { BARLEY_TALL } else { GRASS_TALL }, lo.z + PATCH);
                     let d = eye.clamp(lo, hi).distance(*eye);
                     if d < REACH {
                         let e = found.entry(cell).or_insert(f32::MAX);
@@ -266,13 +213,7 @@ impl GrassField {
         let mut chosen: Vec<(f32, (i32, i32))> = found.into_iter().map(|(c, d)| (d, c)).collect();
         chosen.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         chosen.truncate(limit);
-        let mut out: Vec<Chosen> = chosen
-            .into_iter()
-            .map(|(d, cell)| Chosen {
-                cell,
-                level: self.tuning.level_at(d),
-            })
-            .collect();
+        let mut out: Vec<Chosen> = chosen.into_iter().map(|(d, cell)| Chosen { cell, level: self.tuning.level_at(d) }).collect();
         out.sort_by_key(|c| (c.level, c.cell));
         out
     }
@@ -297,12 +238,7 @@ impl GrassField {
 
     /// The instances of the chosen patches, from instance `first` and batch
     /// `first_group` on, and how many fall in each level.
-    pub fn instances(
-        &self,
-        chosen: &[Chosen],
-        first: u32,
-        first_group: u32,
-    ) -> (Vec<InstanceGpu>, [u32; LEVELS]) {
+    pub fn instances(&self, chosen: &[Chosen], first: u32, first_group: u32) -> (Vec<InstanceGpu>, [u32; LEVELS]) {
         let mut counts = [0u32; LEVELS];
         for c in chosen {
             counts[c.level] += 1;
@@ -317,15 +253,9 @@ impl GrassField {
                 let info = self.patches[&c.cell];
                 let origin = Vec3::new(c.cell.0 as f32 * PATCH, 0.0, c.cell.1 as f32 * PATCH);
                 let top = info.high + if info.tall { BARLEY_TALL } else { GRASS_TALL };
-                let centre = Vec3::new(
-                    origin.x + PATCH * 0.5,
-                    (info.low + top) * 0.5,
-                    origin.z + PATCH * 0.5,
-                );
+                let centre = Vec3::new(origin.x + PATCH * 0.5, (info.low + top) * 0.5, origin.z + PATCH * 0.5);
                 // Half the diagonal across, half the height up, and the reach of a lean.
-                let radius =
-                    Vec3::new(PATCH * 0.5 + 0.8, (top - info.low) * 0.5, PATCH * 0.5 + 0.8)
-                        .length();
+                let radius = Vec3::new(PATCH * 0.5 + 0.8, (top - info.low) * 0.5, PATCH * 0.5 + 0.8).length();
                 InstanceGpu {
                     model: Mat4::from_translation(origin).to_cols_array(),
                     state: [0.0, 0.0, info.layer as f32, 0.0],
@@ -339,19 +269,11 @@ impl GrassField {
 
     /// The draw of each level: its indices, then where they start and the base vertex.
     pub fn draw_headers(&self) -> [[u32; 3]; LEVELS] {
-        self.tuning
-            .level_blades()
-            .map(|b| [b * BLADE_INDICES, 0, 0])
+        self.tuning.level_blades().map(|b| [b * BLADE_INDICES, 0, 0])
     }
 
     /// This frame's wind and pushers.
-    pub fn uniform(
-        &self,
-        _seconds: f32,
-        pushers: &[Vec3],
-        weather: &vellmark_sim::Weather,
-        sentences: &[String],
-    ) -> GrassUniform {
+    pub fn uniform(&self, _seconds: f32, pushers: &[Vec3], weather: &vellmark_sim::Weather, sentences: &[String]) -> GrassUniform {
         let mut out = GrassUniform {
             sentences: [[0; 4]; MAX_SENTENCES * SENTENCE_CHARS / 16],
             lengths: [[0; 4]; MAX_SENTENCES / 4],
@@ -365,11 +287,7 @@ impl GrassField {
         }
         out.counts[0] = pushers.len().min(MAX_PUSHERS) as u32;
         for (i, sentence) in sentences.iter().take(MAX_SENTENCES).enumerate() {
-            let bytes: Vec<u8> = sentence
-                .bytes()
-                .filter(|b| (32..127).contains(b))
-                .take(SENTENCE_CHARS)
-                .collect();
+            let bytes: Vec<u8> = sentence.bytes().filter(|b| (32..127).contains(b)).take(SENTENCE_CHARS).collect();
             out.lengths[i / 4][i % 4] = bytes.len() as u32;
             for (k, b) in bytes.iter().enumerate() {
                 let c = i * SENTENCE_CHARS + k;
@@ -392,11 +310,7 @@ mod tests {
             let level = t.level_at(d);
             // Blades per square metre wanted at this distance, over a whole patch.
             let wanted = t.density * (t.near / d.max(t.near)).powi(2) * PATCH * PATCH;
-            assert!(
-                blades[level] as f32 >= wanted - 1.0,
-                "at {d} m level {level} has {} blades, {wanted} wanted",
-                blades[level]
-            );
+            assert!(blades[level] as f32 >= wanted - 1.0, "at {d} m level {level} has {} blades, {wanted} wanted", blades[level]);
         }
     }
 

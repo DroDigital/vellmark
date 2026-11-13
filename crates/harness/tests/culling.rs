@@ -46,22 +46,14 @@ fn pack_with_the_scene() -> Pack {
         std::fs::remove_file(file.unwrap().path()).unwrap();
     }
     std::fs::write(assets.join("scenes/cull.ron"), SCENE).unwrap();
-    let inputs = vellmark_bake::BakeInputs {
-        assets: assets.clone(),
-        third_party: root.join("third_party"),
-        cache: Some(root.join("build/bake-cache")),
-    };
+    let inputs = vellmark_bake::BakeInputs { assets: assets.clone(), third_party: root.join("third_party"), cache: Some(root.join("build/bake-cache")) };
     let output = vellmark_bake::bake(&inputs).expect("the test's scene bakes");
     let _ = std::fs::remove_dir_all(&assets);
     Pack::from_bytes(output.packs.into_iter().next().unwrap().1).unwrap()
 }
 
 fn drawn(offscreen: &mut Offscreen, eye: (f32, f32, f32), yaw: f32) -> (u32, u32) {
-    let views = [View::full(Camera::looking(
-        eye.into(),
-        yaw.to_radians(),
-        0.0,
-    ))];
+    let views = [View::full(Camera::looking(eye.into(), yaw.to_radians(), 0.0))];
     let frame = FrameInput {
         views: &views,
         time_of_day: 13.0,
@@ -83,31 +75,16 @@ fn drawn(offscreen: &mut Offscreen, eye: (f32, f32, f32), yaw: f32) -> (u32, u32
     };
     offscreen.frame(&frame);
     let counts = offscreen.renderer.drawn_last_frame(&offscreen.gpu);
-    let of = |name: &str| {
-        counts
-            .iter()
-            .find(|(k, _)| *k == AssetId::from_key(&format!("scene.cull.{name}")))
-            .map_or(99, |(_, n)| *n)
-    };
+    let of = |name: &str| counts.iter().find(|(k, _)| *k == AssetId::from_key(&format!("scene.cull.{name}"))).map_or(99, |(_, n)| *n);
     (of("hidden"), of("beside"))
 }
 
 #[test]
 fn culling_hides_only_what_cannot_be_seen() {
     let pack = pack_with_the_scene();
-    let mut offscreen = match Offscreen::with_pack(
-        &Default::default(),
-        &ShaderLibrary::embedded(),
-        640,
-        360,
-        pack,
-        Some("scene.cull"),
-    ) {
+    let mut offscreen = match Offscreen::with_pack(&Default::default(), &ShaderLibrary::embedded(), 640, 360, pack, Some("scene.cull")) {
         Ok(o) => o,
-        Err(e)
-            if e.contains("no usable graphics adapter")
-                && std::env::var_os("VELLMARK_ALLOW_NO_GPU").is_some() =>
-        {
+        Err(e) if e.contains("no usable graphics adapter") && std::env::var_os("VELLMARK_ALLOW_NO_GPU").is_some() => {
             return eprintln!("skipped: {e}");
         }
         Err(e) => panic!("{e}"),
@@ -115,30 +92,14 @@ fn culling_hides_only_what_cannot_be_seen() {
     // Looking at the wall from the south. The first frame has no pyramid yet: both crates
     // are in the frustum, so both are drawn.
     let front = (1.0, 1.7, 6.0);
-    assert_eq!(
-        drawn(&mut offscreen, front, 0.0),
-        (1, 1),
-        "before there is a pyramid, everything in view is drawn"
-    );
+    assert_eq!(drawn(&mut offscreen, front, 0.0), (1, 1), "before there is a pyramid, everything in view is drawn");
     // The second frame culls against the first frame's depth: the crate behind the wall
     // is hidden, the one beside it is not.
-    assert_eq!(
-        drawn(&mut offscreen, front, 0.0),
-        (0, 1),
-        "the crate behind the wall is culled; the one in sight is not"
-    );
+    assert_eq!(drawn(&mut offscreen, front, 0.0), (0, 1), "the crate behind the wall is culled; the one in sight is not");
     // Turned round, both are out of the frustum. The camera cut means only the frustum is
     // trusted, and that is enough.
-    assert_eq!(
-        drawn(&mut offscreen, front, 180.0),
-        (0, 0),
-        "nothing behind the eye is drawn"
-    );
+    assert_eq!(drawn(&mut offscreen, front, 180.0), (0, 0), "nothing behind the eye is drawn");
     // Walking round the end of the wall, the hidden crate comes into sight: it must be
     // drawn the moment it is seen, though last frame's pyramid hid it.
-    assert_eq!(
-        drawn(&mut offscreen, (-7.0, 1.7, -3.0), 90.0).0,
-        1,
-        "a crate in sight after a cut is drawn"
-    );
+    assert_eq!(drawn(&mut offscreen, (-7.0, 1.7, -3.0), 90.0).0, 1, "a crate in sight after a cut is drawn");
 }

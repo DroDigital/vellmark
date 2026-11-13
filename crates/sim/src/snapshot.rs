@@ -113,9 +113,7 @@ impl Snapshot {
     /// The view to draw between two snapshots. `alpha` 0 is `self`, 1 is `next`.
     pub fn lerp_view(&self, next: &Snapshot, index: usize, alpha: f32) -> ViewSnap {
         let a = self.views[index];
-        let Some(b) = next.views.get(index).copied() else {
-            return a;
-        };
+        let Some(b) = next.views.get(index).copied() else { return a };
         ViewSnap {
             player: b.player,
             eye: a.eye.lerp(b.eye, alpha),

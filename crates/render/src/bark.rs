@@ -7,7 +7,7 @@
 use glam::Vec3;
 use vellmark_content::{PageEntry, TextPages};
 
-use crate::world_gpu::{PAGE_SHEET, SceneGpu};
+use crate::world_gpu::{SceneGpu, PAGE_SHEET};
 
 /// How many trees carry their record at once.
 pub const SLOTS: usize = TextPages::GENERATED_PAGES;
@@ -42,14 +42,8 @@ pub struct BarkWords {
 
 impl BarkWords {
     pub fn write(&self, kind: &str, years: u32) -> String {
-        let name = self
-            .kinds
-            .iter()
-            .find(|(k, _)| k == kind)
-            .map_or(kind, |(_, n)| n.as_str());
-        self.record
-            .replace("{kind}", name)
-            .replace("{years}", &years.to_string())
+        let name = self.kinds.iter().find(|(k, _)| k == kind).map_or(kind, |(_, n)| n.as_str());
+        self.record.replace("{kind}", name).replace("{years}", &years.to_string())
     }
 }
 
@@ -76,51 +70,25 @@ pub struct Bark {
 }
 
 impl Bark {
-    pub fn new(
-        scene: &SceneGpu,
-        records: &vellmark_content::TreeRecords,
-        words: &BarkWords,
-    ) -> Self {
-        let place: std::collections::HashMap<u64, usize> = scene
-            .placed
-            .iter()
-            .enumerate()
-            .map(|(i, p)| (p.key.0, i))
-            .collect();
+    pub fn new(scene: &SceneGpu, records: &vellmark_content::TreeRecords, words: &BarkWords) -> Self {
+        let place: std::collections::HashMap<u64, usize> = scene.placed.iter().enumerate().map(|(i, p)| (p.key.0, i)).collect();
         let trees = records
             .trees
             .iter()
             .filter_map(|r| {
                 let &placed = place.get(&r.tree.0)?;
-                Some(Tree {
-                    placed,
-                    foot: scene.placed[placed].transform.w_axis.truncate(),
-                    text: words.write(&r.kind, r.years),
-                    girth: r.girth,
-                })
+                Some(Tree { placed, foot: scene.placed[placed].transform.w_axis.truncate(), text: words.write(&r.kind, r.years), girth: r.girth })
             })
             .collect();
-        Self {
-            trees,
-            slots: [None; SLOTS],
-        }
+        Self { trees, slots: [None; SLOTS] }
     }
 
     /// Lends the slots to the trees nearest the eyes. A tree that keeps its slot keeps its
     /// page as it is; only the pages of newly lent slots are written and returned.
     pub fn update(&mut self, eyes: &[Vec3]) -> Vec<Written> {
-        let near = |t: &Tree| {
-            eyes.iter()
-                .map(|e| (t.foot.x - e.x).hypot(t.foot.z - e.z))
-                .fold(f32::MAX, f32::min)
-        };
-        let mut nearest: Vec<(f32, usize)> = self
-            .trees
-            .iter()
-            .enumerate()
-            .map(|(i, t)| (near(t), i))
-            .filter(|(d, _)| *d < REACH)
-            .collect();
+        let near = |t: &Tree| eyes.iter().map(|e| (t.foot.x - e.x).hypot(t.foot.z - e.z)).fold(f32::MAX, f32::min);
+        let mut nearest: Vec<(f32, usize)> =
+            self.trees.iter().enumerate().map(|(i, t)| (near(t), i)).filter(|(d, _)| *d < REACH).collect();
         nearest.sort_by(|a, b| a.0.total_cmp(&b.0));
         nearest.truncate(SLOTS);
         let wanted: Vec<usize> = nearest.iter().map(|&(_, i)| i).collect();
@@ -134,9 +102,7 @@ impl Bark {
             if self.slots.contains(&Some(t)) {
                 continue;
             }
-            let Some(slot) = self.slots.iter().position(Option::is_none) else {
-                break;
-            };
+            let Some(slot) = self.slots.iter().position(Option::is_none) else { break };
             self.slots[slot] = Some(t);
             written.push(self.write(slot, &self.trees[t]));
         }
@@ -145,10 +111,7 @@ impl Bark {
 
     /// For each placed thing that carries a record, its page, counted from 1.
     pub fn pages(&self) -> impl Iterator<Item = (usize, u32)> + '_ {
-        self.slots
-            .iter()
-            .enumerate()
-            .filter_map(|(s, t)| t.map(|t| (self.trees[t].placed, (FIRST_ENTRY + s + 1) as u32)))
+        self.slots.iter().enumerate().filter_map(|(s, t)| t.map(|t| (self.trees[t].placed, (FIRST_ENTRY + s + 1) as u32)))
     }
 
     /// The record written round the trunk, line under line, each line a little further
@@ -160,16 +123,12 @@ impl Bark {
         for row in 0..rows {
             chars[(row * SIDE) as usize..(row * SIDE + columns) as usize].fill(b' ');
         }
-        let line: Vec<u8> = format!("{}  ", tree.text)
-            .bytes()
-            .filter(|b| (32..127).contains(b))
-            .collect();
+        let line: Vec<u8> = format!("{}  ", tree.text).bytes().filter(|b| (32..127).contains(b)).collect();
         if !line.is_empty() {
             for row in (0..rows).step_by(LEADING as usize) {
                 let shift = (row / LEADING) as usize * 7;
                 for column in 0..columns {
-                    chars[(row * SIDE + column) as usize] =
-                        line[(column as usize + shift) % line.len()];
+                    chars[(row * SIDE + column) as usize] = line[(column as usize + shift) % line.len()];
                 }
             }
         }
@@ -194,10 +153,7 @@ mod tests {
     use super::*;
 
     fn words() -> BarkWords {
-        BarkWords {
-            record: "{kind}. Stood {years} years.".into(),
-            kinds: vec![("oak".into(), "Oak".into())],
-        }
+        BarkWords { record: "{kind}. Stood {years} years.".into(), kinds: vec![("oak".into(), "Oak".into())] }
     }
 
     #[test]
@@ -209,17 +165,9 @@ mod tests {
         let trees = feet
             .iter()
             .enumerate()
-            .map(|(i, &(x, z))| Tree {
-                placed: i,
-                foot: Vec3::new(x, 0.0, z),
-                text: words().write("oak", 100 + i as u32),
-                girth: 2.0,
-            })
+            .map(|(i, &(x, z))| Tree { placed: i, foot: Vec3::new(x, 0.0, z), text: words().write("oak", 100 + i as u32), girth: 2.0 })
             .collect();
-        Bark {
-            trees,
-            slots: [None; SLOTS],
-        }
+        Bark { trees, slots: [None; SLOTS] }
     }
 
     #[test]
@@ -249,28 +197,11 @@ mod tests {
         let w = b.write(3, &b.trees[0]);
         assert_eq!(w.entry.sheet_x, 3 * SIDE);
         assert_eq!(w.entry.width, (2.0 / CELL) as u32);
-        let row = |r: u32| {
-            String::from_utf8(
-                w.chars[(r * SIDE) as usize..(r * SIDE + w.entry.width) as usize].to_vec(),
-            )
-            .unwrap()
-        };
-        assert!(
-            row(0).starts_with("Oak. Stood 100 years.  Oak."),
-            "{}",
-            row(0)
-        );
+        let row = |r: u32| String::from_utf8(w.chars[(r * SIDE) as usize..(r * SIDE + w.entry.width) as usize].to_vec()).unwrap();
+        assert!(row(0).starts_with("Oak. Stood 100 years.  Oak."), "{}", row(0));
         // Blank between the lines, and nothing beyond the band.
-        assert!(
-            w.chars[SIDE as usize..(SIDE + w.entry.width) as usize]
-                .iter()
-                .all(|&c| c == b' ')
-        );
-        assert!(
-            w.chars[(SIDE * w.entry.height) as usize..]
-                .iter()
-                .all(|&c| c == 0)
-        );
+        assert!(w.chars[SIDE as usize..(SIDE + w.entry.width) as usize].iter().all(|&c| c == b' '));
+        assert!(w.chars[(SIDE * w.entry.height) as usize..].iter().all(|&c| c == 0));
         assert!(row(2).contains("Stood 100 years."));
         assert_ne!(row(0), row(2), "each line starts further round");
     }

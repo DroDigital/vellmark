@@ -6,11 +6,7 @@ struct Reader<'a>(&'a [u8], usize);
 
 impl<'a> Reader<'a> {
     fn take(&mut self, n: usize) -> Result<&'a [u8], &'static str> {
-        let end = self
-            .1
-            .checked_add(n)
-            .filter(|e| *e <= self.0.len())
-            .ok_or("asset is cut short")?;
+        let end = self.1.checked_add(n).filter(|e| *e <= self.0.len()).ok_or("asset is cut short")?;
         let s = &self.0[self.1..end];
         self.1 = end;
         Ok(s)
@@ -151,18 +147,8 @@ impl Lexicon {
     }
 
     fn from_slots(slots: &[[u8; Self::WORD]]) -> Self {
-        let word = |s: &[u8; Self::WORD]| {
-            s.iter()
-                .take_while(|&&b| b != 0)
-                .copied()
-                .collect::<Vec<u8>>()
-        };
-        let list = |range: std::ops::Range<usize>| {
-            range
-                .map(|i| word(&slots[i]))
-                .filter(|w| !w.is_empty())
-                .collect()
-        };
+        let word = |s: &[u8; Self::WORD]| s.iter().take_while(|&&b| b != 0).copied().collect::<Vec<u8>>();
+        let list = |range: std::ops::Range<usize>| range.map(|i| word(&slots[i])).filter(|w| !w.is_empty()).collect();
         Self {
             name: word(&slots[0]),
             elements: list(1..1 + Self::ELEMENTS),
@@ -188,10 +174,7 @@ impl MaterialSet {
     pub const MAX_FAMILY: usize = 8;
 
     pub fn index_of(&self, key: AssetId) -> Option<u32> {
-        self.materials
-            .iter()
-            .position(|m| m.key == key)
-            .map(|i| i as u32)
+        self.materials.iter().position(|m| m.key == key).map(|i| i as u32)
     }
 
     /// Bytes of one map of one level: every material back to back. `map` 0 is colour.
@@ -260,12 +243,7 @@ impl MaterialSet {
                 lexicon: Lexicon::from_slots(&slots),
             });
         }
-        let set = Self {
-            size,
-            mips,
-            materials,
-            texels: bytes[r.1..].to_vec(),
-        };
+        let set = Self { size, mips, materials, texels: bytes[r.1..].to_vec() };
         if set.level_range(mips - 1, 1).end != set.texels.len() {
             return Err("material set texels have the wrong length");
         }
@@ -314,15 +292,7 @@ impl TextPages {
         out.extend_from_slice(&(self.entries.len() as u32).to_le_bytes());
         out.extend_from_slice(&self.sheet_size.to_le_bytes());
         for e in &self.entries {
-            for v in [
-                e.level as i32,
-                e.left,
-                e.top,
-                e.width as i32,
-                e.height as i32,
-                e.sheet_x as i32,
-                e.sheet_y as i32,
-            ] {
+            for v in [e.level as i32, e.left, e.top, e.width as i32, e.height as i32, e.sheet_x as i32, e.sheet_y as i32] {
                 out.extend_from_slice(&v.to_le_bytes());
             }
         }
@@ -356,17 +326,10 @@ impl TextPages {
             });
         }
         let sheet = r.take((sheet_size * sheet_size) as usize)?.to_vec();
-        if entries
-            .iter()
-            .any(|e| e.sheet_x + e.width > sheet_size || e.sheet_y + e.height > sheet_size)
-        {
+        if entries.iter().any(|e| e.sheet_x + e.width > sheet_size || e.sheet_y + e.height > sheet_size) {
             return Err("a text page lies outside its sheet");
         }
-        Ok(Self {
-            entries,
-            sheet_size,
-            sheet,
-        })
+        Ok(Self { entries, sheet_size, sheet })
     }
 }
 
@@ -486,11 +449,7 @@ impl Scene {
         let spawn = r.f32s()?;
         let mut objects = Vec::with_capacity(object_count);
         for _ in 0..object_count {
-            objects.push(Object {
-                key: AssetId(r.u64()?),
-                mesh: AssetId(r.u64()?),
-                transform: r.f32s()?,
-            });
+            objects.push(Object { key: AssetId(r.u64()?), mesh: AssetId(r.u64()?), transform: r.f32s()? });
         }
         let mut lights = Vec::with_capacity(light_count);
         for _ in 0..light_count {
@@ -503,11 +462,7 @@ impl Scene {
             });
         }
         fn solid(r: &mut Reader<'_>) -> Result<SolidBox, &'static str> {
-            Ok(SolidBox {
-                min: r.f32s()?,
-                max: r.f32s()?,
-                material: r.u32()?,
-            })
+            Ok(SolidBox { min: r.f32s()?, max: r.f32s()?, material: r.u32()? })
         }
         let mut colliders = Vec::new();
         for _ in 0..r.u32()? {
@@ -532,16 +487,7 @@ impl Scene {
         if r.1 != bytes.len() {
             return Err("scene has trailing bytes");
         }
-        Ok(Self {
-            static_mesh,
-            objects,
-            lights,
-            pages,
-            colliders,
-            breakables,
-            spawn,
-            terrain,
-        })
+        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn, terrain })
     }
 }
 
@@ -551,25 +497,10 @@ mod tests {
 
     #[test]
     fn mesh_round_trip() {
-        let v = |x: f32| Vertex {
-            position: [x, 0.0, 0.0],
-            normal: [0.0, 1.0, 0.0],
-            tangent: [1.0, 0.0, 0.0, 1.0],
-            anchor: [x, 0.0],
-            material: 2,
-            page: 0,
-            thickness: 0.3,
-            sky: 1.0,
-        };
-        let mesh = Mesh {
-            vertices: vec![v(0.0), v(1.0), v(2.0)],
-            indices: vec![0, 1, 2],
-        };
+        let v = |x: f32| Vertex { position: [x, 0.0, 0.0], normal: [0.0, 1.0, 0.0], tangent: [1.0, 0.0, 0.0, 1.0], anchor: [x, 0.0], material: 2, page: 0, thickness: 0.3, sky: 1.0 };
+        let mesh = Mesh { vertices: vec![v(0.0), v(1.0), v(2.0)], indices: vec![0, 1, 2] };
         assert_eq!(Mesh::from_bytes(&mesh.to_bytes()).unwrap(), mesh);
-        let bad = Mesh {
-            indices: vec![0, 1, 7],
-            ..mesh
-        };
+        let bad = Mesh { indices: vec![0, 1, 7], ..mesh };
         assert!(Mesh::from_bytes(&bad.to_bytes()).is_err());
     }
 
@@ -590,12 +521,7 @@ mod tests {
             },
         };
         // Two materials, 2x2 with two levels: (4 + 1) texels * 4 bytes * 2 maps * 2 materials.
-        let set = MaterialSet {
-            size: 2,
-            mips: 2,
-            materials: vec![material("a"), material("b")],
-            texels: (0..80).collect(),
-        };
+        let set = MaterialSet { size: 2, mips: 2, materials: vec![material("a"), material("b")], texels: (0..80).collect() };
         let back = MaterialSet::from_bytes(&set.to_bytes()).unwrap();
         assert_eq!(back, set);
         assert_eq!(back.index_of(AssetId::from_key("b")), Some(1));
@@ -606,15 +532,7 @@ mod tests {
     #[test]
     fn text_pages_round_trip() {
         let pages = TextPages {
-            entries: vec![PageEntry {
-                level: 1,
-                left: -12,
-                top: 80,
-                width: 3,
-                height: 2,
-                sheet_x: 1,
-                sheet_y: 0,
-            }],
+            entries: vec![PageEntry { level: 1, left: -12, top: 80, width: 3, height: 2, sheet_x: 1, sheet_y: 0 }],
             sheet_size: 4,
             sheet: (0..16).collect(),
         };
@@ -628,18 +546,8 @@ mod tests {
     fn scene_round_trip() {
         let scene = Scene {
             static_mesh: AssetId(9),
-            objects: vec![Object {
-                key: AssetId(1),
-                mesh: AssetId(2),
-                transform: [1.0; 12],
-            }],
-            lights: vec![Light {
-                key: AssetId(3),
-                position: [1.0, 2.0, 3.0],
-                colour: [4.0, 3.0, 2.0],
-                radius: 9.0,
-                casts_shadow: true,
-            }],
+            objects: vec![Object { key: AssetId(1), mesh: AssetId(2), transform: [1.0; 12] }],
+            lights: vec![Light { key: AssetId(3), position: [1.0, 2.0, 3.0], colour: [4.0, 3.0, 2.0], radius: 9.0, casts_shadow: true }],
             pages: AssetId(77),
             colliders: vec![SolidBox {
                 min: [0.0; 3],

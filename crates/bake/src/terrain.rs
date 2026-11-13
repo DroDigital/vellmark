@@ -24,10 +24,10 @@
 use std::path::Path;
 
 use serde::Deserialize;
-use vellmark_content::{AssetId, Ground, TERRAIN_LAYER, TILE_SAMPLES, TerrainTile, TileCoord};
+use vellmark_content::{AssetId, Ground, TerrainTile, TileCoord, TERRAIN_LAYER, TILE_SAMPLES};
 
 use crate::sha256::{hex, sha256};
-use crate::{BakeError, err};
+use crate::{err, BakeError};
 
 /// Changes whenever the generator does, so that the cache is not trusted across it.
 const VERSION: &str = "terrain 2";
@@ -194,9 +194,7 @@ fn hash(mut x: u32) -> u32 {
 
 /// A unit gradient for a lattice point.
 fn gradient(x: i32, y: i32, seed: u32) -> (f32, f32) {
-    let h = hash(
-        (x as u32).wrapping_mul(0x9e37_79b1) ^ hash((y as u32).wrapping_mul(0x85eb_ca6b) ^ seed),
-    );
+    let h = hash((x as u32).wrapping_mul(0x9e37_79b1) ^ hash((y as u32).wrapping_mul(0x85eb_ca6b) ^ seed));
     let a = (h >> 8) as f32 / 16_777_216.0 * std::f32::consts::TAU;
     (a.cos(), a.sin())
 }
@@ -273,10 +271,7 @@ fn nearest_on(points: &[(f32, f32)], x: f32, z: f32) -> (f32, f32) {
 }
 
 fn polyline_length(points: &[(f32, f32)]) -> f32 {
-    points
-        .windows(2)
-        .map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt())
-        .sum()
+    points.windows(2).map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt()).sum()
 }
 
 /// The point at a distance along a polyline.
@@ -286,10 +281,7 @@ fn point_along(points: &[(f32, f32)], s: f32) -> (f32, f32) {
         let length = ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt();
         if left <= length {
             let t = left / length;
-            return (
-                w[0].0 + (w[1].0 - w[0].0) * t,
-                w[0].1 + (w[1].1 - w[0].1) * t,
-            );
+            return (w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t);
         }
         left -= length;
     }
@@ -340,11 +332,7 @@ struct Land<'a> {
 
 impl<'a> Land<'a> {
     fn new(a: &'a Authored) -> Self {
-        let mut land = Self {
-            a,
-            river_levels: Vec::new(),
-            pond_levels: Vec::new(),
-        };
+        let mut land = Self { a, river_levels: Vec::new(), pond_levels: Vec::new() };
         // Water finds its level from the land at the finest grid's detail: a running
         // minimum downstream, so that a river never flows uphill, a little below the
         // ground so that it sits in its bed.
@@ -368,11 +356,7 @@ impl<'a> Land<'a> {
                 .map(|k| {
                     let t = k as f32 / 48.0 * std::f32::consts::TAU;
                     let r = pond.radius + pond.bank;
-                    land.shape(
-                        pond.centre.0 + r * t.cos(),
-                        pond.centre.1 + r * t.sin(),
-                        1.0,
-                    )
+                    land.shape(pond.centre.0 + r * t.cos(), pond.centre.1 + r * t.sin(), 1.0)
                 })
                 .fold(f32::INFINITY, f32::min);
             land.pond_levels.push(rim - 0.45);
@@ -381,10 +365,7 @@ impl<'a> Land<'a> {
     }
 
     fn river_distance(&self, x: f32, z: f32) -> f32 {
-        self.a
-            .rivers
-            .first()
-            .map_or(f32::INFINITY, |r| nearest_on(&r.points, x, z).0)
+        self.a.rivers.first().map_or(f32::INFINITY, |r| nearest_on(&r.points, x, z).0)
     }
 
     /// Step 1: the land as one function of position, to the detail a grid of
@@ -398,9 +379,7 @@ impl<'a> Land<'a> {
         // Rolling country beyond the area.
         let away = x.abs().max(z.abs());
         let rolling = smoothstep(s.rolling.beyond, s.rolling.beyond * 2.2, away);
-        h += rolling
-            * s.rolling.height
-            * (0.55 + fbm(x, z, s.rolling.wavelength, spacing, seed ^ 0x51) * 1.3).max(0.0);
+        h += rolling * s.rolling.height * (0.55 + fbm(x, z, s.rolling.wavelength, spacing, seed ^ 0x51) * 1.3).max(0.0);
 
         // The highlands to the north, ridged.
         let north = smoothstep(s.highlands.from, s.highlands.to, -z);
@@ -419,8 +398,7 @@ impl<'a> Land<'a> {
         for hill in &self.a.hills {
             let d = ((x - hill.centre.0).powi(2) + (z - hill.centre.1).powi(2)).sqrt();
             // A ragged outline, so no hill is a perfect dome.
-            let d =
-                d * (1.0 + 0.18 * noise(x / 60.0, z / 60.0, seed ^ hash(hill.key.len() as u32)));
+            let d = d * (1.0 + 0.18 * noise(x / 60.0, z / 60.0, seed ^ hash(hill.key.len() as u32)));
             if d < hill.radius {
                 h += hill.height * 0.5 * (1.0 + (std::f32::consts::PI * d / hill.radius).cos());
             }
@@ -429,10 +407,7 @@ impl<'a> Land<'a> {
         // Steep ground at the edges of the area, and the land beyond it stays raised.
         let e = &self.a.edges;
         let rise = |inward: f32| smoothstep(e.start, e.start + e.width, inward);
-        let edge = (rise(-z) * e.north)
-            .max(rise(z) * e.south)
-            .max(rise(x) * e.east)
-            .max(rise(-x) * e.west);
+        let edge = (rise(-z) * e.north).max(rise(z) * e.south).max(rise(x) * e.east).max(rise(-x) * e.west);
         h + edge * (0.85 + 0.3 * noise(x / 23.0, z / 23.0, seed ^ 0xed6e))
     }
 
@@ -455,10 +430,7 @@ struct Grid {
 
 impl Grid {
     fn position(&self, i: usize, j: usize) -> (f32, f32) {
-        (
-            -self.half + i as f32 * self.spacing,
-            -self.half + j as f32 * self.spacing,
-        )
+        (-self.half + i as f32 * self.spacing, -self.half + j as f32 * self.spacing)
     }
 
     fn contains(&self, x: f32, z: f32) -> bool {
@@ -470,10 +442,7 @@ impl Grid {
         let last = (GRID - 1) as f32;
         let u = ((x + self.half) / self.spacing).clamp(0.0, last);
         let v = ((z + self.half) / self.spacing).clamp(0.0, last);
-        let (i, j) = (
-            (u.floor() as usize).min(GRID - 2),
-            (v.floor() as usize).min(GRID - 2),
-        );
+        let (i, j) = ((u.floor() as usize).min(GRID - 2), (v.floor() as usize).min(GRID - 2));
         let (fu, fv) = (u - i as f32, v - j as f32);
         let h = |a: usize, b: usize| self.h[b * GRID + a];
         if fu >= fv {
@@ -524,22 +493,14 @@ fn erode_hydraulic(grid: &mut Grid, droplets: usize, seed: u64) {
         let (a, b, c, d) = (h[k], h[k + 1], h[k + n], h[k + n + 1]);
         let gx = (b - a) * (1.0 - v) + (d - c) * v;
         let gy = (c - a) * (1.0 - u) + (d - b) * u;
-        (
-            a * (1.0 - u) * (1.0 - v) + b * u * (1.0 - v) + c * (1.0 - u) * v + d * u * v,
-            gx,
-            gy,
-        )
+        (a * (1.0 - u) * (1.0 - v) + b * u * (1.0 - v) + c * (1.0 - u) * v + d * u * v, gx, gy)
     };
 
     let mut rng = Rng(seed);
     let limit = (n - 2) as f32;
     for _ in 0..droplets {
-        let (mut x, mut y) = (
-            1.0 + rng.unit() * (limit - 1.0),
-            1.0 + rng.unit() * (limit - 1.0),
-        );
-        let (mut dx, mut dy, mut speed, mut water, mut sediment) =
-            (0.0f32, 0.0f32, 1.0f32, 1.0f32, 0.0f32);
+        let (mut x, mut y) = (1.0 + rng.unit() * (limit - 1.0), 1.0 + rng.unit() * (limit - 1.0));
+        let (mut dx, mut dy, mut speed, mut water, mut sediment) = (0.0f32, 0.0f32, 1.0f32, 1.0f32, 0.0f32);
         for _ in 0..LIFETIME {
             let (i, j) = (x.floor() as usize, y.floor() as usize);
             let (u, v) = (x - i as f32, y - j as f32);
@@ -562,11 +523,7 @@ fn erode_hydraulic(grid: &mut Grid, droplets: usize, seed: u64) {
             let capacity = (-fall).max(MIN_SLOPE) * speed * water * CAPACITY;
             if sediment > capacity || fall > 0.0 {
                 // Drop sediment: into the pit if it ran uphill, else what it cannot carry.
-                let amount = if fall > 0.0 {
-                    fall.min(sediment)
-                } else {
-                    (sediment - capacity) * DEPOSIT
-                };
+                let amount = if fall > 0.0 { fall.min(sediment) } else { (sediment - capacity) * DEPOSIT };
                 sediment -= amount;
                 let k = j * n + i;
                 h[k] += amount * (1.0 - u) * (1.0 - v);
@@ -630,9 +587,7 @@ impl Land<'_> {
         let a = self.a;
         // Level ground.
         for flat in &a.flats {
-            let target = flat
-                .height
-                .unwrap_or_else(|| grid.height_at(flat.centre.0, flat.centre.1));
+            let target = flat.height.unwrap_or_else(|| grid.height_at(flat.centre.0, flat.centre.1));
             for j in 0..GRID {
                 for i in 0..GRID {
                     let (x, z) = grid.position(i, j);
@@ -659,10 +614,7 @@ impl Land<'_> {
                 let previous = values.clone();
                 for (s, v) in values.iter_mut().enumerate() {
                     let window = 9usize;
-                    let (lo, hi) = (
-                        s.saturating_sub(window),
-                        (s + window).min(previous.len() - 1),
-                    );
+                    let (lo, hi) = (s.saturating_sub(window), (s + window).min(previous.len() - 1));
                     *v = previous[lo..=hi].iter().sum::<f32>() / (hi - lo + 1) as f32;
                 }
             }
@@ -724,14 +676,7 @@ impl Land<'_> {
             let d = ((x - pond.centre.0).powi(2) + (z - pond.centre.1).powi(2)).sqrt();
             let half = pond.radius.max(spacing);
             if d < half + pond.bank + 30.0 {
-                out.push((
-                    level,
-                    level,
-                    d,
-                    half,
-                    pond.depth,
-                    pond.bank.max(spacing * 1.5),
-                ));
+                out.push((level, level, d, half, pond.depth, pond.bank.max(spacing * 1.5)));
             }
         }
         out
@@ -751,13 +696,8 @@ impl Land<'_> {
                 let mut g = Ground::Grass;
                 let away = x.abs().max(z.abs());
                 if away > s.forest.beyond {
-                    let cover = fbm(
-                        x,
-                        z,
-                        s.forest.wavelength,
-                        grid.spacing.max(16.0),
-                        a.seed ^ 0xf0,
-                    ) * 0.5
+                    let cover = fbm(x, z, s.forest.wavelength, grid.spacing.max(16.0), a.seed ^ 0xf0)
+                        * 0.5
                         + 0.5
                         + smoothstep(s.forest.beyond, s.forest.beyond * 1.6, away) * 0.15;
                     if cover > 1.0 - s.forest.cover {
@@ -772,26 +712,19 @@ impl Land<'_> {
                 }
                 for flat in &a.flats {
                     if let Some(name) = flat.ground {
-                        if ((x - flat.centre.0).powi(2) + (z - flat.centre.1).powi(2)).sqrt()
-                            < flat.radius
-                        {
+                        if ((x - flat.centre.0).powi(2) + (z - flat.centre.1).powi(2)).sqrt() < flat.radius {
                             g = name.ground();
                         }
                     }
                 }
                 for road in &a.roads {
-                    if nearest_on(&road.points, x, z).0 < (road.width * 0.5).max(grid.spacing * 0.6)
-                    {
+                    if nearest_on(&road.points, x, z).0 < (road.width * 0.5).max(grid.spacing * 0.6) {
                         g = Ground::Road;
                     }
                 }
                 for (level, _, d, half, _, bank) in self.waters(x, z, grid.spacing) {
                     if d < half && level > h {
-                        water[k] = if water[k].is_nan() {
-                            level
-                        } else {
-                            water[k].max(level)
-                        };
+                        water[k] = if water[k].is_nan() { level } else { water[k].max(level) };
                     } else if d < half + bank && h < level + 1.2 {
                         g = Ground::Bank;
                     }
@@ -823,7 +756,11 @@ fn carve(h: f32, water: f32, lip: f32, d: f32, half: f32, depth: f32, bank: f32)
     let past = (d - half - bank).max(0.0);
     let slope = lip + (d - half).min(bank) * 0.4 + past * 1.2;
     let cut = h.min(slope);
-    if d < half + bank { cut.max(lip) } else { cut }
+    if d < half + bank {
+        cut.max(lip)
+    } else {
+        cut
+    }
 }
 
 // ---- step 5: the sky each sample sees ----
@@ -833,16 +770,7 @@ fn carve(h: f32, water: f32, lip: f32, d: f32, half: f32, depth: f32, bank: f32)
 /// of the light that direction's slice of sky would give; the eight are averaged. Each
 /// direction is searched outwards in growing steps to about a hundred samples away.
 fn sky_seen(grid: &Grid) -> Vec<u8> {
-    let directions: [(f32, f32); 8] = [
-        (1.0, 0.0),
-        (0.7071, 0.7071),
-        (0.0, 1.0),
-        (-0.7071, 0.7071),
-        (-1.0, 0.0),
-        (-0.7071, -0.7071),
-        (0.0, -1.0),
-        (0.7071, -0.7071),
-    ];
+    let directions: [(f32, f32); 8] = [(1.0, 0.0), (0.7071, 0.7071), (0.0, 1.0), (-0.7071, 0.7071), (-1.0, 0.0), (-0.7071, -0.7071), (0.0, -1.0), (0.7071, -0.7071)];
     let mut out = vec![255u8; GRID * GRID];
     for j in 0..GRID {
         for i in 0..GRID {
@@ -880,8 +808,7 @@ pub struct BakedTerrain {
 
 fn read(path: &Path) -> Result<(Authored, Vec<u8>), BakeError> {
     let bytes = std::fs::read(path).map_err(|e| BakeError(format!("{}: {e}", path.display())))?;
-    let text = String::from_utf8(bytes.clone())
-        .map_err(|_| BakeError(format!("{}: not UTF-8", path.display())))?;
+    let text = String::from_utf8(bytes.clone()).map_err(|_| BakeError(format!("{}: not UTF-8", path.display())))?;
     let authored: Authored = ron::Options::default()
         .from_str(&text)
         .map_err(|e| BakeError(format!("{}: {e}", path.display())))?;
@@ -901,27 +828,14 @@ fn read(path: &Path) -> Result<(Authored, Vec<u8>), BakeError> {
             return err(format!("{}: the key `{key}` is used twice", path.display()));
         }
     }
-    for line in authored
-        .roads
-        .iter()
-        .map(|r| (&r.key, r.points.len()))
-        .chain(authored.rivers.iter().map(|r| (&r.key, r.points.len())))
-    {
+    for line in authored.roads.iter().map(|r| (&r.key, r.points.len())).chain(authored.rivers.iter().map(|r| (&r.key, r.points.len()))) {
         if line.1 < 2 {
-            return err(format!(
-                "{}: `{}` needs two points or more",
-                path.display(),
-                line.0
-            ));
+            return err(format!("{}: `{}` needs two points or more", path.display(), line.0));
         }
     }
     for area in authored.fields.iter().chain(&authored.woods) {
         if area.points.len() < 3 {
-            return err(format!(
-                "{}: `{}` needs three points or more",
-                path.display(),
-                area.key
-            ));
+            return err(format!("{}: `{}` needs three points or more", path.display(), area.key));
         }
     }
     Ok((authored, bytes))
@@ -934,12 +848,7 @@ pub fn generate(path: &Path) -> Result<BakedTerrain, BakeError> {
     let mut grids: Vec<Grid> = Vec::new();
     for (index, &(level, half)) in LEVELS.iter().enumerate() {
         let spacing = half * 2.0 / (GRID - 1) as f32;
-        let mut grid = Grid {
-            level,
-            half,
-            spacing,
-            h: vec![0.0; GRID * GRID],
-        };
+        let mut grid = Grid { level, half, spacing, h: vec![0.0; GRID * GRID] };
         for j in 0..GRID {
             for i in 0..GRID {
                 let (x, z) = grid.position(i, j);
@@ -947,11 +856,7 @@ pub fn generate(path: &Path) -> Result<BakedTerrain, BakeError> {
             }
         }
         if level < 5 {
-            erode_hydraulic(
-                &mut grid,
-                GRID * GRID / 2,
-                authored.seed as u64 ^ (level as u64) << 32,
-            );
+            erode_hydraulic(&mut grid, GRID * GRID / 2, authored.seed as u64 ^ (level as u64) << 32);
             erode_thermal(&mut grid, 24, 1.1);
         }
         land.shape_landmarks(&mut grid);
@@ -1025,11 +930,7 @@ pub fn generate(path: &Path) -> Result<BakedTerrain, BakeError> {
         for tz in 0..8 {
             for tx in 0..8 {
                 let (x0, z0) = grid.position(tx * per, tz * per);
-                let coord = TileCoord::containing(
-                    x0 + grid.spacing * 0.5,
-                    z0 + grid.spacing * 0.5,
-                    grid.level,
-                );
+                let coord = TileCoord::containing(x0 + grid.spacing * 0.5, z0 + grid.spacing * 0.5, grid.level);
                 let mut tile = TerrainTile::new(coord);
                 for j in 0..TILE_SAMPLES {
                     for i in 0..TILE_SAMPLES {
@@ -1055,8 +956,7 @@ pub fn bake_tiles(path: &Path, cache: Option<&Path>) -> Result<Vec<(AssetId, Vec
     let (_, bytes) = read(path)?;
     let mut key = VERSION.as_bytes().to_vec();
     key.extend_from_slice(&sha256(&bytes));
-    let cache_file =
-        cache.map(|dir| dir.join(format!("terrain-{}.bin", &hex(&sha256(&key))[..16])));
+    let cache_file = cache.map(|dir| dir.join(format!("terrain-{}.bin", &hex(&sha256(&key))[..16])));
     if let Some(file) = &cache_file {
         if let Ok(cached) = std::fs::read(file) {
             if let Some(tiles) = split_cached(&cached) {
@@ -1065,11 +965,7 @@ pub fn bake_tiles(path: &Path, cache: Option<&Path>) -> Result<Vec<(AssetId, Vec
         }
     }
     let baked = generate(path)?;
-    let tiles: Vec<(AssetId, Vec<u8>)> = baked
-        .tiles
-        .iter()
-        .map(|t| (t.coord.asset_id(TERRAIN_LAYER), t.to_bytes()))
-        .collect();
+    let tiles: Vec<(AssetId, Vec<u8>)> = baked.tiles.iter().map(|t| (t.coord.asset_id(TERRAIN_LAYER), t.to_bytes())).collect();
     if let Some(file) = &cache_file {
         let mut out = Vec::new();
         for (id, bytes) in &tiles {
@@ -1141,6 +1037,7 @@ pub fn map_image(spacing: f32, heights: &[f32], water: &[f32], ground: &[Ground]
 
 pub const GRID_SAMPLES: usize = GRID;
 
+
 // ---- where the trees stand ----
 
 /// One tree of the valley: its kind, where it stands, which way it is turned, and how
@@ -1174,21 +1071,12 @@ fn distance_to_line(points: &[(f32, f32)], x: f32, z: f32) -> f32 {
 pub fn tree_places(path: &Path) -> Result<Vec<TreePlace>, BakeError> {
     let (a, _) = read(path)?;
     let clear = |x: f32, z: f32, margin: f32| {
-        a.roads
-            .iter()
-            .all(|r| distance_to_line(&r.points, x, z) > r.width * 0.5 + margin)
-            && a.rivers
-                .iter()
-                .all(|r| distance_to_line(&r.points, x, z) > r.width * 0.5 + r.bank + margin)
-            && a.ponds.iter().all(|p| {
-                ((x - p.centre.0).powi(2) + (z - p.centre.1).powi(2)).sqrt()
-                    > p.radius + p.bank + margin
-            })
+        a.roads.iter().all(|r| distance_to_line(&r.points, x, z) > r.width * 0.5 + margin)
+            && a.rivers.iter().all(|r| distance_to_line(&r.points, x, z) > r.width * 0.5 + r.bank + margin)
+            && a.ponds.iter().all(|p| ((x - p.centre.0).powi(2) + (z - p.centre.1).powi(2)).sqrt() > p.radius + p.bank + margin)
             && !a.fields.iter().any(|f| inside(&f.points, x, z))
     };
-    let unit = |x: i32, z: i32, salt: u32| {
-        (hash(hash(x as u32 ^ salt.wrapping_mul(0x9e37_79b9)) ^ z as u32) & 0xffff) as f32 / 65535.0
-    };
+    let unit = |x: i32, z: i32, salt: u32| (hash(hash(x as u32 ^ salt.wrapping_mul(0x9e37_79b9)) ^ z as u32) & 0xffff) as f32 / 65535.0;
     let mut out = Vec::new();
     // The woods: a jittered grid seven metres apart, oak and ash with hawthorn between.
     let spacing = 7.0;
@@ -1196,28 +1084,12 @@ pub fn tree_places(path: &Path) -> Result<Vec<TreePlace>, BakeError> {
         for gx in -36..36 {
             let x = (gx as f32 + 0.15 + unit(gx, gz, 1) * 0.7) * spacing;
             let z = (gz as f32 + 0.15 + unit(gx, gz, 2) * 0.7) * spacing;
-            if x.abs() > 252.0
-                || z.abs() > 252.0
-                || !a.woods.iter().any(|w| inside(&w.points, x, z))
-                || !clear(x, z, 3.0)
-            {
+            if x.abs() > 252.0 || z.abs() > 252.0 || !a.woods.iter().any(|w| inside(&w.points, x, z)) || !clear(x, z, 3.0) {
                 continue;
             }
             let pick = unit(gx, gz, 3);
-            let kind = if pick < 0.5 {
-                "oak"
-            } else if pick < 0.85 {
-                "ash"
-            } else {
-                "hawthorn"
-            };
-            out.push(TreePlace {
-                kind,
-                x,
-                z,
-                yaw: unit(gx, gz, 4) * std::f32::consts::TAU,
-                scale: 0.8 + unit(gx, gz, 5) * 0.45,
-            });
+            let kind = if pick < 0.5 { "oak" } else if pick < 0.85 { "ash" } else { "hawthorn" };
+            out.push(TreePlace { kind, x, z, yaw: unit(gx, gz, 4) * std::f32::consts::TAU, scale: 0.8 + unit(gx, gz, 5) * 0.45 });
         }
     }
     // The orchard: rows of apples, six metres apart, inside its flat.
@@ -1225,31 +1097,16 @@ pub fn tree_places(path: &Path) -> Result<Vec<TreePlace>, BakeError> {
         let (cx, cz) = orchard.centre;
         for row in -4..=4 {
             for col in -4..=4 {
-                let (x, z) = (
-                    cx + col as f32 * 6.0 + (row & 1) as f32 * 3.0,
-                    cz + row as f32 * 6.0,
-                );
-                if ((x - cx).powi(2) + (z - cz).powi(2)).sqrt() > orchard.radius * 0.8
-                    || !clear(x, z, 2.0)
-                {
+                let (x, z) = (cx + col as f32 * 6.0 + (row & 1) as f32 * 3.0, cz + row as f32 * 6.0);
+                if ((x - cx).powi(2) + (z - cz).powi(2)).sqrt() > orchard.radius * 0.8 || !clear(x, z, 2.0) {
                     continue;
                 }
-                out.push(TreePlace {
-                    kind: "apple",
-                    x,
-                    z,
-                    yaw: unit(col, row, 6) * std::f32::consts::TAU,
-                    scale: 0.85 + unit(col, row, 7) * 0.3,
-                });
+                out.push(TreePlace { kind: "apple", x, z, yaw: unit(col, row, 6) * std::f32::consts::TAU, scale: 0.85 + unit(col, row, 7) * 0.3 });
             }
         }
     }
     // Hedges along the roads: hawthorn either side, with gaps.
-    for road in a
-        .roads
-        .iter()
-        .filter(|r| r.key == "penance_road" || r.key == "bridge_road")
-    {
+    for road in a.roads.iter().filter(|r| r.key == "penance_road" || r.key == "bridge_road") {
         for w in road.points.windows(2) {
             let (ax, az, bx, bz) = (w[0].0, w[0].1, w[1].0, w[1].1);
             let len = ((bx - ax).powi(2) + (bz - az).powi(2)).sqrt();
@@ -1263,25 +1120,11 @@ pub fn tree_places(path: &Path) -> Result<Vec<TreePlace>, BakeError> {
                         continue;
                     }
                     let off = road.width * 0.5 + 2.4 + unit(key.0, key.1, 9) * 0.8;
-                    let (x, z) = (
-                        ax + (bx - ax) * t + nx * side * off,
-                        az + (bz - az) * t + nz * side * off,
-                    );
-                    if x.abs() > 252.0
-                        || z.abs() > 252.0
-                        || !a.rivers.iter().all(|r| {
-                            distance_to_line(&r.points, x, z) > r.width * 0.5 + r.bank + 3.0
-                        })
-                    {
+                    let (x, z) = (ax + (bx - ax) * t + nx * side * off, az + (bz - az) * t + nz * side * off);
+                    if x.abs() > 252.0 || z.abs() > 252.0 || !a.rivers.iter().all(|r| distance_to_line(&r.points, x, z) > r.width * 0.5 + r.bank + 3.0) {
                         continue;
                     }
-                    out.push(TreePlace {
-                        kind: "hawthorn",
-                        x,
-                        z,
-                        yaw: unit(key.0, key.1, 10) * std::f32::consts::TAU,
-                        scale: 0.7 + unit(key.0, key.1, 11) * 0.4,
-                    });
+                    out.push(TreePlace { kind: "hawthorn", x, z, yaw: unit(key.0, key.1, 10) * std::f32::consts::TAU, scale: 0.7 + unit(key.0, key.1, 11) * 0.4 });
                 }
             }
         }
@@ -1302,58 +1145,33 @@ mod tests {
     fn the_valley_is_tiles_that_meet_without_seams() {
         let baked = valley();
         assert_eq!(baked.tiles.len(), 3 * 64);
-        let by_coord: std::collections::HashMap<TileCoord, &TerrainTile> =
-            baked.tiles.iter().map(|t| (t.coord, t)).collect();
+        let by_coord: std::collections::HashMap<TileCoord, &TerrainTile> = baked.tiles.iter().map(|t| (t.coord, t)).collect();
         for tile in &baked.tiles {
-            assert!(
-                tile.heights.iter().all(|h| h.is_finite()),
-                "{:?} has a height that is not a number",
-                tile.coord
-            );
+            assert!(tile.heights.iter().all(|h| h.is_finite()), "{:?} has a height that is not a number", tile.coord);
             // The east neighbour shares this tile's east edge, sample for sample.
-            let east = TileCoord {
-                x: tile.coord.x + 1,
-                ..tile.coord
-            };
+            let east = TileCoord { x: tile.coord.x + 1, ..tile.coord };
             if let Some(next) = by_coord.get(&east) {
                 for j in 0..TILE_SAMPLES {
-                    assert_eq!(
-                        tile.heights[TerrainTile::index(TILE_SAMPLES - 1, j)],
-                        next.heights[TerrainTile::index(0, j)]
-                    );
+                    assert_eq!(tile.heights[TerrainTile::index(TILE_SAMPLES - 1, j)], next.heights[TerrainTile::index(0, j)]);
                 }
             }
-            let south = TileCoord {
-                z: tile.coord.z + 1,
-                ..tile.coord
-            };
+            let south = TileCoord { z: tile.coord.z + 1, ..tile.coord };
             if let Some(next) = by_coord.get(&south) {
                 for i in 0..TILE_SAMPLES {
-                    assert_eq!(
-                        tile.heights[TerrainTile::index(i, TILE_SAMPLES - 1)],
-                        next.heights[TerrainTile::index(i, 0)]
-                    );
+                    assert_eq!(tile.heights[TerrainTile::index(i, TILE_SAMPLES - 1)], next.heights[TerrainTile::index(i, 0)]);
                 }
             }
         }
         // Where the fine area meets the far ring, the ground is the same ground: along
         // the border the fine edge lies on the coarse triangles exactly.
         let (fine, coarse) = (&baked.grids[2], &baked.grids[1]);
-        let coarse_grid = Grid {
-            level: coarse.0,
-            half: coarse.1,
-            spacing: coarse.1 * 2.0 / 512.0,
-            h: coarse.2.clone(),
-        };
+        let coarse_grid = Grid { level: coarse.0, half: coarse.1, spacing: coarse.1 * 2.0 / 512.0, h: coarse.2.clone() };
         for i in 0..GRID {
             let x = -256.0 + i as f32;
             for (j, z) in [(0usize, -256.0f32), (GRID - 1, 256.0)] {
                 let a = fine.2[j * GRID + i];
                 let b = coarse_grid.height_at(x, z);
-                assert!(
-                    (a - b).abs() < 1.0e-3,
-                    "a seam at ({x}, {z}): {a} against {b}"
-                );
+                assert!((a - b).abs() < 1.0e-3, "a seam at ({x}, {z}): {a} against {b}");
             }
         }
     }
@@ -1373,8 +1191,7 @@ mod tests {
                     // finer grid's samples apart, so it is not checked there, nor on the
                     // seam band where the two ease into each other and a river is carved
                     // at two widths.
-                    let half = [8192.0f32, 2048.0, 256.0]
-                        [[5u8, 3, 0].iter().position(|l| l == level).unwrap()];
+                    let half = [8192.0f32, 2048.0, 256.0][[5u8, 3, 0].iter().position(|l| l == level).unwrap()];
                     let spacing = half / 256.0;
                     let (x, z) = (-half + i as f32 * spacing, -half + j as f32 * spacing);
                     let finer = match level {
@@ -1407,15 +1224,10 @@ mod tests {
                 }
             }
         }
-        let (authored, _) =
-            read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/terrain/valley.ron"))
-                .unwrap();
+        let (authored, _) = read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/terrain/valley.ron")).unwrap();
         let land = Land::new(&authored);
         for levels in &land.river_levels {
-            assert!(
-                levels.values.windows(2).all(|w| w[1] <= w[0]),
-                "a river runs uphill"
-            );
+            assert!(levels.values.windows(2).all(|w| w[1] <= w[0]), "a river runs uphill");
         }
     }
 
@@ -1423,53 +1235,28 @@ mod tests {
     fn the_landmarks_are_where_the_data_puts_them() {
         let baked = valley();
         let (_, _, heights, water, ground) = &baked.grids[2];
-        let at =
-            |x: f32, z: f32| ((z + 256.0).round() as usize) * GRID + (x + 256.0).round() as usize;
+        let at = |x: f32, z: f32| ((z + 256.0).round() as usize) * GRID + (x + 256.0).round() as usize;
         // Tithe Hill is the highest ground inside the edges.
         let top = heights[at(-112.0, 128.0)];
         for j in 40..GRID - 40 {
             for i in 40..GRID - 40 {
-                assert!(
-                    heights[j * GRID + i] <= top + 0.5,
-                    "higher than the hilltop at ({i}, {j})"
-                );
+                assert!(heights[j * GRID + i] <= top + 0.5, "higher than the hilltop at ({i}, {j})");
             }
         }
-        assert!(
-            top > heights[at(42.0, -38.0)] + 20.0,
-            "the hill stands well above the village"
-        );
+        assert!(top > heights[at(42.0, -38.0)] + 20.0, "the hill stands well above the village");
         // The green is level.
         let green = heights[at(42.0, -38.0)];
         for (dx, dz) in [(20.0, 0.0), (-20.0, 0.0), (0.0, 20.0), (0.0, -20.0)] {
             assert!((heights[at(42.0 + dx, -38.0 + dz)] - green).abs() < 0.3);
         }
-        assert!(
-            !water[at(0.0, -118.0)].is_nan(),
-            "the river runs where it is drawn"
-        );
-        assert!(
-            !water[at(100.0, -70.0)].is_nan(),
-            "the mill pond holds water"
-        );
+        assert!(!water[at(0.0, -118.0)].is_nan(), "the river runs where it is drawn");
+        assert!(!water[at(100.0, -70.0)].is_nan(), "the mill pond holds water");
         assert_eq!(ground[at(-20.0, 8.0)], Ground::Road);
         assert_eq!(ground[at(-60.0, -20.0)], Ground::Field);
         // The road follows the land: no stretch of it steeper than the hill it comes down.
-        let (authored, _) =
-            read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/terrain/valley.ron"))
-                .unwrap();
-        let fine = Grid {
-            level: 0,
-            half: 256.0,
-            spacing: 1.0,
-            h: heights.clone(),
-        };
-        let road = &authored
-            .roads
-            .iter()
-            .find(|r| r.key == "penance_road")
-            .unwrap()
-            .points;
+        let (authored, _) = read(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/terrain/valley.ron")).unwrap();
+        let fine = Grid { level: 0, half: 256.0, spacing: 1.0, h: heights.clone() };
+        let road = &authored.roads.iter().find(|r| r.key == "penance_road").unwrap().points;
         let length = polyline_length(road);
         let mut s = 0.0;
         while s + 4.0 < length {
@@ -1479,15 +1266,10 @@ mod tests {
             // The footbridge is built in S06; here the road dips to the brook.
             let near_water = [a, b].iter().any(|p| {
                 let k = at(p.0, p.1);
-                (k.saturating_sub(12 * GRID)..(k + 12 * GRID).min(GRID * GRID))
-                    .step_by(GRID)
-                    .any(|r| (r.saturating_sub(12)..r + 12).any(|q| !water[q].is_nan()))
+                (k.saturating_sub(12 * GRID)..(k + 12 * GRID).min(GRID * GRID)).step_by(GRID).any(|r| (r.saturating_sub(12)..r + 12).any(|q| !water[q].is_nan()))
             });
             // It comes down off the hill as steep as the hill, about one in three.
-            assert!(
-                near_water || grade < 0.34,
-                "the road is too steep at {s} m: {grade}"
-            );
+            assert!(near_water || grade < 0.34, "the road is too steep at {s} m: {grade}");
             s += 2.0;
         }
         // The far ring has its woods and, to the north, the white band.
@@ -1517,10 +1299,7 @@ mod tests {
             let (x0, z0) = c.origin();
             t.sky[TerrainTile::index((x - x0).round() as usize, (z - z0).round() as usize)]
         };
-        assert!(
-            at(0.0, -118.0) < at(-112.0, 128.0),
-            "the river's bed sees less sky than the hilltop"
-        );
+        assert!(at(0.0, -118.0) < at(-112.0, 128.0), "the river's bed sees less sky than the hilltop");
     }
 
     #[test]
@@ -1537,30 +1316,13 @@ mod tests {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/terrain/valley.ron");
         let places = tree_places(&path).unwrap();
         let count = |k: &str| places.iter().filter(|p| p.kind == k).count();
-        assert!(
-            count("oak") > 100 && count("ash") > 50,
-            "the woods are woods: {} oak, {} ash",
-            count("oak"),
-            count("ash")
-        );
-        assert!(
-            count("apple") >= 12,
-            "the orchard has its rows: {}",
-            count("apple")
-        );
+        assert!(count("oak") > 100 && count("ash") > 50, "the woods are woods: {} oak, {} ash", count("oak"), count("ash"));
+        assert!(count("apple") >= 12, "the orchard has its rows: {}", count("apple"));
         assert!(count("hawthorn") > 30, "the hedges: {}", count("hawthorn"));
         let (a, _) = read(&path).unwrap();
         for p in &places {
-            assert!(
-                a.roads
-                    .iter()
-                    .all(|r| distance_to_line(&r.points, p.x, p.z) > r.width * 0.5 + 1.5),
-                "no tree on a road: {p:?}"
-            );
-            assert!(
-                !a.fields.iter().any(|f| inside(&f.points, p.x, p.z)),
-                "no tree in the barley: {p:?}"
-            );
+            assert!(a.roads.iter().all(|r| distance_to_line(&r.points, p.x, p.z) > r.width * 0.5 + 1.5), "no tree on a road: {p:?}");
+            assert!(!a.fields.iter().any(|f| inside(&f.points, p.x, p.z)), "no tree in the barley: {p:?}");
         }
         assert_eq!(places, tree_places(&path).unwrap(), "the same every time");
     }

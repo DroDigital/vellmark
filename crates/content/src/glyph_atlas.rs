@@ -121,13 +121,7 @@ impl GlyphAtlas {
                 out.extend_from_slice(&v.to_le_bytes());
             }
             for g in &face.glyphs {
-                for v in [
-                    g.advance,
-                    g.centre,
-                    g.min_cover,
-                    g.max_cover,
-                    g.mean_distance,
-                ] {
+                for v in [g.advance, g.centre, g.min_cover, g.max_cover, g.mean_distance] {
                     out.extend_from_slice(&v.to_le_bytes());
                 }
                 for v in g.tone {
@@ -143,11 +137,7 @@ impl GlyphAtlas {
         struct Reader<'a>(&'a [u8], usize);
         impl Reader<'_> {
             fn take(&mut self, n: usize) -> Result<&[u8], &'static str> {
-                let end = self
-                    .1
-                    .checked_add(n)
-                    .filter(|e| *e <= self.0.len())
-                    .ok_or("glyph atlas is cut short")?;
+                let end = self.1.checked_add(n).filter(|e| *e <= self.0.len()).ok_or("glyph atlas is cut short")?;
                 let s = &self.0[self.1..end];
                 self.1 = end;
                 Ok(s)
@@ -167,12 +157,7 @@ impl GlyphAtlas {
         let mips = r.u32()?;
         let range = r.f32()?;
         let face_count = r.u32()? as usize;
-        if face_count != FACES
-            || cell == 0
-            || !cell.is_power_of_two()
-            || mips == 0
-            || (cell >> (mips - 1)) == 0
-        {
+        if face_count != FACES || cell == 0 || !cell.is_power_of_two() || mips == 0 || (cell >> (mips - 1)) == 0 {
             return Err("glyph atlas header is not valid");
         }
         let mut faces = Vec::with_capacity(face_count);
@@ -180,37 +165,17 @@ impl GlyphAtlas {
             let (ascent, descent, cell_ems, baseline) = (r.f32()?, r.f32()?, r.f32()?, r.f32()?);
             let mut glyphs = Vec::with_capacity(GLYPHS_PER_FACE);
             for _ in 0..GLYPHS_PER_FACE {
-                let (advance, centre, min_cover, max_cover, mean_distance) =
-                    (r.f32()?, r.f32()?, r.f32()?, r.f32()?, r.f32()?);
+                let (advance, centre, min_cover, max_cover, mean_distance) = (r.f32()?, r.f32()?, r.f32()?, r.f32()?, r.f32()?);
                 let mut tone = [0.0; TONE_STEPS];
                 for t in &mut tone {
                     *t = r.f32()?;
                 }
-                glyphs.push(GlyphInfo {
-                    advance,
-                    centre,
-                    min_cover,
-                    max_cover,
-                    mean_distance,
-                    tone,
-                });
+                glyphs.push(GlyphInfo { advance, centre, min_cover, max_cover, mean_distance, tone });
             }
-            faces.push(FaceInfo {
-                ascent,
-                descent,
-                cell_ems,
-                baseline,
-                glyphs,
-            });
+            faces.push(FaceInfo { ascent, descent, cell_ems, baseline, glyphs });
         }
         let texels = bytes[r.1..].to_vec();
-        let atlas = Self {
-            cell,
-            mips,
-            range,
-            faces,
-            texels,
-        };
+        let atlas = Self { cell, mips, range, faces, texels };
         if atlas.level_range(mips - 1).end != atlas.texels.len() {
             return Err("glyph atlas texels have the wrong length");
         }

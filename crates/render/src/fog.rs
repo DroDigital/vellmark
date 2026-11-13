@@ -2,7 +2,7 @@
 //! light is gathered into and added up along each line of sight. `shaders/fog.wgsl`
 //! says how. Surfaces and the sky read the summed grid.
 
-use vellmark_gpu::{Gpu, PipelineRegistry, wgpu};
+use vellmark_gpu::{wgpu, Gpu, PipelineRegistry};
 
 pub const SIZE: (u32, u32, u32) = (160, 90, 64);
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -97,29 +97,20 @@ impl FogVolume {
         let view_entry = wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: wgpu::ShaderStages::COMPUTE,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: true,
-                min_binding_size: wgpu::BufferSize::new(view_size),
-            },
+            ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: true, min_binding_size: wgpu::BufferSize::new(view_size) },
             count: None,
         };
-        let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("fog view"),
-            entries: &[view_entry],
+        let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("fog view"), entries: &[view_entry] });
+        let inject_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("fog inject"),
+            bind_group_layouts: &[Some(&inject_layout)],
+            immediate_size: 0,
         });
-        let inject_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("fog inject"),
-                bind_group_layouts: &[Some(&inject_layout)],
-                immediate_size: 0,
-            });
-        let integrate_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("fog integrate"),
-                bind_group_layouts: &[Some(&empty_layout), Some(&integrate_layout)],
-                immediate_size: 0,
-            });
+        let integrate_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("fog integrate"),
+            bind_group_layouts: &[Some(&empty_layout), Some(&integrate_layout)],
+            immediate_size: 0,
+        });
         let mut pipeline = |entry: &'static str, layout: &wgpu::PipelineLayout| {
             registry.compute_pipeline(
                 device,
@@ -140,22 +131,14 @@ impl FogVolume {
             layout: &empty_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: view_buffer,
-                    offset: 0,
-                    size: wgpu::BufferSize::new(view_size),
-                }),
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: view_buffer, offset: 0, size: wgpu::BufferSize::new(view_size) }),
             }],
         });
 
         let volume = |label| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
-                size: wgpu::Extent3d {
-                    width: SIZE.0,
-                    height: SIZE.1,
-                    depth_or_array_layers: SIZE.2,
-                },
+                size: wgpu::Extent3d { width: SIZE.0, height: SIZE.1, depth_or_array_layers: SIZE.2 },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D3,
@@ -176,38 +159,19 @@ impl FogVolume {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: view_buffer,
-                            offset: 0,
-                            size: wgpu::BufferSize::new(view_size),
-                        }),
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: view_buffer, offset: 0, size: wgpu::BufferSize::new(view_size) }),
                     },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&shadow_arrays[v]),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(shadow_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(&injected),
-                    },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&shadow_arrays[v]) },
+                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(shadow_sampler) },
+                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&injected) },
                 ],
             }));
             integrate_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("fog integrate"),
                 layout: &integrate_layout,
                 entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&injected),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&integrated),
-                    },
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&injected) },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&integrated) },
                 ],
             }));
             integrated_views.push(integrated);
@@ -221,15 +185,7 @@ impl FogVolume {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             ..Default::default()
         });
-        Self {
-            inject_groups,
-            integrate_groups,
-            integrated_views,
-            sampler,
-            inject,
-            integrate,
-            empty,
-        }
+        Self { inject_groups, integrate_groups, integrated_views, sampler, inject, integrate, empty }
     }
 
     /// Gathers and sums the fog of view `v`, whose uniform is at `offset`, over the share

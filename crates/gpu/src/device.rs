@@ -59,11 +59,7 @@ fn required_limits() -> wgpu::Limits {
 
 fn backends(options: &GpuOptions) -> wgpu::Backends {
     if cfg!(target_os = "windows") {
-        if options.vulkan_on_windows {
-            wgpu::Backends::VULKAN
-        } else {
-            wgpu::Backends::DX12
-        }
+        if options.vulkan_on_windows { wgpu::Backends::VULKAN } else { wgpu::Backends::DX12 }
     } else if cfg!(target_os = "macos") {
         wgpu::Backends::METAL
     } else {
@@ -127,12 +123,7 @@ impl Gpu {
             failures.push(format!("{name}: needs {wanted}, has {got}"));
         });
         if !failures.is_empty() {
-            return Err(GpuError::TooOld(format!(
-                "{} ({}): {}",
-                info.name,
-                info.backend,
-                failures.join("; ")
-            )));
+            return Err(GpuError::TooOld(format!("{} ({}): {}", info.name, info.backend, failures.join("; "))));
         }
 
         let timestamps = adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY);
@@ -149,25 +140,12 @@ impl Gpu {
         }))
         .map_err(|e| GpuError::Failed(format!("{} ({}): {e}", info.name, info.backend)))?;
 
-        Ok((
-            Self {
-                instance,
-                adapter,
-                device,
-                queue,
-                info,
-                timestamps,
-            },
-            surface,
-        ))
+        Ok((Self { instance, adapter, device, queue, info, timestamps }, surface))
     }
 
     /// One line for logs and reports.
     pub fn describe(&self) -> String {
-        format!(
-            "{} ({}, {:?})",
-            self.info.name, self.info.backend, self.info.device_type
-        )
+        format!("{} ({}, {:?})", self.info.name, self.info.backend, self.info.device_type)
     }
 
     /// True for a software renderer. Reports written on one are marked as not being

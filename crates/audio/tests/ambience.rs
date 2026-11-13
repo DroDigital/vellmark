@@ -2,7 +2,7 @@
 //! where there is water, birds only by day, silence when there is nothing, and never a
 //! sample out of range.
 
-use vellmark_audio::{Ambience, Controls, Mixer, SAMPLE_RATE, ambience::Settings};
+use vellmark_audio::{ambience::Settings, Ambience, Controls, Mixer, SAMPLE_RATE};
 
 fn render(s: Settings, seconds: f32) -> (Vec<f32>, u32) {
     let mut a = Ambience::new(7);
@@ -26,109 +26,36 @@ fn rms(x: &[f32]) -> f32 {
 /// How often the signal crosses zero: high for bright sounds, low for dull ones.
 fn brightness(x: &[f32]) -> f32 {
     let tail: Vec<f32> = x[x.len() / 2..].iter().step_by(2).copied().collect();
-    tail.windows(2)
-        .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
-        .count() as f32
-        / tail.len() as f32
+    tail.windows(2).filter(|w| (w[0] < 0.0) != (w[1] < 0.0)).count() as f32 / tail.len() as f32
 }
 
 #[test]
 fn nothing_is_silence() {
-    let (out, _) = render(
-        Settings {
-            open: 1.0,
-            ..Default::default()
-        },
-        2.0,
-    );
+    let (out, _) = render(Settings { open: 1.0, ..Default::default() }, 2.0);
     assert!(rms(&out) < 1.0e-6, "{}", rms(&out));
 }
 
 #[test]
 fn a_stronger_wind_is_louder() {
-    let calm = rms(&render(
-        Settings {
-            wind: 0.2,
-            ..Default::default()
-        },
-        6.0,
-    )
-    .0);
-    let gale = rms(&render(
-        Settings {
-            wind: 0.9,
-            ..Default::default()
-        },
-        6.0,
-    )
-    .0);
-    assert!(
-        calm > 1.0e-4 && gale > calm * 2.0,
-        "calm {calm}, gale {gale}"
-    );
+    let calm = rms(&render(Settings { wind: 0.2, ..Default::default() }, 6.0).0);
+    let gale = rms(&render(Settings { wind: 0.9, ..Default::default() }, 6.0).0);
+    assert!(calm > 1.0e-4 && gale > calm * 2.0, "calm {calm}, gale {gale}");
 }
 
 #[test]
 fn rain_is_brighter_than_wind_and_the_river_is_heard() {
-    let (wind, _) = render(
-        Settings {
-            wind: 0.6,
-            ..Default::default()
-        },
-        4.0,
-    );
-    let (rain, _) = render(
-        Settings {
-            rain: 0.8,
-            ..Default::default()
-        },
-        4.0,
-    );
-    assert!(
-        brightness(&rain) > brightness(&wind) * 1.5,
-        "rain {} wind {}",
-        brightness(&rain),
-        brightness(&wind)
-    );
-    let (river, _) = render(
-        Settings {
-            water: 1.0,
-            ..Default::default()
-        },
-        4.0,
-    );
+    let (wind, _) = render(Settings { wind: 0.6, ..Default::default() }, 4.0);
+    let (rain, _) = render(Settings { rain: 0.8, ..Default::default() }, 4.0);
+    assert!(brightness(&rain) > brightness(&wind) * 1.5, "rain {} wind {}", brightness(&rain), brightness(&wind));
+    let (river, _) = render(Settings { water: 1.0, ..Default::default() }, 4.0);
     assert!(rms(&river) > 1.0e-3, "{}", rms(&river));
 }
 
 #[test]
 fn birds_sing_by_day_and_not_at_night_or_in_rain() {
-    let (_, day) = render(
-        Settings {
-            daylight: 1.0,
-            open: 1.0,
-            wind: 0.2,
-            ..Default::default()
-        },
-        30.0,
-    );
-    let (_, night) = render(
-        Settings {
-            daylight: 0.0,
-            open: 1.0,
-            wind: 0.2,
-            ..Default::default()
-        },
-        30.0,
-    );
-    let (_, storm) = render(
-        Settings {
-            daylight: 1.0,
-            open: 1.0,
-            rain: 1.0,
-            ..Default::default()
-        },
-        30.0,
-    );
+    let (_, day) = render(Settings { daylight: 1.0, open: 1.0, wind: 0.2, ..Default::default() }, 30.0);
+    let (_, night) = render(Settings { daylight: 0.0, open: 1.0, wind: 0.2, ..Default::default() }, 30.0);
+    let (_, storm) = render(Settings { daylight: 1.0, open: 1.0, rain: 1.0, ..Default::default() }, 30.0);
     assert!(day >= 4, "{day} calls by day");
     assert_eq!(night, 0);
     assert_eq!(storm, 0);
@@ -137,13 +64,7 @@ fn birds_sing_by_day_and_not_at_night_or_in_rain() {
 #[test]
 fn everything_at_once_never_leaves_the_range() {
     let controls = Controls::new();
-    for p in [
-        &controls.wind,
-        &controls.rain,
-        &controls.water,
-        &controls.trees,
-        &controls.daylight,
-    ] {
+    for p in [&controls.wind, &controls.rain, &controls.water, &controls.trees, &controls.daylight] {
         p.set(1.0);
     }
     let mut mixer = Mixer::new(controls, 3);
@@ -176,8 +97,7 @@ fn write_a_listening_sample() {
         mixer.render(&mut buffer);
         samples.extend(buffer.iter().map(|v| (v.clamp(-1.0, 1.0) * 32767.0) as i16));
     }
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../docs/evidence/S02/ambience.wav");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/evidence/S02/ambience.wav");
     let mut out = Vec::new();
     let data = (samples.len() * 2) as u32;
     out.extend_from_slice(b"RIFF");

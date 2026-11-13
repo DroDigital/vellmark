@@ -7,15 +7,14 @@ use crate::perf::{PerfRun, PerfStep};
 use glam::Vec3;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use vellmark_content::{AssetId, AssetKind, CameraPath, sid};
-use vellmark_gpu::{Gpu, GpuOptions, PassTimers, PipelineRegistry, WindowHandles, wgpu};
+use vellmark_content::{sid, AssetId, AssetKind, CameraPath};
+use vellmark_gpu::{wgpu, Gpu, GpuOptions, PassTimers, PipelineRegistry, WindowHandles};
 use vellmark_platform::{
-    Action, ActionState, Bindings, InputSource, Platform, PlatformEvent, RawInput, Window,
-    WindowOptions,
+    Action, ActionState, Bindings, InputSource, Platform, PlatformEvent, RawInput, Window, WindowOptions,
 };
 use vellmark_render::{Camera, FrameInput, Governor, Preset, Renderer, ShaderLibrary, View};
-use vellmark_sim::{FixedClock, PlayerInput, Snapshot, World, WorldConfig, buttons};
 use vellmark_ui::Canvas;
+use vellmark_sim::{buttons, FixedClock, PlayerInput, Snapshot, World, WorldConfig};
 
 /// The scene a new game starts in. The yard, until the valley exists.
 const START_SCENE: &str = "yard";
@@ -26,22 +25,12 @@ struct Screen {
 }
 
 impl Screen {
-    fn new(
-        gpu: &Gpu,
-        surface: wgpu::Surface<'static>,
-        size: (u32, u32),
-        uncapped: bool,
-    ) -> Result<Self, String> {
+    fn new(gpu: &Gpu, surface: wgpu::Surface<'static>, size: (u32, u32), uncapped: bool) -> Result<Self, String> {
         let caps = surface.get_capabilities(&gpu.adapter);
         let mut config = surface
             .get_default_config(&gpu.adapter, size.0.max(1), size.1.max(1))
             .ok_or("the graphics card cannot draw to this window")?;
-        config.format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(caps.formats[0]);
+        config.format = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(caps.formats[0]);
         config.present_mode = if uncapped {
             // The performance run measures real frame time, so it does not wait for the display.
             [wgpu::PresentMode::Immediate, wgpu::PresentMode::Mailbox]
@@ -87,19 +76,10 @@ impl Screen {
 }
 
 /// Turns a frame's actions into the input for one simulation step.
-fn player_input(
-    actions: &ActionState,
-    bindings: &Bindings,
-    dt: f32,
-    first_step: bool,
-) -> PlayerInput {
+fn player_input(actions: &ActionState, bindings: &Bindings, dt: f32, first_step: bool) -> PlayerInput {
     let (move_x, move_y) = actions.movement();
     // Looking is applied once a frame, however many steps the frame runs.
-    let (look_yaw, look_pitch) = if first_step {
-        actions.look(bindings, dt)
-    } else {
-        (0.0, 0.0)
-    };
+    let (look_yaw, look_pitch) = if first_step { actions.look(bindings, dt) } else { (0.0, 0.0) };
     let mut held = 0;
     for (action, bit) in [
         (Action::Sprint, buttons::SPRINT),
@@ -117,14 +97,7 @@ fn player_input(
             held |= bit;
         }
     }
-    PlayerInput {
-        move_x,
-        move_y,
-        look_yaw,
-        look_pitch,
-        buttons: held,
-        typed: 0,
-    }
+    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held, typed: 0 }
 }
 
 // `strings` is reloaded here and read once the interface shows text (Phase S03).
@@ -137,11 +110,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
 
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
-    let Content {
-        base,
-        mut strings,
-        assets,
-    } = match boot::load_content() {
+    let Content { base, mut strings, assets } = match boot::load_content() {
         Ok(c) => c,
         Err(detail) => return fail(sid!("sys.packs.missing"), &detail),
     };
@@ -172,21 +141,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
 
-    let gpu_options = GpuOptions {
-        software: args.software,
-        ..Default::default()
-    };
+    let gpu_options = GpuOptions { software: args.software, ..Default::default() };
     // SAFETY: `window` is declared before the surface and outlives it; both live until
     // this function returns, and the surface is dropped first.
-    let created = unsafe {
-        Gpu::for_window(
-            &gpu_options,
-            WindowHandles {
-                window: raw_window,
-                display: raw_display,
-            },
-        )
-    };
+    let created = unsafe { Gpu::for_window(&gpu_options, WindowHandles { window: raw_window, display: raw_display }) };
     let (gpu, surface) = match created {
         Ok(pair) => pair,
         Err(error) => return fail(boot::gpu_error_string(&error), &error.to_string()),
@@ -207,23 +165,13 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     };
     #[cfg(not(feature = "dev"))]
     let shaders = ShaderLibrary::embedded();
-    let mut renderer = match Renderer::new(
-        &gpu,
-        &mut registry,
-        &shaders,
-        screen.config.format,
-        &assets.borrow(),
-    ) {
+    let mut renderer = match Renderer::new(&gpu, &mut registry, &shaders, screen.config.format, &assets.borrow()) {
         Ok(r) => r,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
     // Medium is the Showcase's target; Low and High are chosen by hand for now.
     #[allow(unused_mut)]
-    let mut preset = args
-        .preset
-        .as_deref()
-        .and_then(Preset::parse)
-        .unwrap_or(Preset::Medium);
+    let mut preset = args.preset.as_deref().and_then(Preset::parse).unwrap_or(Preset::Medium);
     let scene_key = format!("scene.{}", args.scene.as_deref().unwrap_or(START_SCENE));
     let scene = match vellmark_render::load_scene(&gpu, &base, &scene_key) {
         Ok((scene, on_gpu)) => {
@@ -248,10 +196,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
     }
     registry.seal();
-    log::line(&format!(
-        "renderer ready, presenting {:?} as {:?}",
-        screen.config.format, screen.config.present_mode
-    ));
+    log::line(&format!("renderer ready, presenting {:?} as {:?}", screen.config.format, screen.config.present_mode));
     // Always on where the GPU can time its passes: the governor reads them.
     let mut timers = PassTimers::new(&gpu, true);
 
@@ -264,12 +209,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             .and_then(|b| CameraPath::from_bytes(b).ok());
         match path {
             Some(path) => Some(PerfRun::new(path, args.out.clone(), launched.elapsed())),
-            None => {
-                return fail(
-                    sid!("sys.packs.missing"),
-                    "the performance path is not in the pack",
-                );
-            }
+            None => return fail(sid!("sys.packs.missing"), "the performance path is not in the pack"),
         }
     } else {
         None
@@ -278,10 +218,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut world = World::new(WorldConfig::default());
     let (solids, breakables) = vellmark_render::scene_rules(&scene);
     #[cfg_attr(not(feature = "dev"), allow(unused_variables))]
-    let breakable_places: Vec<(u64, Vec3)> = breakables
-        .iter()
-        .map(|b| (b.id, Vec3::from(b.to_world.translation)))
-        .collect();
+    let breakable_places: Vec<(u64, Vec3)> = breakables.iter().map(|b| (b.id, Vec3::from(b.to_world.translation))).collect();
     world.set_scene(solids, breakables);
     world.set_trunks(vellmark_render::tree_trunks(&base, &scene));
     world.set_readables(vellmark_render::scene_readables(&base, &scene_key));
@@ -290,10 +227,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     world.set_word_rules(rules);
     // The simulation holds the feet; the scene's spawn is given as an eye.
     let spawn = scene.spawn;
-    world.add_player(
-        Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]),
-        spawn[3],
-    );
+    world.add_player(Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]), spawn[3]);
     if let Some(t) = &terrain {
         world.set_ground(t.clone());
     }
@@ -305,9 +239,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
     let mut input_settings = match std::fs::read_to_string(&settings_path) {
         Ok(text) => vellmark_platform::InputSettings::parse(&text).unwrap_or_else(|e| {
-            log::line(&format!(
-                "the settings could not be read, so the defaults are used: {e}"
-            ));
+            log::line(&format!("the settings could not be read, so the defaults are used: {e}"));
             Default::default()
         }),
         Err(_) => Default::default(),
@@ -350,13 +282,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         .iter()
         .map(|o| {
             let t = o.transform;
-            (
-                o.key,
-                glam::Mat4::from_cols_array(&[
-                    t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3],
-                    t[7], t[11], 1.0,
-                ]),
-            )
+            (o.key, glam::Mat4::from_cols_array(&[t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7], t[11], 1.0]))
         })
         .collect();
     let mut door_open: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
@@ -394,10 +320,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 break 'frames;
             }
         }
-        if !mouse_captured
-            && perf.is_none()
-            && (actions.pressed(Action::MainHand) || frame_index == 0)
-        {
+        if !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0) {
             mouse_captured = true;
             platform.capture_mouse(&window, true);
         }
@@ -427,9 +350,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         let id = AssetId::from_key(&format!("{scene_key}.{name}"));
                         let blow = current.views.first().map_or(Vec3::ZERO, |v| v.eye);
                         match world.break_thing_with(id.0, blow, strength) {
-                            Some(letters) => {
-                                log::line(&format!("broke `{name}` into {letters} letters"))
-                            }
+                            Some(letters) => log::line(&format!("broke `{name}` into {letters} letters")),
                             None => log::line(&format!("nothing called `{name}` is left to break")),
                         }
                     }
@@ -443,12 +364,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     Command::Wind(n) => forced_gust = Some((n, started.elapsed().as_secs_f32())),
                     Command::Learn(word) => {
                         let id = current.players[0].id;
-                        let all: Vec<String> = world
-                            .word_rules()
-                            .words
-                            .iter()
-                            .map(|w| w.spelling.clone())
-                            .collect();
+                        let all: Vec<String> = world.word_rules().words.iter().map(|w| w.spelling.clone()).collect();
                         let words = if word == "ALL" { all } else { vec![word] };
                         for w in words {
                             if world.learn(id, &w) {
@@ -461,9 +377,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     Command::Sensitivity(n) => input_settings.mouse_sensitivity = n,
                     Command::InvertY(on) => input_settings.invert_y = on,
                     Command::Bind(action, button) => {
-                        use vellmark_platform::prompts::{
-                            action_named, key_named, mouse_button_named, pad_button_named,
-                        };
+                        use vellmark_platform::prompts::{action_named, key_named, mouse_button_named, pad_button_named};
                         match action_named(&action) {
                             None => log::line(&format!("no action called `{action}`")),
                             Some(a) => {
@@ -510,15 +424,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         dev_tools.tune(&mut tuning, &actions);
         // Holding Read eases from the realistic frame into the text frame, and back.
         // Close reading is the rules' to decide: Read with no text in focus.
-        let wanted = if current
-            .players
-            .first()
-            .is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::Close)
-        {
-            1.0
-        } else {
-            0.0
-        };
+        let wanted = if current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::Close) { 1.0 } else { 0.0 };
         let ease = (frame_time.as_secs_f32() / 0.35).min(1.0);
         close_reading += (wanted - close_reading).clamp(-ease, ease);
         #[cfg(feature = "dev")]
@@ -532,10 +438,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let nearest = breakable_places
                 .iter()
                 .filter(|(id, _)| !current.broken.contains(id))
-                .min_by(|a, b| {
-                    a.1.distance_squared(eye)
-                        .total_cmp(&b.1.distance_squared(eye))
-                });
+                .min_by(|a, b| a.1.distance_squared(eye).total_cmp(&b.1.distance_squared(eye)));
             if let Some(&(id, _)) = nearest {
                 if let Some(letters) = world.break_thing(id, eye) {
                     log::line(&format!("broke a thing into {letters} letters"));
@@ -551,10 +454,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
 
         // While a word charges, letters typed are read by the rules: the word for a
         // bonus, or its typo on purpose.
-        let charging = current
-            .players
-            .first()
-            .is_some_and(|p| p.charge.iter().any(|&c| c > 0.0));
+        let charging = current.players.first().is_some_and(|p| p.charge.iter().any(|&c| c > 0.0));
         #[cfg(feature = "dev")]
         let charging = charging && !dev_tools.console_open();
         if charging != typing {
@@ -586,51 +486,19 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
         if let Some(player) = current.players.first() {
-            let style = actions
-                .pad
-                .map_or(Default::default(), |p| platform.pad_style(p));
-            vellmark_ui::reading_view::ReadingView {
-                atlas: &assets.glyphs,
-                strings: &strings,
-                size: screen.size(),
-                density: window.pixel_density(),
-            }
-            .draw(&mut canvas, player, &actions, &bindings, style);
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() }
+                .draw(&mut canvas, player, &actions, &bindings, style);
             if player.reading == vellmark_sim::reading::ReadingSnap::None {
-                vellmark_ui::hud::Hud {
-                    atlas: &assets.glyphs,
-                    strings: &strings,
-                    rules: world.word_rules(),
-                    size: screen.size(),
-                    density: window.pixel_density(),
-                }
-                .draw(&mut canvas, player);
+                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), size: screen.size(), density: window.pixel_density() }.draw(&mut canvas, player);
             }
         }
         #[cfg(feature = "dev")]
-        dev_tools.draw(
-            &mut canvas,
-            &assets.glyphs,
-            screen.size(),
-            window.pixel_density(),
-            frame_time,
-            &vellmark_gpu::PassTiming::grouped(timers.latest()),
-            &registry,
-            &tuning,
-        );
+        dev_tools.draw(&mut canvas, &assets.glyphs, screen.size(), window.pixel_density(), frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), &registry, &tuning);
 
         if let Some(run) = perf.as_mut() {
-            match run.frame(
-                frame_time,
-                &vellmark_gpu::PassTiming::grouped(timers.latest()),
-                relief.scene_scale(),
-            ) {
-                PerfStep::Camera {
-                    eye,
-                    yaw,
-                    pitch,
-                    hour: h,
-                } => {
+            match run.frame(frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), relief.scene_scale()) {
+                PerfStep::Camera { eye, yaw, pitch, hour: h } => {
                     camera = Camera::looking(eye.into(), yaw, pitch);
                     hour = h;
                 }
@@ -653,25 +521,13 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         sound.update(camera.eye, &current.weather, hour, terrain.as_deref());
         // Open doors swing, eased; closed ones swing back.
         for t in current.targets.iter() {
-            let Some((key, place)) = door_places.iter().find(|(k, _)| k.0 == t.id) else {
-                continue;
-            };
-            let want = if t.effects.iter().any(|e| e == "open") {
-                1.0
-            } else {
-                0.0
-            };
+            let Some((key, place)) = door_places.iter().find(|(k, _)| k.0 == t.id) else { continue };
+            let want = if t.effects.iter().any(|e| e == "open") { 1.0 } else { 0.0 };
             let now = door_open.entry(t.id).or_insert(0.0);
             if *now != want {
-                *now += (want - *now).clamp(
-                    -frame_time.as_secs_f32() * 1.5,
-                    frame_time.as_secs_f32() * 1.5,
-                );
+                *now += (want - *now).clamp(-frame_time.as_secs_f32() * 1.5, frame_time.as_secs_f32() * 1.5);
                 let eased = *now * *now * (3.0 - 2.0 * *now);
-                renderer.scene_mut().set_transform(
-                    *key,
-                    *place * glam::Mat4::from_rotation_y(-eased * 95f32.to_radians()),
-                );
+                renderer.scene_mut().set_transform(*key, *place * glam::Mat4::from_rotation_y(-eased * 95f32.to_radians()));
             }
         }
 
@@ -722,14 +578,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());
             timers.begin_frame();
-            renderer.render(
-                &gpu,
-                &mut encoder,
-                &target,
-                screen.size(),
-                &input,
-                &mut timers,
-            );
+            renderer.render(&gpu, &mut encoder, &target, screen.size(), &input, &mut timers);
             timers.end_frame(&gpu, &mut encoder);
             gpu.queue.submit([encoder.finish()]);
             timers.after_submit();
@@ -742,18 +591,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         timers.collect();
         // The frame's GPU time where the timers can say, its wall time where they cannot.
         let gpu_ms: f32 = timers.latest().iter().map(|p| p.milliseconds).sum();
-        let frame_ms = if timers.active() && gpu_ms > 0.0 {
-            gpu_ms
-        } else {
-            frame_time.as_secs_f32() * 1000.0
-        };
+        let frame_ms = if timers.active() && gpu_ms > 0.0 { gpu_ms } else { frame_time.as_secs_f32() * 1000.0 };
         let logged = governor.log.len();
-        relief = governor.frame(
-            frame_ms,
-            frame_time.as_secs_f32(),
-            started.elapsed().as_secs_f32(),
-            close_reading > 0.0,
-        );
+        relief = governor.frame(frame_ms, frame_time.as_secs_f32(), started.elapsed().as_secs_f32(), close_reading > 0.0);
         for line in &governor.log[logged..] {
             log::line(&format!("governor: {line}"));
         }

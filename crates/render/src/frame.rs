@@ -1,7 +1,7 @@
 //! What every pass of a view shares: the camera, the light of the hour, and the
 //! shadow cascades.
 
-use crate::camera::{View, sun_direction};
+use crate::camera::{sun_direction, View};
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 
@@ -170,11 +170,7 @@ pub struct GlyphTuning {
 
 impl Default for GlyphTuning {
     fn default() -> Self {
-        Self {
-            reveal: 1.0,
-            contrast: 1.0,
-            look: 4,
-        }
+        Self { reveal: 1.0, contrast: 1.0, look: 4 }
     }
 }
 
@@ -199,10 +195,7 @@ pub fn cascade_matrix(view: &View, aspect: f32, near: f32, far: f32, light_dir: 
     }
     let centre = corners.iter().copied().sum::<Vec3>() / 8.0;
     // A sphere, so the box's size does not change as the camera turns.
-    let radius = corners
-        .iter()
-        .map(|c| c.distance(centre))
-        .fold(0.0f32, f32::max);
+    let radius = corners.iter().map(|c| c.distance(centre)).fold(0.0f32, f32::max);
     let radius = (radius * 16.0).ceil() / 16.0;
     sphere_cascade_matrix(centre, radius, light_dir)
 }
@@ -211,11 +204,7 @@ pub fn cascade_matrix(view: &View, aspect: f32, near: f32, far: f32, light_dir: 
 /// `light_dir`, its texels kept on a fixed grid so that the shadows do not crawl as the
 /// sphere moves.
 pub fn sphere_cascade_matrix(centre: Vec3, radius: f32, light_dir: Vec3) -> Mat4 {
-    let up = if light_dir.y.abs() > 0.99 {
-        Vec3::Z
-    } else {
-        Vec3::Y
-    };
+    let up = if light_dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
     let light_view = crate::camera::look_at(Vec3::ZERO, -light_dir, up);
     let texel = radius * 2.0 / SHADOW_SIZE as f32;
     let mut c = light_view.transform_point3(centre);
@@ -223,14 +212,7 @@ pub fn sphere_cascade_matrix(centre: Vec3, radius: f32, light_dir: Vec3) -> Mat4
     c.y = (c.y / texel).floor() * texel;
     // Casters between the light and the box still cast into it.
     let back = radius + 80.0;
-    let projection = crate::camera::orthographic(
-        c.x - radius,
-        c.x + radius,
-        c.y - radius,
-        c.y + radius,
-        -c.z - back,
-        -c.z + radius,
-    );
+    let projection = crate::camera::orthographic(c.x - radius, c.x + radius, c.y - radius, c.y + radius, -c.z - back, -c.z + radius);
     projection * light_view
 }
 
@@ -273,18 +255,8 @@ pub fn view_uniform(
         sun_dir: atmosphere.sun_dir.extend(0.0).to_array(),
         sky_zenith: atmosphere.sky_zenith.extend(0.0).to_array(),
         sky_horizon: atmosphere.sky_horizon.extend(0.0).to_array(),
-        switches: [
-            if glyph_layer { 1.0 } else { 0.0 },
-            close_reading,
-            tuning.contrast,
-            reveal,
-        ],
-        viewport: [
-            size.0,
-            size.1,
-            atmosphere.exposure,
-            if reveal_mask { 1.0 } else { 0.0 },
-        ],
+        switches: [if glyph_layer { 1.0 } else { 0.0 }, close_reading, tuning.contrast, reveal],
+        viewport: [size.0, size.1, atmosphere.exposure, if reveal_mask { 1.0 } else { 0.0 }],
         cascade_far: Vec4::new(CASCADE_FAR[0], CASCADE_FAR[1], CASCADE_FAR[2], texel).to_array(),
         shadow: [
             cascades[0].to_cols_array_2d(),
@@ -295,12 +267,7 @@ pub fn view_uniform(
         viewport_origin: [origin.0, origin.1, 0.0, 0.0],
         effects: [dive, lamps, tuning.look as f32, 0.0],
         moon_dir: atmosphere.moon_dir.extend(atmosphere.moon_lit).to_array(),
-        sky: [
-            atmosphere.cloud_cover,
-            atmosphere.fog[0],
-            atmosphere.fog[1],
-            atmosphere.fog[2],
-        ],
+        sky: [atmosphere.cloud_cover, atmosphere.fog[0], atmosphere.fog[1], atmosphere.fog[2]],
         weather: [0.0; 4],
         wind: [1.0, 0.0, 0.0, 0.0],
         sentence: [0.0, 0.0, 1.0, 0.0],
@@ -328,10 +295,7 @@ mod tests {
         assert!(night.light_dir.y > 0.0, "the moon is above the horizon");
         assert!(night.exposure > noon.exposure);
         let dusk = Atmosphere::at(17.6);
-        assert!(
-            dusk.sky_horizon.x > dusk.sky_horizon.z,
-            "the horizon is warm at dusk"
-        );
+        assert!(dusk.sky_horizon.x > dusk.sky_horizon.z, "the horizon is warm at dusk");
     }
 
     #[test]
@@ -342,10 +306,7 @@ mod tests {
         for d in [0.5, 3.0, 6.9] {
             let p = view.camera.eye + view.camera.rotation * Vec3::new(0.0, 0.0, -d);
             let clip = m.project_point3(p);
-            assert!(
-                clip.x.abs() <= 1.0 && clip.y.abs() <= 1.0 && (0.0..=1.0).contains(&clip.z),
-                "{clip:?}"
-            );
+            assert!(clip.x.abs() <= 1.0 && clip.y.abs() <= 1.0 && (0.0..=1.0).contains(&clip.z), "{clip:?}");
         }
     }
 }

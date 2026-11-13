@@ -1,7 +1,7 @@
 use crate::clock::STEP_SECONDS;
-use crate::debris::{Debris, Solid, shatter};
 use crate::hash::Fnv64;
 use crate::input::PlayerInput;
+use crate::debris::{shatter, Debris, Solid};
 use crate::snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
 use glam::Vec3;
 use std::sync::Arc;
@@ -28,11 +28,7 @@ pub struct WorldConfig {
 
 impl Default for WorldConfig {
     fn default() -> Self {
-        Self {
-            seed: 1,
-            start_time_of_day: 10.0,
-            hours_per_second: 24.0 / (48.0 * 60.0),
-        }
+        Self { seed: 1, start_time_of_day: 10.0, hours_per_second: 24.0 / (48.0 * 60.0) }
     }
 }
 
@@ -171,16 +167,7 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player {
-            id,
-            body: crate::character::Body::new(feet),
-            yaw,
-            pitch: 0.0,
-            reading: Default::default(),
-            in_focus: None,
-            perception: 0,
-            caster: Default::default(),
-        });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default() });
         id
     }
 
@@ -261,53 +248,23 @@ impl World {
     /// A breakable thing that bodies stand on and cannot walk through while it is whole:
     /// a marked structure, or one named so.
     fn solid(&self, id: u64) -> bool {
-        self.solid_things.contains(&id)
-            || self.targets.iter().any(|t| {
-                t.id == id
-                    && self
-                        .rules
-                        .classes
-                        .get(t.class)
-                        .is_some_and(|c| c == "structure")
-            })
+        self.solid_things.contains(&id) || self.targets.iter().any(|t| t.id == id && self.rules.classes.get(t.class).is_some_and(|c| c == "structure"))
     }
 
     /// A blow lands on a player: a full charge in either hand smudges into its typo and
     /// flies at whatever is in the gaze; a lesser charge is lost.
     pub fn strike(&mut self, id: PlayerId) {
-        let Some(p) = self.players.iter_mut().find(|p| p.id == id) else {
-            return;
-        };
+        let Some(p) = self.players.iter_mut().find(|p| p.id == id) else { return };
         let eye = p.body.feet + Vec3::Y * p.body.eye;
         let (sy, cy) = p.yaw.sin_cos();
         let (sp, cp) = p.pitch.sin_cos();
         let gaze = Vec3::new(sy * cp, sp, -cy * cp);
         let right = Vec3::new(cy, 0.0, sy);
         for hand in [crate::hands::Hand::Main, crate::hands::Hand::Off] {
-            let full = p
-                .caster
-                .hands
-                .charging(hand)
-                .is_some_and(|t| t >= crate::emendation::CHARGE_FULL);
+            let full = p.caster.hands.charging(hand).is_some_and(|t| t >= crate::emendation::CHARGE_FULL);
             if let (true, crate::casting::Holding::Word(w)) = (full, p.caster.holds(hand)) {
-                let stroke = crate::emendation::Stroke {
-                    charge: 1.0,
-                    typo: true,
-                    ..Default::default()
-                };
-                crate::casting::send(
-                    p.id.0,
-                    &mut p.caster,
-                    w,
-                    Some(hand),
-                    stroke,
-                    &self.rules,
-                    &self.targets,
-                    eye,
-                    gaze,
-                    right,
-                    &mut self.flights,
-                );
+                let stroke = crate::emendation::Stroke { charge: 1.0, typo: true, ..Default::default() };
+                crate::casting::send(p.id.0, &mut p.caster, w, Some(hand), stroke, &self.rules, &self.targets, eye, gaze, right, &mut self.flights);
             }
         }
         p.caster.hands.interrupt();
@@ -316,9 +273,7 @@ impl World {
 
     /// A player learns a word, by its spelling. Returns whether there is such a word.
     pub fn learn(&mut self, id: PlayerId, spelling: &str) -> bool {
-        let Some(w) = self.rules.word(spelling) else {
-            return false;
-        };
+        let Some(w) = self.rules.word(spelling) else { return false };
         if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
             p.caster.learn(w);
         }
@@ -327,9 +282,7 @@ impl World {
 
     /// Puts a word, by its spelling, in a player's hand: 0 main, 1 off.
     pub fn hold_word(&mut self, id: PlayerId, hand: usize, spelling: &str) {
-        let Some(w) = self.rules.word(spelling) else {
-            return;
-        };
+        let Some(w) = self.rules.word(spelling) else { return };
         if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
             p.caster.learn(w);
             p.caster.holding[hand.min(1)] = crate::casting::Holding::Word(w);
@@ -350,12 +303,7 @@ impl World {
                 .collect(),
         );
         // Words that heat and cool make things hot and cold.
-        let mut all: Vec<(u64, f32)> = self
-            .heat
-            .iter()
-            .copied()
-            .filter(|(id, _)| !self.targets.iter().any(|t| t.id == *id))
-            .collect();
+        let mut all: Vec<(u64, f32)> = self.heat.iter().copied().filter(|(id, _)| !self.targets.iter().any(|t| t.id == *id)).collect();
         for t in &self.targets {
             let h = crate::casting::heat_of(t);
             if h != 0.0 {
@@ -435,11 +383,7 @@ impl World {
                 let mut lo = Vec3::splat(f32::MAX);
                 let mut hi = Vec3::splat(f32::MIN);
                 for corner in 0..8 {
-                    let p = Vec3::new(
-                        if corner & 1 == 0 { min.x } else { max.x },
-                        if corner & 2 == 0 { min.y } else { max.y },
-                        if corner & 4 == 0 { min.z } else { max.z },
-                    );
+                    let p = Vec3::new(if corner & 1 == 0 { min.x } else { max.x }, if corner & 2 == 0 { min.y } else { max.y }, if corner & 4 == 0 { min.z } else { max.z });
                     let w = b.to_world.transform_point3(p);
                     lo = lo.min(w);
                     hi = hi.max(w);
@@ -465,12 +409,7 @@ impl World {
     /// they fell long ago. Their state is their Inscription.
     fn break_authored(&mut self) {
         self.authored_broken = true;
-        let ids: Vec<(u64, Vec3)> = self
-            .targets
-            .iter()
-            .filter(|t| t.words.iter().any(|w| w.spelling == "BROKEN"))
-            .map(|t| (t.id, t.centre))
-            .collect();
+        let ids: Vec<(u64, Vec3)> = self.targets.iter().filter(|t| t.words.iter().any(|w| w.spelling == "BROKEN")).map(|t| (t.id, t.centre)).collect();
         for (id, centre) in ids {
             self.break_thing_with(id, centre + Vec3::Y * 0.5, 0.25);
         }
@@ -482,12 +421,7 @@ impl World {
     fn inscribe_state(&mut self, id: u64, spelling: &str) {
         if let Some(t) = self.targets.iter_mut().find(|t| t.id == id) {
             t.words.retain(|w| w.class != "Integrity");
-            t.words.push(crate::emendation::InscribedWord {
-                spelling: spelling.into(),
-                class: "Integrity".into(),
-                fades_at: None,
-                replaced: None,
-            });
+            t.words.push(crate::emendation::InscribedWord { spelling: spelling.into(), class: "Integrity".into(), fades_at: None, replaced: None });
             t.effects.retain(|e| e.effect != "mend");
         }
     }
@@ -544,11 +478,7 @@ impl World {
         broken.push(id);
         self.broken = Arc::new(broken);
         self.refresh_letters();
-        if self
-            .targets
-            .iter()
-            .any(|t| t.id == id && !t.words.iter().any(|w| w.spelling == "BROKEN"))
-        {
+        if self.targets.iter().any(|t| t.id == id && !t.words.iter().any(|w| w.spelling == "BROKEN")) {
             self.inscribe_state(id, "BROKEN");
             self.refresh_targets();
         }
@@ -561,12 +491,7 @@ impl World {
     /// be. The words of S05 will set this; until then the development tools do.
     pub fn set_heat(&mut self, id: u64, heat: f32) {
         let heat = heat.clamp(-1.0, 1.0);
-        let mut all: Vec<(u64, f32)> = self
-            .heat
-            .iter()
-            .copied()
-            .filter(|(i, _)| *i != id)
-            .collect();
+        let mut all: Vec<(u64, f32)> = self.heat.iter().copied().filter(|(i, _)| *i != id).collect();
         if heat != 0.0 {
             all.push((id, heat));
         }
@@ -594,11 +519,7 @@ impl World {
         self.debris.set_ground(ground.clone());
         self.ground = Some(ground);
         for p in &mut self.players {
-            if let Some(h) = self
-                .ground
-                .as_ref()
-                .and_then(|g| g.height(p.body.feet.x, p.body.feet.z))
-            {
+            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.body.feet.x, p.body.feet.z)) {
                 p.body.feet.y = h;
             }
         }
@@ -622,12 +543,7 @@ impl World {
             self.debris
                 .letters
                 .iter()
-                .map(|l| LetterSnap {
-                    position: l.position,
-                    rotation: l.rotation,
-                    material: l.material,
-                    seed: l.seed,
-                })
+                .map(|l| LetterSnap { position: l.position, rotation: l.rotation, material: l.material, seed: l.seed })
                 .collect(),
         );
     }
@@ -660,7 +576,7 @@ impl World {
         if !self.authored_broken {
             self.break_authored();
         }
-        use crate::reading::{CLOSE_READING_PACE, Reading, focus};
+        use crate::reading::{focus, Reading, CLOSE_READING_PACE};
         // What each player reads. A text in focus is read while Read is held; with none,
         // Read is close reading.
         for (i, p) in self.players.iter_mut().enumerate() {
@@ -682,23 +598,13 @@ impl World {
             };
         }
         // In solo play, close reading slows time. In co-op the shared world never slows.
-        self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close {
-            CLOSE_READING_PACE
-        } else {
-            1.0
-        };
+        self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close { CLOSE_READING_PACE } else { 1.0 };
         let dt = STEP_SECONDS * self.pace;
         for (i, p) in self.players.iter_mut().enumerate() {
             let input = inputs.get(i).copied().unwrap_or_default();
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
-            p.body.step(
-                &input,
-                p.yaw,
-                self.statics.as_deref(),
-                &Around(self.ground.as_deref()),
-                dt,
-            );
+            p.body.step(&input, p.yaw, self.statics.as_deref(), &Around(self.ground.as_deref()), dt);
         }
         // Casting: the hands' taps and charges become words in flight, which land.
         self.landings.clear();
@@ -746,9 +652,7 @@ impl World {
             }
             crate::casting::take_aim(&mut p.caster, eye, gaze, &self.targets);
             // Typing while a word charges.
-            let charging = p.caster.hands.charging(crate::hands::Hand::Main).is_some()
-                || p.caster.hands.charging(crate::hands::Hand::Off).is_some()
-                || p.caster.hands.both().is_some();
+            let charging = p.caster.hands.charging(crate::hands::Hand::Main).is_some() || p.caster.hands.charging(crate::hands::Hand::Off).is_some() || p.caster.hands.both().is_some();
             if charging {
                 for k in 0..4 {
                     let c = (input.typed >> (k * 8)) & 0xff;
@@ -816,14 +720,7 @@ impl World {
             }
         }
         let landed_before = self.landings.len();
-        crate::casting::fly(
-            &mut self.flights,
-            &mut self.targets,
-            &self.rules,
-            dt,
-            self.seconds,
-            &mut self.landings,
-        );
+        crate::casting::fly(&mut self.flights, &mut self.targets, &self.rules, dt, self.seconds, &mut self.landings);
         // The chain: twice a second, fire spreads to what is near it.
         if self.step % 30 == 0 && !self.targets.is_empty() {
             let mut rng = self.rng;
@@ -834,14 +731,7 @@ impl World {
                 z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
                 ((z ^ (z >> 31)) >> 40) as f32 / (1u64 << 24) as f32
             };
-            crate::casting::spread(
-                &mut self.targets,
-                &self.rules,
-                self.seconds,
-                0.35 * self.pace,
-                &mut roll,
-                &mut self.landings,
-            );
+            crate::casting::spread(&mut self.targets, &self.rules, self.seconds, 0.35 * self.pace, &mut roll, &mut self.landings);
             self.rng = rng;
         }
         // A word that mends landing on a broken thing calls its letters home.
@@ -880,13 +770,7 @@ impl World {
         // Things whose letters have all come home stand whole again.
         let mended = self.debris.take_mended();
         if !mended.is_empty() {
-            self.broken = Arc::new(
-                self.broken
-                    .iter()
-                    .copied()
-                    .filter(|b| !mended.contains(b))
-                    .collect(),
-            );
+            self.broken = Arc::new(self.broken.iter().copied().filter(|b| !mended.contains(b)).collect());
             for id in &mended {
                 self.inscribe_state(*id, "WHOLE");
             }
@@ -903,10 +787,7 @@ impl World {
                 .targets
                 .iter_mut()
                 .filter_map(|t| {
-                    let alight = t
-                        .effects
-                        .iter()
-                        .any(|e| matches!(e.effect.as_str(), "ignite" | "flare" | "blaze"));
+                    let alight = t.effects.iter().any(|e| matches!(e.effect.as_str(), "ignite" | "flare" | "blaze"));
                     if !alight {
                         t.alight_since = None;
                         return None;
@@ -957,12 +838,7 @@ impl World {
                         crate::reading::ReadingSnap::Text {
                             id: r.id,
                             text: r.text,
-                            hidden: r
-                                .hidden
-                                .iter()
-                                .filter(|(_, need)| p.perception >= *need)
-                                .map(|(s, _)| *s)
-                                .collect(),
+                            hidden: r.hidden.iter().filter(|(_, need)| p.perception >= *need).map(|(s, _)| *s).collect(),
                         }
                     }
                 },
@@ -975,18 +851,8 @@ impl World {
                     p.caster.charge(None),
                 ],
                 preview: [
-                    crate::casting::preview_for(
-                        &p.caster,
-                        &self.rules,
-                        &self.targets,
-                        crate::hands::Hand::Main,
-                    ),
-                    crate::casting::preview_for(
-                        &p.caster,
-                        &self.rules,
-                        &self.targets,
-                        crate::hands::Hand::Off,
-                    ),
+                    crate::casting::preview_for(&p.caster, &self.rules, &self.targets, crate::hands::Hand::Main),
+                    crate::casting::preview_for(&p.caster, &self.rules, &self.targets, crate::hands::Hand::Off),
                 ],
             })
             .collect();
@@ -1021,11 +887,7 @@ impl World {
                     at: f.at,
                     target: f.target,
                     charge: f.charge,
-                    typo: if f.typo {
-                        self.rules.words[f.word].typo.clone()
-                    } else {
-                        String::new()
-                    },
+                    typo: if f.typo { self.rules.words[f.word].typo.clone() } else { String::new() },
                 })
                 .collect(),
             landings: self.landings.clone(),
@@ -1069,12 +931,7 @@ impl World {
         }
         h.u32(self.debris.letters.len() as u32);
         for l in &self.debris.letters {
-            for v in l
-                .position
-                .to_array()
-                .into_iter()
-                .chain(l.velocity.to_array())
-            {
+            for v in l.position.to_array().into_iter().chain(l.velocity.to_array()) {
                 h.f32(v);
             }
         }
@@ -1101,10 +958,7 @@ mod tests {
     }
 
     fn run(steps: u64) -> (u64, Vec<u64>) {
-        let mut w = World::new(WorldConfig {
-            seed: 7,
-            ..Default::default()
-        });
+        let mut w = World::new(WorldConfig { seed: 7, ..Default::default() });
         w.add_player(Vec3::ZERO, 0.0);
         w.add_player(Vec3::new(3.0, 0.0, 1.0), 1.0);
         let mut trail = Vec::new();
@@ -1145,20 +999,14 @@ mod tests {
     fn forward_is_minus_z_and_yaw_turns_right() {
         let mut w = World::new(WorldConfig::default());
         w.add_player(Vec3::ZERO, 0.0);
-        w.step(&[PlayerInput {
-            move_y: 1.0,
-            ..Default::default()
-        }]);
+        w.step(&[PlayerInput { move_y: 1.0, ..Default::default() }]);
         let s = w.snapshot();
         assert!(s.players[0].feet.z < 0.0);
         assert!((s.views[0].forward() - Vec3::NEG_Z).length() < 1e-5);
 
         let mut w = World::new(WorldConfig::default());
         w.add_player(Vec3::ZERO, std::f32::consts::FRAC_PI_2);
-        w.step(&[PlayerInput {
-            move_y: 1.0,
-            ..Default::default()
-        }]);
+        w.step(&[PlayerInput { move_y: 1.0, ..Default::default() }]);
         let s = w.snapshot();
         assert!(s.players[0].feet.x > 0.0);
         assert!((s.views[0].forward() - Vec3::X).length() < 1e-5);
@@ -1170,10 +1018,7 @@ mod tests {
         w.add_player(Vec3::ZERO, 0.0);
         let before = w.snapshot();
         let copy = (*before).clone();
-        w.step(&[PlayerInput {
-            move_y: 1.0,
-            ..Default::default()
-        }]);
+        w.step(&[PlayerInput { move_y: 1.0, ..Default::default() }]);
         assert_eq!(*before, copy);
         assert_ne!(*w.snapshot(), copy);
     }

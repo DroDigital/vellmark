@@ -20,18 +20,12 @@ impl Default for ShaderLibrary {
 
 impl ShaderLibrary {
     pub fn embedded() -> Self {
-        Self {
-            embedded: EMBEDDED_SHADERS.iter().copied().collect(),
-            disk: None,
-        }
+        Self { embedded: EMBEDDED_SHADERS.iter().copied().collect(), disk: None }
     }
 
     #[cfg(feature = "dev")]
     pub fn with_folder(folder: impl Into<PathBuf>) -> Self {
-        Self {
-            disk: Some(folder.into()),
-            ..Self::embedded()
-        }
+        Self { disk: Some(folder.into()), ..Self::embedded() }
     }
 
     pub fn folder(&self) -> Option<&std::path::Path> {
@@ -54,20 +48,14 @@ impl ShaderLibrary {
 
     /// Compiles a shader. An error in the source is returned, not raised, so that a bad
     /// edit during hot reload leaves the old pipeline in place.
-    pub fn module(
-        &self,
-        gpu: &vellmark_gpu::Gpu,
-        name: &str,
-    ) -> Result<vellmark_gpu::wgpu::ShaderModule, String> {
+    pub fn module(&self, gpu: &vellmark_gpu::Gpu, name: &str) -> Result<vellmark_gpu::wgpu::ShaderModule, String> {
         use vellmark_gpu::wgpu;
         let source = self.source(name)?;
         let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let module = gpu
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(name),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
+        let module = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some(name),
+            source: wgpu::ShaderSource::Wgsl(source.into()),
+        });
         match pollster_block(scope.pop()) {
             Some(error) => Err(format!("{name}.wgsl: {error}")),
             None => Ok(module),
@@ -119,10 +107,6 @@ mod tests {
             "b" => Some("#import a\n".to_owned()),
             _ => None,
         };
-        assert!(
-            expand_shader("a", &source)
-                .unwrap_err()
-                .contains("imports itself")
-        );
+        assert!(expand_shader("a", &source).unwrap_err().contains("imports itself"));
     }
 }

@@ -1,5 +1,5 @@
 use vellmark_content::GlyphAtlas;
-use vellmark_gpu::{Gpu, wgpu};
+use vellmark_gpu::{wgpu, Gpu};
 
 /// The glyph atlas on the GPU: one array texture with a layer for each character of
 /// each typeface, shared by every surface and by the interface.
@@ -15,11 +15,7 @@ impl AtlasGpu {
         let layers = atlas.layers();
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("glyph atlas"),
-            size: wgpu::Extent3d {
-                width: atlas.cell,
-                height: atlas.cell,
-                depth_or_array_layers: layers,
-            },
+            size: wgpu::Extent3d { width: atlas.cell, height: atlas.cell, depth_or_array_layers: layers },
             mip_level_count: atlas.mips,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -37,16 +33,8 @@ impl AtlasGpu {
                     aspect: wgpu::TextureAspect::All,
                 },
                 &atlas.texels[atlas.level_range(level)],
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(side * 4),
-                    rows_per_image: Some(side),
-                },
-                wgpu::Extent3d {
-                    width: side,
-                    height: side,
-                    depth_or_array_layers: layers,
-                },
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(side * 4), rows_per_image: Some(side) },
+                wgpu::Extent3d { width: side, height: side, depth_or_array_layers: layers },
             );
         }
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
@@ -62,11 +50,6 @@ impl AtlasGpu {
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
-        Self {
-            view,
-            sampler,
-            cell: atlas.cell,
-            range: atlas.range,
-        }
+        Self { view, sampler, cell: atlas.cell, range: atlas.range }
     }
 }

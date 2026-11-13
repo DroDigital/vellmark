@@ -4,7 +4,7 @@
 
 use glam::Vec3;
 use vellmark_sim::reading::{ReadableText, ReadingSnap};
-use vellmark_sim::{PlayerInput, STEP_HZ, World, WorldConfig, buttons};
+use vellmark_sim::{buttons, PlayerInput, World, WorldConfig, STEP_HZ};
 
 fn world() -> World {
     let mut w = World::new(WorldConfig::default());
@@ -21,42 +21,21 @@ fn world() -> World {
 }
 
 fn read() -> PlayerInput {
-    PlayerInput {
-        buttons: buttons::READ,
-        ..Default::default()
-    }
+    PlayerInput { buttons: buttons::READ, ..Default::default() }
 }
 
 #[test]
 fn a_text_in_focus_is_read_with_the_lines_perception_reaches() {
     let mut w = world();
     w.step(&[PlayerInput::default()]);
-    assert_eq!(
-        w.snapshot().players[0].in_focus,
-        Some(7),
-        "the wall's text is in focus"
-    );
+    assert_eq!(w.snapshot().players[0].in_focus, Some(7), "the wall's text is in focus");
     w.step(&[read()]);
-    assert_eq!(
-        w.snapshot().players[0].reading,
-        ReadingSnap::Text {
-            id: 7,
-            text: 70,
-            hidden: vec![]
-        }
-    );
+    assert_eq!(w.snapshot().players[0].reading, ReadingSnap::Text { id: 7, text: 70, hidden: vec![] });
     // A sharper reader sees the first hidden line, not the second.
     let id = w.snapshot().players[0].id;
     w.set_perception(id, 3);
     w.step(&[read()]);
-    assert_eq!(
-        w.snapshot().players[0].reading,
-        ReadingSnap::Text {
-            id: 7,
-            text: 70,
-            hidden: vec![71]
-        }
-    );
+    assert_eq!(w.snapshot().players[0].reading, ReadingSnap::Text { id: 7, text: 70, hidden: vec![71] });
     // Letting go stops reading.
     w.step(&[PlayerInput::default()]);
     assert_eq!(w.snapshot().players[0].reading, ReadingSnap::None);
@@ -66,32 +45,19 @@ fn a_text_in_focus_is_read_with_the_lines_perception_reaches() {
 fn with_nothing_in_focus_read_is_close_reading_and_slows_time() {
     let mut w = world();
     // Turned round, away from the wall.
-    w.step(&[PlayerInput {
-        look_yaw: std::f32::consts::PI,
-        ..Default::default()
-    }]);
+    w.step(&[PlayerInput { look_yaw: std::f32::consts::PI, ..Default::default() }]);
     let walk = |w: &mut World, buttons: u32| {
         let start = w.snapshot().players[0].feet;
         let hour = w.snapshot().time_of_day;
         for _ in 0..STEP_HZ {
-            w.step(&[PlayerInput {
-                move_y: 1.0,
-                buttons,
-                ..Default::default()
-            }]);
+            w.step(&[PlayerInput { move_y: 1.0, buttons, ..Default::default() }]);
         }
-        (
-            w.snapshot().players[0].feet.distance(start),
-            w.snapshot().time_of_day - hour,
-        )
+        (w.snapshot().players[0].feet.distance(start), w.snapshot().time_of_day - hour)
     };
     let (normal, hours) = walk(&mut w, 0);
     let (slowed, slow_hours) = walk(&mut w, buttons::READ);
     assert_eq!(w.snapshot().players[0].reading, ReadingSnap::Close);
-    assert!(
-        (slowed / normal - 1.0 / 3.0).abs() < 0.05,
-        "walked {slowed} against {normal}"
-    );
+    assert!((slowed / normal - 1.0 / 3.0).abs() < 0.05, "walked {slowed} against {normal}");
     assert!((slow_hours / hours - 1.0 / 3.0).abs() < 0.05);
 }
 
@@ -101,14 +67,7 @@ fn in_co_op_close_reading_never_slows_the_shared_world() {
     w.add_player(Vec3::new(5.0, 0.0, 5.0), 0.0);
     let hour = w.snapshot().time_of_day;
     for _ in 0..STEP_HZ {
-        w.step(&[
-            PlayerInput {
-                look_yaw: 0.0,
-                buttons: buttons::READ,
-                ..Default::default()
-            },
-            PlayerInput::default(),
-        ]);
+        w.step(&[PlayerInput { look_yaw: 0.0, buttons: buttons::READ, ..Default::default() }, PlayerInput::default()]);
     }
     // The second player faces nothing: it close-reads, and the world keeps its pace.
     let s = w.snapshot();

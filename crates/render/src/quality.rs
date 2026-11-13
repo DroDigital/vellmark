@@ -24,26 +24,11 @@ impl Preset {
     pub fn quality(self) -> Quality {
         match self {
             // For weaker machines: 60 on the M1 with room to spare.
-            Self::Low => Quality {
-                grass_density: 80.0,
-                grass_near: 6.0,
-                shadowed_lights: 1,
-                particles: 0.6,
-            },
+            Self::Low => Quality { grass_density: 80.0, grass_near: 6.0, shadowed_lights: 1, particles: 0.6 },
             // The Showcase's target: 60 on the M1, about 150,000 blades in view.
-            Self::Medium => Quality {
-                grass_density: 120.0,
-                grass_near: 7.0,
-                shadowed_lights: 2,
-                particles: 0.8,
-            },
+            Self::Medium => Quality { grass_density: 120.0, grass_near: 7.0, shadowed_lights: 2, particles: 0.8 },
             // For stronger machines, judged by eye and by captures.
-            Self::High => Quality {
-                grass_density: 160.0,
-                grass_near: 8.0,
-                shadowed_lights: 3,
-                particles: 1.0,
-            },
+            Self::High => Quality { grass_density: 160.0, grass_near: 8.0, shadowed_lights: 3, particles: 1.0 },
         }
     }
 }
@@ -72,11 +57,7 @@ mod tests {
 
     #[test]
     fn each_preset_asks_no_more_than_the_next() {
-        let (l, m, h) = (
-            Preset::Low.quality(),
-            Preset::Medium.quality(),
-            Preset::High.quality(),
-        );
+        let (l, m, h) = (Preset::Low.quality(), Preset::Medium.quality(), Preset::High.quality());
         for (a, b) in [(l, m), (m, h)] {
             assert!(a.grass_density <= b.grass_density && a.grass_near <= b.grass_near);
             assert!(a.shadowed_lights <= b.shadowed_lights && a.particles <= b.particles);

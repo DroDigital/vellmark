@@ -23,13 +23,7 @@ static GLOBAL: Counting = Counting;
 #[test]
 fn the_mixer_never_allocates() {
     let controls = vellmark_audio::Controls::new();
-    for p in [
-        &controls.wind,
-        &controls.rain,
-        &controls.water,
-        &controls.trees,
-        &controls.daylight,
-    ] {
+    for p in [&controls.wind, &controls.rain, &controls.water, &controls.trees, &controls.daylight] {
         p.set(1.0);
     }
     let mut mixer = vellmark_audio::Mixer::new(controls.clone(), 5);
@@ -39,9 +33,5 @@ fn the_mixer_never_allocates() {
         controls.rain.set((i % 7) as f32 / 7.0);
         mixer.render(&mut buffer);
     }
-    assert_eq!(
-        ALLOCATIONS.load(Ordering::Relaxed),
-        before,
-        "the mixer allocated"
-    );
+    assert_eq!(ALLOCATIONS.load(Ordering::Relaxed), before, "the mixer allocated");
 }

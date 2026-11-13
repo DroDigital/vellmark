@@ -6,7 +6,7 @@ use std::sync::Arc;
 use glam::{Vec2, Vec3};
 use vellmark_sim::character::{HeightPatch, JOG, SIDESTEP_DISTANCE, SPRINT, SWIM_DEPTH};
 use vellmark_sim::debris::Solid;
-use vellmark_sim::{PlayerInput, STEP_HZ, World, WorldConfig, buttons};
+use vellmark_sim::{buttons, PlayerInput, World, WorldConfig, STEP_HZ};
 
 /// Flat ground at 0, with a pool where x > 40 whose water stands 1.8 m deep.
 #[derive(Debug)]
@@ -21,29 +21,13 @@ impl vellmark_sim::Ground for Flat {
     }
     fn patches(&self) -> Vec<HeightPatch> {
         let n = 129;
-        let heights = (0..n * n)
-            .map(|i| {
-                if (i % n) as f32 - 64.0 > 40.0 {
-                    -1.8
-                } else {
-                    0.0
-                }
-            })
-            .collect();
-        vec![HeightPatch {
-            origin: Vec2::new(-64.0, -64.0),
-            spacing: 1.0,
-            samples: n,
-            heights,
-        }]
+        let heights = (0..n * n).map(|i| if (i % n) as f32 - 64.0 > 40.0 { -1.8 } else { 0.0 }).collect();
+        vec![HeightPatch { origin: Vec2::new(-64.0, -64.0), spacing: 1.0, samples: n, heights }]
     }
 }
 
 fn boxed(min: (f32, f32, f32), max: (f32, f32, f32)) -> Solid {
-    Solid {
-        min: Vec3::from(min),
-        max: Vec3::from(max),
-    }
+    Solid { min: Vec3::from(min), max: Vec3::from(max) }
 }
 
 fn world(feet: Vec3, yaw: f32) -> World {
@@ -75,11 +59,7 @@ fn feet(w: &World) -> Vec3 {
 }
 
 fn forward(buttons: u32) -> PlayerInput {
-    PlayerInput {
-        move_y: 1.0,
-        buttons,
-        ..Default::default()
-    }
+    PlayerInput { move_y: 1.0, buttons, ..Default::default() }
 }
 
 #[test]
@@ -96,11 +76,7 @@ fn it_jogs_and_sprints_at_the_briefs_speeds() {
     go(&mut w, 1.0, forward(buttons::SPRINT));
     let sprint = b.distance(feet(&w));
     assert!((sprint - SPRINT).abs() < 0.2, "sprints {sprint} m/s");
-    assert!(
-        feet(&w).y.abs() < 0.05,
-        "stays on the ground: {}",
-        feet(&w).y
-    );
+    assert!(feet(&w).y.abs() < 0.05, "stays on the ground: {}", feet(&w).y);
 }
 
 #[test]
@@ -115,33 +91,16 @@ fn walls_stop_it() {
 fn it_jumps_about_a_metre_and_lands() {
     let mut w = world(Vec3::new(0.0, 0.0, 30.0), 0.0);
     go(&mut w, 0.2, PlayerInput::default());
-    w.step(&[PlayerInput {
-        buttons: buttons::JUMP,
-        ..Default::default()
-    }]);
+    w.step(&[PlayerInput { buttons: buttons::JUMP, ..Default::default() }]);
     let mut top: f32 = 0.0;
     for _ in 0..STEP_HZ {
-        w.step(&[PlayerInput {
-            buttons: buttons::JUMP,
-            ..Default::default()
-        }]);
+        w.step(&[PlayerInput { buttons: buttons::JUMP, ..Default::default() }]);
         top = top.max(feet(&w).y);
     }
     assert!((0.85..1.2).contains(&top), "rose {top} m");
-    assert!(
-        feet(&w).y.abs() < 0.05 && w.snapshot().players[0].grounded,
-        "landed: {}",
-        feet(&w)
-    );
+    assert!(feet(&w).y.abs() < 0.05 && w.snapshot().players[0].grounded, "landed: {}", feet(&w));
     // Holding the button does not bounce it again.
-    go(
-        &mut w,
-        0.5,
-        PlayerInput {
-            buttons: buttons::JUMP,
-            ..Default::default()
-        },
-    );
+    go(&mut w, 0.5, PlayerInput { buttons: buttons::JUMP, ..Default::default() });
     assert!(feet(&w).y.abs() < 0.05);
 }
 
@@ -153,10 +112,7 @@ fn it_mantles_onto_a_ledge_it_jumps_at() {
     go(&mut w, 0.5, forward(0));
     go(&mut w, 1.0, forward(buttons::JUMP));
     let f = feet(&w);
-    assert!(
-        (f.y - 1.2).abs() < 0.1 && f.x < -20.0,
-        "on top of the ledge: {f}"
-    );
+    assert!((f.y - 1.2).abs() < 0.1 && f.x < -20.0, "on top of the ledge: {f}");
 }
 
 #[test]
@@ -165,33 +121,16 @@ fn the_sidestep_goes_about_two_metres_and_is_untouchable_at_first() {
     go(&mut w, 0.2, PlayerInput::default());
     let start = feet(&w);
     // Still, it steps back: +Z.
-    w.step(&[PlayerInput {
-        buttons: buttons::SIDESTEP,
-        ..Default::default()
-    }]);
+    w.step(&[PlayerInput { buttons: buttons::SIDESTEP, ..Default::default() }]);
     assert!(w.snapshot().players[0].untouchable);
     go(&mut w, 0.5, PlayerInput::default());
     let moved = feet(&w) - start;
-    assert!(
-        (moved.z - SIDESTEP_DISTANCE).abs() < 0.25 && moved.x.abs() < 0.05,
-        "stepped {moved}"
-    );
+    assert!((moved.z - SIDESTEP_DISTANCE).abs() < 0.25 && moved.x.abs() < 0.05, "stepped {moved}");
     assert!(!w.snapshot().players[0].untouchable);
     // Moving right, it steps right.
     let before = feet(&w);
-    w.step(&[PlayerInput {
-        move_x: 1.0,
-        buttons: buttons::SIDESTEP,
-        ..Default::default()
-    }]);
-    go(
-        &mut w,
-        0.4,
-        PlayerInput {
-            move_x: 1.0,
-            ..Default::default()
-        },
-    );
+    w.step(&[PlayerInput { move_x: 1.0, buttons: buttons::SIDESTEP, ..Default::default() }]);
+    go(&mut w, 0.4, PlayerInput { move_x: 1.0, ..Default::default() });
     assert!(feet(&w).x - before.x > SIDESTEP_DISTANCE, "{}", feet(&w));
 }
 
@@ -222,10 +161,7 @@ fn deep_water_is_swum_with_the_eye_above_it() {
     let s = w.snapshot();
     assert!(s.players[0].swimming, "{}", feet(&w));
     let eye = s.views[0].eye.y;
-    assert!(
-        eye > 0.0 && eye < 0.4,
-        "the eye rides just above the water: {eye}"
-    );
+    assert!(eye > 0.0 && eye < 0.4, "the eye rides just above the water: {eye}");
     assert!(feet(&w).y < -SWIM_DEPTH + 1.0);
 }
 
@@ -234,20 +170,8 @@ fn the_same_inputs_give_the_same_body() {
     let run = || {
         let mut w = world(Vec3::new(0.0, 0.0, 30.0), 0.3);
         for i in 0..600u32 {
-            let b = if i % 97 == 0 {
-                buttons::JUMP
-            } else if i % 131 == 0 {
-                buttons::SIDESTEP
-            } else {
-                0
-            };
-            w.step(&[PlayerInput {
-                move_x: (i as f32 * 0.05).sin(),
-                move_y: 1.0,
-                look_yaw: 0.004,
-                buttons: b,
-                ..Default::default()
-            }]);
+            let b = if i % 97 == 0 { buttons::JUMP } else if i % 131 == 0 { buttons::SIDESTEP } else { 0 };
+            w.step(&[PlayerInput { move_x: (i as f32 * 0.05).sin(), move_y: 1.0, look_yaw: 0.004, buttons: b, ..Default::default() }]);
         }
         w.state_hash()
     };

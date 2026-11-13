@@ -37,11 +37,7 @@ pub fn measure(frames: &[Image]) -> Result<Shimmer, String> {
     let flickering = flicker.iter().filter(|&&f| f > 0.04).count() as f32 / flicker.len() as f32;
     let k = ((flicker.len() as f32 * 0.99) as usize).min(flicker.len() - 1);
     let (_, p99, _) = flicker.select_nth_unstable_by(k, |a, b| a.total_cmp(b));
-    Ok(Shimmer {
-        mean,
-        p99: *p99,
-        flickering,
-    })
+    Ok(Shimmer { mean, p99: *p99, flickering })
 }
 
 #[cfg(test)]

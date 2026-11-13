@@ -1,7 +1,7 @@
-use crate::ShaderLibrary;
 use crate::atlas::AtlasGpu;
+use crate::ShaderLibrary;
 use bytemuck::{Pod, Zeroable};
-use vellmark_gpu::{Gpu, PipelineRegistry, wgpu};
+use vellmark_gpu::{wgpu, Gpu, PipelineRegistry};
 use vellmark_ui::Canvas;
 
 #[repr(C)]
@@ -33,39 +33,37 @@ impl UiPass {
         target_format: wgpu::TextureFormat,
     ) -> Result<Self, String> {
         let module = shaders.module(gpu, "ui")?;
-        let layout = gpu
-            .device
-            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("ui"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
+        let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("ui"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2Array,
-                            multisampled: false,
-                        },
-                        count: None,
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
         let uniform = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ui uniform"),
             size: 16,
@@ -76,27 +74,16 @@ impl UiPass {
             label: Some("ui"),
             layout: &layout,
             entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&atlas.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&atlas.sampler),
-                },
+                wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&atlas.view) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&atlas.sampler) },
             ],
         });
-        let pipeline_layout = gpu
-            .device
-            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("ui"),
-                bind_group_layouts: &[Some(&layout)],
-                immediate_size: 0,
-            });
+        let pipeline_layout = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("ui"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
         const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
             wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Uint32];
         let pipeline = registry.render_pipeline(
@@ -168,23 +155,11 @@ impl UiPass {
         let data: Vec<Instance> = canvas
             .quads
             .iter()
-            .map(|q| Instance {
-                rect: q.rect,
-                colour: q.colour,
-                layer: q.layer,
-                _pad: [0; 3],
-            })
+            .map(|q| Instance { rect: q.rect, colour: q.colour, layer: q.layer, _pad: [0; 3] })
             .collect();
-        gpu.queue
-            .write_buffer(&self.instances, 0, bytemuck::cast_slice(&data));
-        let uniform = [
-            target_size.0 as f32,
-            target_size.1 as f32,
-            self.range_cell.0,
-            self.range_cell.1,
-        ];
-        gpu.queue
-            .write_buffer(&self.uniform, 0, bytemuck::cast_slice(&uniform));
+        gpu.queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&data));
+        let uniform = [target_size.0 as f32, target_size.1 as f32, self.range_cell.0, self.range_cell.1];
+        gpu.queue.write_buffer(&self.uniform, 0, bytemuck::cast_slice(&uniform));
     }
 
     pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {

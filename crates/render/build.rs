@@ -24,8 +24,7 @@ fn main() {
         let name = name_of(file);
         let raw = std::fs::read_to_string(file).unwrap();
         // A file with no entry point is a library, checked through the shaders that import it.
-        let is_entry =
-            raw.contains("@vertex") || raw.contains("@fragment") || raw.contains("@compute");
+        let is_entry = raw.contains("@vertex") || raw.contains("@fragment") || raw.contains("@compute");
         if is_entry {
             match expand_shader(&name, &source_of) {
                 Err(e) => {
@@ -56,10 +55,7 @@ fn main() {
             }
         }
         let path = file.canonicalize().unwrap();
-        table.push_str(&format!(
-            "    ({name:?}, include_str!({:?})),\n",
-            path.display().to_string()
-        ));
+        table.push_str(&format!("    ({name:?}, include_str!({:?})),\n", path.display().to_string()));
     }
     table.push_str("];\n");
     if failed {

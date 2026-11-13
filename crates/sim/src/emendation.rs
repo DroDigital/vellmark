@@ -65,11 +65,7 @@ impl Resistance {
 #[derive(Clone, Debug, PartialEq)]
 pub enum RuleOutcome {
     /// The effect's name, its strength, and the preview's string.
-    Effect {
-        effect: String,
-        strength: f32,
-        preview: u64,
-    },
+    Effect { effect: String, strength: f32, preview: u64 },
     /// The line it is refused with.
     Refusal(u64),
 }
@@ -157,14 +153,7 @@ pub struct Target {
 }
 
 impl Target {
-    pub fn new(
-        id: u64,
-        class: usize,
-        centre: Vec3,
-        radius: f32,
-        resistance: Resistance,
-        words: &[(String, String)],
-    ) -> Self {
+    pub fn new(id: u64, class: usize, centre: Vec3, radius: f32, resistance: Resistance, words: &[(String, String)]) -> Self {
         Self {
             id,
             class,
@@ -172,15 +161,7 @@ impl Target {
             authored_centre: centre,
             radius,
             resistance,
-            words: words
-                .iter()
-                .map(|(s, c)| InscribedWord {
-                    spelling: s.clone(),
-                    class: c.clone(),
-                    fades_at: None,
-                    replaced: None,
-                })
-                .collect(),
+            words: words.iter().map(|(s, c)| InscribedWord { spelling: s.clone(), class: c.clone(), fades_at: None, replaced: None }).collect(),
             effects: Vec::new(),
             off_guard: false,
             link: 0,
@@ -224,13 +205,7 @@ pub enum Preview {
     Sealed,
 }
 
-pub fn preview(
-    rules: &WordRules,
-    word: usize,
-    target: &Target,
-    charge: f32,
-    both: bool,
-) -> Preview {
+pub fn preview(rules: &WordRules, word: usize, target: &Target, charge: f32, both: bool) -> Preview {
     let rule = &rules.words[word];
     match &rule.outcomes[target.class] {
         RuleOutcome::Refusal(line) => Preview::Refusal(*line),
@@ -239,11 +214,7 @@ pub fn preview(
             Some(needed) => {
                 // Both hands reach one tier further.
                 let reach = if both { needed - 0.5 } else { needed };
-                if charge + 1.0e-4 >= reach {
-                    Preview::Result(*preview)
-                } else {
-                    Preview::NeedsCharge(reach)
-                }
+                if charge + 1.0e-4 >= reach { Preview::Result(*preview) } else { Preview::NeedsCharge(reach) }
             }
         },
     }
@@ -253,10 +224,7 @@ pub fn preview(
 #[derive(Clone, Debug, PartialEq)]
 pub enum Landing {
     /// The word took: the effect it had.
-    Took {
-        effect: String,
-        strength: f32,
-    },
+    Took { effect: String, strength: f32 },
     Refused(u64),
     /// Not enough charge to move it.
     Resisted,
@@ -275,52 +243,18 @@ pub struct Stroke {
 }
 
 /// Writes `word` on `target`: changes its Inscription and starts its effect, or not.
-pub fn write(
-    rules: &WordRules,
-    word: usize,
-    target: &mut Target,
-    charge: f32,
-    both: bool,
-    now: f64,
-) -> Landing {
-    write_stroke(
-        rules,
-        word,
-        target,
-        Stroke {
-            charge,
-            both,
-            ..Default::default()
-        },
-        now,
-    )
+pub fn write(rules: &WordRules, word: usize, target: &mut Target, charge: f32, both: bool, now: f64) -> Landing {
+    write_stroke(rules, word, target, Stroke { charge, both, ..Default::default() }, now)
 }
 
 /// As `write`, with everything about how it was written.
-pub fn write_stroke(
-    rules: &WordRules,
-    word: usize,
-    target: &mut Target,
-    stroke: Stroke,
-    now: f64,
-) -> Landing {
+pub fn write_stroke(rules: &WordRules, word: usize, target: &mut Target, stroke: Stroke, now: f64) -> Landing {
     let rule = &rules.words[word];
-    let Stroke {
-        charge,
-        both,
-        typed,
-        typo,
-    } = stroke;
-    let outcomes = if typo {
-        &rule.typo_outcomes
-    } else {
-        &rule.outcomes
-    };
+    let Stroke { charge, both, typed, typo } = stroke;
+    let outcomes = if typo { &rule.typo_outcomes } else { &rule.outcomes };
     let (effect, strength) = match &outcomes[target.class] {
         RuleOutcome::Refusal(line) => return Landing::Refused(*line),
-        RuleOutcome::Effect {
-            effect, strength, ..
-        } => (effect.clone(), *strength),
+        RuleOutcome::Effect { effect, strength, .. } => (effect.clone(), *strength),
     };
     // A typo obeys resistance as its word does.
     match preview(rules, word, target, charge, both) {
@@ -334,28 +268,12 @@ pub fn write_stroke(
     }
     // Mending lasts: a thing made whole stays whole until something breaks it again.
     let lasts = effect == "mend";
-    let hold = if typo {
-        TYPO_HOLD
-    } else {
-        (HOLD_TAP + (HOLD_CHARGED - HOLD_TAP) * charge.clamp(0.0, 1.0))
-            * if both { BOTH_HANDS_HOLD } else { 1.0 }
-    };
+    let hold = if typo { TYPO_HOLD } else { (HOLD_TAP + (HOLD_CHARGED - HOLD_TAP) * charge.clamp(0.0, 1.0)) * if both { BOTH_HANDS_HOLD } else { 1.0 } };
     let until = now + hold as f64;
-    let strength = strength
-        * (1.0 + 0.5 * charge)
-        * if both { BOTH_HANDS_STRENGTH } else { 1.0 }
-        * if typed { TYPED_BONUS } else { 1.0 };
-    let spelling = if typo {
-        rule.typo.clone()
-    } else {
-        rule.spelling.clone()
-    };
+    let strength = strength * (1.0 + 0.5 * charge) * if both { BOTH_HANDS_STRENGTH } else { 1.0 } * if typed { TYPED_BONUS } else { 1.0 };
+    let spelling = if typo { rule.typo.clone() } else { rule.spelling.clone() };
     // The word of its class goes, and this one takes its place; or it joins the others.
-    let replaced = target
-        .words
-        .iter()
-        .position(|w| w.class == rule.class)
-        .map(|i| target.words.remove(i));
+    let replaced = target.words.iter().position(|w| w.class == rule.class).map(|i| target.words.remove(i));
     if replaced.is_none() && target.words.len() >= 3 {
         // No room: the oldest written word gives way.
         if let Some(i) = target.words.iter().position(|w| w.fades_at.is_some()) {
@@ -370,64 +288,27 @@ pub fn write_stroke(
         target.effects.retain(|e| e.by != r.spelling);
     }
     let original = replaced.map(|r| r.replaced.unwrap_or((r.spelling, r.class)));
-    let (fades_at, replaced) = if lasts {
-        (None, None)
-    } else {
-        (Some(until), original)
-    };
-    target.words.push(InscribedWord {
-        spelling: spelling.clone(),
-        class: rule.class.clone(),
-        fades_at,
-        replaced,
-    });
-    target.effects.push(ActiveEffect {
-        effect: effect.clone(),
-        strength,
-        by: spelling,
-        until: if lasts { Some(now + 3.0) } else { Some(until) },
-    });
+    let (fades_at, replaced) = if lasts { (None, None) } else { (Some(until), original) };
+    target.words.push(InscribedWord { spelling: spelling.clone(), class: rule.class.clone(), fades_at, replaced });
+    target.effects.push(ActiveEffect { effect: effect.clone(), strength, by: spelling, until: if lasts { Some(now + 3.0) } else { Some(until) } });
     Landing::Took { effect, strength }
 }
 
 /// A compound the word just written completes on its target, if any: the two words of a
 /// compound standing on one thing at once. It fires once, now. Returns the compound and
 /// what it did.
-pub fn complete_compound(
-    rules: &WordRules,
-    word: usize,
-    target: &mut Target,
-    now: f64,
-) -> Option<(usize, Landing)> {
-    let others: Vec<usize> = target
-        .words
-        .iter()
-        .filter_map(|w| rules.word(&w.spelling))
-        .filter(|&w| w != word)
-        .collect();
-    let (index, c) = rules.compounds.iter().enumerate().find(|(_, c)| {
-        (c.words[0] == word && others.contains(&c.words[1]))
-            || (c.words[1] == word && others.contains(&c.words[0]))
-    })?;
+pub fn complete_compound(rules: &WordRules, word: usize, target: &mut Target, now: f64) -> Option<(usize, Landing)> {
+    let others: Vec<usize> = target.words.iter().filter_map(|w| rules.word(&w.spelling)).filter(|&w| w != word).collect();
+    let (index, c) = rules.compounds.iter().enumerate().find(|(_, c)| (c.words[0] == word && others.contains(&c.words[1])) || (c.words[1] == word && others.contains(&c.words[0])))?;
     // Compounds obey resistance and never touch Sealed words.
     if target.resists() == Resistance::Sealed {
         return Some((index, Landing::Sealed));
     }
     let landing = match &c.outcomes[target.class] {
         RuleOutcome::Refusal(line) => Landing::Refused(*line),
-        RuleOutcome::Effect {
-            effect, strength, ..
-        } => {
-            target.effects.push(ActiveEffect {
-                effect: effect.clone(),
-                strength: *strength,
-                by: c.name.clone(),
-                until: Some(now + COMPOUND_HOLD as f64),
-            });
-            Landing::Took {
-                effect: effect.clone(),
-                strength: *strength,
-            }
+        RuleOutcome::Effect { effect, strength, .. } => {
+            target.effects.push(ActiveEffect { effect: effect.clone(), strength: *strength, by: c.name.clone(), until: Some(now + COMPOUND_HOLD as f64) });
+            Landing::Took { effect: effect.clone(), strength: *strength }
         }
     };
     Some((index, landing))
@@ -442,15 +323,7 @@ pub fn fade(target: &mut Target, now: f64) -> bool {
             let gone = target.words.remove(i);
             target.effects.retain(|e| e.by != gone.spelling);
             if let Some((spelling, class)) = gone.replaced {
-                target.words.insert(
-                    i,
-                    InscribedWord {
-                        spelling,
-                        class,
-                        fades_at: None,
-                        replaced: None,
-                    },
-                );
+                target.words.insert(i, InscribedWord { spelling, class, fades_at: None, replaced: None });
                 i += 1;
             }
             changed = true;
@@ -507,82 +380,35 @@ mod tests {
     use super::*;
 
     fn rules() -> WordRules {
-        let e = |effect: &str| RuleOutcome::Effect {
-            effect: effect.into(),
-            strength: 1.0,
-            preview: 100,
-        };
+        let e = |effect: &str| RuleOutcome::Effect { effect: effect.into(), strength: 1.0, preview: 100 };
         WordRules {
             classes: vec!["door".into(), "stone".into()],
             words: vec![
-                WordRule {
-                    spelling: "OPEN".into(),
-                    class: "Access".into(),
-                    ink: 8.0,
-                    flight_speed: 14.0,
-                    outcomes: vec![e("open"), RuleOutcome::Refusal(7)],
-                    weapon: RuleOutcome::Refusal(8),
-                    typo: "OVEN".into(),
-                    typo_outcomes: vec![e("heat"), e("heat")],
-                },
-                WordRule {
-                    spelling: "BURNING".into(),
-                    class: "Temperature".into(),
-                    ink: 10.0,
-                    flight_speed: 15.0,
-                    outcomes: vec![e("ignite"), e("heat")],
-                    weapon: e("ignite"),
-                    typo: "TURNING".into(),
-                    typo_outcomes: vec![e("turn"), RuleOutcome::Refusal(9)],
-                },
+                WordRule { spelling: "OPEN".into(), class: "Access".into(), ink: 8.0, flight_speed: 14.0, outcomes: vec![e("open"), RuleOutcome::Refusal(7)], weapon: RuleOutcome::Refusal(8), typo: "OVEN".into(), typo_outcomes: vec![e("heat"), e("heat")] },
+                WordRule { spelling: "BURNING".into(), class: "Temperature".into(), ink: 10.0, flight_speed: 15.0, outcomes: vec![e("ignite"), e("heat")], weapon: e("ignite"), typo: "TURNING".into(), typo_outcomes: vec![e("turn"), RuleOutcome::Refusal(9)] },
             ],
             compounds: vec![],
         }
     }
 
     fn door(resistance: Resistance) -> Target {
-        Target::new(
-            1,
-            0,
-            Vec3::new(0.0, 1.0, -5.0),
-            1.2,
-            resistance,
-            &[("LOCKED".into(), "Access".into())],
-        )
+        Target::new(1, 0, Vec3::new(0.0, 1.0, -5.0), 1.2, resistance, &[("LOCKED".into(), "Access".into())])
     }
 
     #[test]
     fn a_word_replaces_its_class_and_fades_back() {
         let r = rules();
         let mut t = door(Resistance::Plain);
-        assert_eq!(
-            write(&r, 0, &mut t, 0.0, false, 0.0),
-            Landing::Took {
-                effect: "open".into(),
-                strength: 1.0
-            }
-        );
+        assert_eq!(write(&r, 0, &mut t, 0.0, false, 0.0), Landing::Took { effect: "open".into(), strength: 1.0 });
         assert_eq!(t.words.len(), 1);
         assert_eq!(t.words[0].spelling, "OPEN");
         assert!(t.has("open"));
         // A word of another class joins it.
         write(&r, 1, &mut t, 0.0, false, 0.0);
-        assert_eq!(
-            t.words
-                .iter()
-                .map(|w| w.spelling.as_str())
-                .collect::<Vec<_>>(),
-            ["OPEN", "BURNING"]
-        );
+        assert_eq!(t.words.iter().map(|w| w.spelling.as_str()).collect::<Vec<_>>(), ["OPEN", "BURNING"]);
         // Time passes: both fade, and LOCKED comes back.
         assert!(fade(&mut t, HOLD_TAP as f64 + 1.0));
-        assert_eq!(
-            t.words
-                .iter()
-                .map(|w| w.spelling.as_str())
-                .collect::<Vec<_>>(),
-            ["LOCKED"]
-        );
+        assert_eq!(t.words.iter().map(|w| w.spelling.as_str()).collect::<Vec<_>>(), ["LOCKED"]);
         assert!(t.effects.is_empty());
     }
 
@@ -590,20 +416,11 @@ mod tests {
     fn refusals_resistance_and_seals() {
         let r = rules();
         let mut stone = Target::new(2, 1, Vec3::ZERO, 1.0, Resistance::Plain, &[]);
-        assert_eq!(
-            write(&r, 0, &mut stone, 0.0, false, 0.0),
-            Landing::Refused(7)
-        );
+        assert_eq!(write(&r, 0, &mut stone, 0.0, false, 0.0), Landing::Refused(7));
         let mut tough = door(Resistance::Tough);
-        assert_eq!(
-            preview(&r, 0, &tough, 0.0, false),
-            Preview::NeedsCharge(0.5)
-        );
+        assert_eq!(preview(&r, 0, &tough, 0.0, false), Preview::NeedsCharge(0.5));
         assert_eq!(write(&r, 0, &mut tough, 0.2, false, 0.0), Landing::Resisted);
-        assert!(matches!(
-            write(&r, 0, &mut tough, 0.6, false, 0.0),
-            Landing::Took { .. }
-        ));
+        assert!(matches!(write(&r, 0, &mut tough, 0.6, false, 0.0), Landing::Took { .. }));
         // Both hands reach a tier further; a target off its guard resists a tier less.
         let mut hard = door(Resistance::Hard);
         assert_eq!(preview(&r, 0, &hard, 0.5, true), Preview::Result(100));
@@ -630,14 +447,7 @@ mod tests {
     #[test]
     fn the_gaze_finds_the_nearest_target() {
         let near = Target::new(1, 0, Vec3::new(0.0, 0.0, -5.0), 1.0, Resistance::Plain, &[]);
-        let far = Target::new(
-            2,
-            0,
-            Vec3::new(0.0, 0.0, -15.0),
-            1.0,
-            Resistance::Plain,
-            &[],
-        );
+        let far = Target::new(2, 0, Vec3::new(0.0, 0.0, -15.0), 1.0, Resistance::Plain, &[]);
         let ts = [far, near];
         assert_eq!(aim(Vec3::ZERO, -Vec3::Z, &ts), Some(1));
         assert_eq!(aim(Vec3::ZERO, Vec3::Z, &ts), None);

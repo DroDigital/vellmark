@@ -2,7 +2,7 @@
 //! frame arrive a few frames later, without ever waiting for the GPU.
 
 use crate::Gpu;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{channel, Receiver, Sender};
 
 const MAX_PASSES: u32 = 32;
 
@@ -27,10 +27,7 @@ impl PassTiming {
             };
             match out.iter_mut().find(|p| p.name == name) {
                 Some(group) => group.milliseconds += pass.milliseconds,
-                None => out.push(PassTiming {
-                    name,
-                    milliseconds: pass.milliseconds,
-                }),
+                None => out.push(PassTiming { name, milliseconds: pass.milliseconds }),
             }
         }
         out
@@ -110,36 +107,26 @@ impl PassTimers {
     }
 
     /// The timestamp writes for a render pass named `name`.
-    pub fn render_pass(
-        &mut self,
-        name: &'static str,
-    ) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
-        self.slot(name)
-            .map(|(query_set, first)| wgpu::RenderPassTimestampWrites {
-                query_set,
-                beginning_of_pass_write_index: Some(first),
-                end_of_pass_write_index: Some(first + 1),
-            })
+    pub fn render_pass(&mut self, name: &'static str) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+        self.slot(name).map(|(query_set, first)| wgpu::RenderPassTimestampWrites {
+            query_set,
+            beginning_of_pass_write_index: Some(first),
+            end_of_pass_write_index: Some(first + 1),
+        })
     }
 
     /// The timestamp writes for a compute pass named `name`.
-    pub fn compute_pass(
-        &mut self,
-        name: &'static str,
-    ) -> Option<wgpu::ComputePassTimestampWrites<'_>> {
-        self.slot(name)
-            .map(|(query_set, first)| wgpu::ComputePassTimestampWrites {
-                query_set,
-                beginning_of_pass_write_index: Some(first),
-                end_of_pass_write_index: Some(first + 1),
-            })
+    pub fn compute_pass(&mut self, name: &'static str) -> Option<wgpu::ComputePassTimestampWrites<'_>> {
+        self.slot(name).map(|(query_set, first)| wgpu::ComputePassTimestampWrites {
+            query_set,
+            beginning_of_pass_write_index: Some(first),
+            end_of_pass_write_index: Some(first + 1),
+        })
     }
 
     /// Call after the last pass, before the encoder is finished.
     pub fn end_frame(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder) {
-        let (Some(set), Some(resolve)) = (&self.query_set, &self.resolve) else {
-            return;
-        };
+        let (Some(set), Some(resolve)) = (&self.query_set, &self.resolve) else { return };
         if self.names.is_empty() {
             return;
         }
@@ -155,10 +142,7 @@ impl PassTimers {
             })
         });
         encoder.copy_buffer_to_buffer(resolve, 0, &buffer, 0, bytes);
-        self.in_flight.push(Readback {
-            buffer,
-            names: self.names.clone(),
-        });
+        self.in_flight.push(Readback { buffer, names: self.names.clone() });
     }
 
     /// Call after the frame's commands are submitted.
@@ -168,14 +152,11 @@ impl PassTimers {
             self.next_ticket += 1;
             let tx = self.mapped_tx.clone();
             let bytes = readback.names.len() as u64 * 16;
-            readback
-                .buffer
-                .slice(..bytes)
-                .map_async(wgpu::MapMode::Read, move |result| {
-                    if result.is_ok() {
-                        let _ = tx.send(ticket);
-                    }
-                });
+            readback.buffer.slice(..bytes).map_async(wgpu::MapMode::Read, move |result| {
+                if result.is_ok() {
+                    let _ = tx.send(ticket);
+                }
+            });
             self.tickets.push((ticket, readback));
         }
     }
@@ -184,30 +165,20 @@ impl PassTimers {
     /// device has been polled.
     pub fn collect(&mut self) {
         while let Ok(ticket) = self.mapped_rx.try_recv() {
-            let Some(at) = self.tickets.iter().position(|(t, _)| *t == ticket) else {
-                continue;
-            };
+            let Some(at) = self.tickets.iter().position(|(t, _)| *t == ticket) else { continue };
             let (_, readback) = self.tickets.remove(at);
             let bytes = readback.names.len() as u64 * 16;
             {
-                let view = readback
-                    .buffer
-                    .slice(..bytes)
-                    .get_mapped_range()
-                    .expect("timer range");
-                let stamps: Vec<u64> = view
-                    .chunks_exact(8)
-                    .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
-                    .collect();
+                let view = readback.buffer.slice(..bytes).get_mapped_range().expect("timer range");
+                let stamps: Vec<u64> =
+                    view.chunks_exact(8).map(|c| u64::from_le_bytes(c.try_into().unwrap())).collect();
                 self.latest = readback
                     .names
                     .iter()
                     .enumerate()
                     .map(|(i, &name)| PassTiming {
                         name,
-                        milliseconds: stamps[i * 2 + 1].saturating_sub(stamps[i * 2]) as f32
-                            * self.period_ns
-                            / 1.0e6,
+                        milliseconds: stamps[i * 2 + 1].saturating_sub(stamps[i * 2]) as f32 * self.period_ns / 1.0e6,
                     })
                     .collect();
             }
@@ -237,14 +208,6 @@ mod tests {
             t("bloom down 2", 0.1),
             t("post", 0.3),
         ]);
-        assert_eq!(
-            grouped,
-            vec![
-                t("shadows", 1.5),
-                t("light shadows", 0.25),
-                t("opaque", 4.0),
-                t("post", 0.4)
-            ]
-        );
+        assert_eq!(grouped, vec![t("shadows", 1.5), t("light shadows", 0.25), t("opaque", 4.0), t("post", 0.4)]);
     }
 }

@@ -8,8 +8,8 @@
 pub mod ambience;
 pub mod dsp;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 pub use ambience::Ambience;
 
@@ -71,11 +71,7 @@ pub struct Mixer {
 
 impl Mixer {
     pub fn new(controls: Arc<Controls>, seed: u32) -> Self {
-        Self {
-            controls,
-            ambience: Ambience::new(seed),
-            master: dsp::Smooth::new(0.0, 0.05),
-        }
+        Self { controls, ambience: Ambience::new(seed), master: dsp::Smooth::new(0.0, 0.05) }
     }
 
     /// Fills `out` with interleaved stereo frames. Allocates nothing and takes no lock.

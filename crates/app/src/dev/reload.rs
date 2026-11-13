@@ -3,7 +3,7 @@
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{channel, Receiver};
 use std::time::Instant;
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -23,38 +23,22 @@ pub struct HotReload {
 impl HotReload {
     pub fn watch(repo: &Path) -> Result<Self, String> {
         let (tx, events) = channel();
-        let mut watcher =
-            notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
-                if let Ok(event) = result {
-                    if event.kind.is_modify() || event.kind.is_create() {
-                        let now = Instant::now();
-                        for path in event.paths {
-                            let _ = tx.send((path, now));
-                        }
+        let mut watcher = notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
+            if let Ok(event) = result {
+                if event.kind.is_modify() || event.kind.is_create() {
+                    let now = Instant::now();
+                    for path in event.paths {
+                        let _ = tx.send((path, now));
                     }
                 }
-            })
-            .map_err(|e| e.to_string())?;
-        let shaders = repo
-            .join("shaders")
-            .canonicalize()
-            .map_err(|e| e.to_string())?;
-        let assets = repo
-            .join("assets")
-            .canonicalize()
-            .map_err(|e| e.to_string())?;
-        watcher
-            .watch(&shaders, RecursiveMode::Recursive)
-            .map_err(|e| e.to_string())?;
-        watcher
-            .watch(&assets, RecursiveMode::Recursive)
-            .map_err(|e| e.to_string())?;
-        Ok(Self {
-            _watcher: watcher,
-            events,
-            shaders,
-            assets,
+            }
         })
+        .map_err(|e| e.to_string())?;
+        let shaders = repo.join("shaders").canonicalize().map_err(|e| e.to_string())?;
+        let assets = repo.join("assets").canonicalize().map_err(|e| e.to_string())?;
+        watcher.watch(&shaders, RecursiveMode::Recursive).map_err(|e| e.to_string())?;
+        watcher.watch(&assets, RecursiveMode::Recursive).map_err(|e| e.to_string())?;
+        Ok(Self { _watcher: watcher, events, shaders, assets })
     }
 
     /// What changed since the last call, and when the first change was seen. Never

@@ -38,11 +38,7 @@ pub enum ReadingSnap {
     #[default]
     None,
     /// The text's string, and the hidden lines this reader sees.
-    Text {
-        id: u64,
-        text: u64,
-        hidden: Vec<u64>,
-    },
+    Text { id: u64, text: u64, hidden: Vec<u64> },
     Close,
 }
 
@@ -73,12 +69,7 @@ pub fn ray_box(from: Vec3, dir: Vec3, min: Vec3, max: Vec3, reach: f32) -> Optio
 
 /// The text the eye is on: the nearest whose box the gaze meets within reach, and that
 /// nothing solid stands in front of.
-pub fn focus(
-    eye: Vec3,
-    gaze: Vec3,
-    texts: &[ReadableText],
-    statics: Option<&crate::character::Statics>,
-) -> Option<usize> {
+pub fn focus(eye: Vec3, gaze: Vec3, texts: &[ReadableText], statics: Option<&crate::character::Statics>) -> Option<usize> {
     let mut best: Option<(f32, usize)> = None;
     for (i, t) in texts.iter().enumerate() {
         // A little room about the surface, so that the eye need not hit it exactly.
@@ -104,13 +95,7 @@ mod tests {
     use super::*;
 
     fn wall() -> ReadableText {
-        ReadableText {
-            id: 1,
-            text: 2,
-            min: Vec3::new(-1.0, 0.0, -3.0),
-            max: Vec3::new(1.0, 2.5, -2.8),
-            hidden: vec![(3, 2)],
-        }
+        ReadableText { id: 1, text: 2, min: Vec3::new(-1.0, 0.0, -3.0), max: Vec3::new(1.0, 2.5, -2.8), hidden: vec![(3, 2)] }
     }
 
     #[test]
@@ -120,9 +105,6 @@ mod tests {
         assert_eq!(focus(eye, -Vec3::Z, &texts, None), Some(0));
         // Looking away, or from too far, nothing is.
         assert_eq!(focus(eye, Vec3::Z, &texts, None), None);
-        assert_eq!(
-            focus(Vec3::new(0.0, 1.6, 2.0), -Vec3::Z, &texts, None),
-            None
-        );
+        assert_eq!(focus(Vec3::new(0.0, 1.6, 2.0), -Vec3::Z, &texts, None), None);
     }
 }

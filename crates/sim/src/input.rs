@@ -20,11 +20,7 @@ pub struct PlayerInput {
 impl PlayerInput {
     /// Packs up to four typed characters.
     pub fn pack_typed(text: &str) -> u32 {
-        text.bytes()
-            .filter(|b| b.is_ascii_alphabetic() || *b == b' ')
-            .take(4)
-            .enumerate()
-            .fold(0, |acc, (i, b)| acc | (b as u32) << (i * 8))
+        text.bytes().filter(|b| b.is_ascii_alphabetic() || *b == b' ').take(4).enumerate().fold(0, |acc, (i, b)| acc | (b as u32) << (i * 8))
     }
 }
 

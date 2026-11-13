@@ -4,24 +4,24 @@
 
 mod atlas;
 pub mod bark;
+pub mod magic;
 mod camera;
 mod contact;
 mod cull;
 mod fog;
 mod frame;
-mod governor;
-mod grass;
 mod lights;
-pub mod magic;
-mod quality;
 mod scene_pass;
 mod shaders;
 pub mod sky;
+mod governor;
+mod quality;
+mod grass;
 mod terrain;
 mod ui_pass;
 mod world_gpu;
 
-pub use camera::{Camera, View, Viewport, sun_direction};
+pub use camera::{sun_direction, Camera, View, Viewport};
 pub use frame::{Atmosphere, GlyphTuning};
 pub use governor::{Governor, Knob, Relief};
 pub use quality::{Preset, Quality};
@@ -32,7 +32,7 @@ use atlas::AtlasGpu;
 use scene_pass::ScenePass;
 use ui_pass::UiPass;
 use vellmark_content::{GlyphAtlas, MaterialSet};
-use vellmark_gpu::{Gpu, PassTimers, PipelineRegistry, wgpu};
+use vellmark_gpu::{wgpu, Gpu, PassTimers, PipelineRegistry};
 use vellmark_ui::Canvas;
 use world_gpu::SurfaceResources;
 
@@ -121,10 +121,7 @@ impl LoadedAssets {
             },
             wind: wind_sentences(pack),
             bark: bark_words(pack),
-            words: match pack.get(
-                AssetKind::Table,
-                AssetId::from_key(vellmark_content::WORDS_KEY),
-            ) {
+            words: match pack.get(AssetKind::Table, AssetId::from_key(vellmark_content::WORDS_KEY)) {
                 Some(bytes) => vellmark_content::WordTable::from_bytes(bytes)?,
                 None => Default::default(),
             },
@@ -132,14 +129,7 @@ impl LoadedAssets {
     }
 
     pub fn borrow(&self) -> RenderAssets<'_> {
-        RenderAssets {
-            glyphs: &self.glyphs,
-            materials: &self.materials,
-            grade: &self.grade,
-            wind: &self.wind,
-            bark: &self.bark,
-            words: &self.words,
-        }
+        RenderAssets { glyphs: &self.glyphs, materials: &self.materials, grade: &self.grade, wind: &self.wind, bark: &self.bark, words: &self.words }
     }
 }
 
@@ -147,18 +137,11 @@ impl LoadedAssets {
 /// The Showcase is in one language; the full game reads the player's.
 fn wind_sentences(pack: &vellmark_content::Pack) -> Vec<String> {
     use vellmark_content::{AssetId, AssetKind, StringId, StringTable};
-    let Some(table) = pack
-        .get(AssetKind::StringTable, AssetId::from_key("strings.en"))
-        .and_then(|b| StringTable::from_bytes(b).ok())
-    else {
+    let Some(table) = pack.get(AssetKind::StringTable, AssetId::from_key("strings.en")).and_then(|b| StringTable::from_bytes(b).ok()) else {
         return Vec::new();
     };
     (0..crate::grass::MAX_SENTENCES)
-        .map_while(|i| {
-            table
-                .get(StringId::from_key(&format!("wind.vale.{i}")))
-                .map(str::to_owned)
-        })
+        .map_while(|i| table.get(StringId::from_key(&format!("wind.vale.{i}"))).map(str::to_owned))
         .collect()
 }
 
@@ -166,60 +149,32 @@ fn wind_sentences(pack: &vellmark_content::Pack) -> Vec<String> {
 /// record, `tree.bark.record`, and each kind's name, `tree.kind.<kind>`.
 fn bark_words(pack: &vellmark_content::Pack) -> bark::BarkWords {
     use vellmark_content::{AssetId, AssetKind, StringId, StringTable};
-    let Some(table) = pack
-        .get(AssetKind::StringTable, AssetId::from_key("strings.en"))
-        .and_then(|b| StringTable::from_bytes(b).ok())
-    else {
+    let Some(table) = pack.get(AssetKind::StringTable, AssetId::from_key("strings.en")).and_then(|b| StringTable::from_bytes(b).ok()) else {
         return bark::BarkWords::default();
     };
     let kinds = ["oak", "ash", "apple", "hawthorn"]
         .iter()
-        .filter_map(|k| {
-            table
-                .get(StringId::from_key(&format!("tree.kind.{k}")))
-                .map(|n| (k.to_string(), n.to_owned()))
-        })
+        .filter_map(|k| table.get(StringId::from_key(&format!("tree.kind.{k}"))).map(|n| (k.to_string(), n.to_owned())))
         .collect();
-    bark::BarkWords {
-        record: table
-            .get(StringId::from_key("tree.bark.record"))
-            .unwrap_or_default()
-            .to_owned(),
-        kinds,
-    }
+    bark::BarkWords { record: table.get(StringId::from_key("tree.bark.record")).unwrap_or_default().to_owned(), kinds }
 }
 
 /// Reads a scene and its meshes from a pack. `key` is the scene's authored key, such as
 /// `scene.yard`. Returns the scene's data beside what was put on the GPU.
-pub fn load_scene(
-    gpu: &Gpu,
-    pack: &vellmark_content::Pack,
-    key: &str,
-) -> Result<(vellmark_content::Scene, SceneGpu), String> {
+pub fn load_scene(gpu: &Gpu, pack: &vellmark_content::Pack, key: &str) -> Result<(vellmark_content::Scene, SceneGpu), String> {
     use vellmark_content::{AssetId, AssetKind, Mesh, Scene, TextPages};
-    let bytes = pack
-        .get(AssetKind::Scene, AssetId::from_key(key))
-        .ok_or_else(|| format!("the pack has no `{key}`"))?;
+    let bytes = pack.get(AssetKind::Scene, AssetId::from_key(key)).ok_or_else(|| format!("the pack has no `{key}`"))?;
     let scene = Scene::from_bytes(bytes)?;
     let pages = match pack.get(AssetKind::TextPage, scene.pages) {
         Some(bytes) => TextPages::from_bytes(bytes)?,
         None => TextPages::default(),
     };
-    let levels = match pack.get(
-        AssetKind::Table,
-        AssetId::from_key(vellmark_content::MESH_LEVELS_KEY),
-    ) {
+    let levels = match pack.get(AssetKind::Table, AssetId::from_key(vellmark_content::MESH_LEVELS_KEY)) {
         Some(bytes) => vellmark_content::MeshLevels::from_bytes(bytes)?,
         None => vellmark_content::MeshLevels::default(),
     };
-    let mut on_gpu = SceneGpu::new(gpu, &scene, pages, &levels, &|id| {
-        pack.get(AssetKind::Mesh, id)
-            .and_then(|b| Mesh::from_bytes(b).ok())
-    })?;
-    if let Some(bytes) = pack.get(
-        AssetKind::Table,
-        AssetId::from_key(vellmark_content::TREE_RECORDS_KEY),
-    ) {
+    let mut on_gpu = SceneGpu::new(gpu, &scene, pages, &levels, &|id| pack.get(AssetKind::Mesh, id).and_then(|b| Mesh::from_bytes(b).ok()))?;
+    if let Some(bytes) = pack.get(AssetKind::Table, AssetId::from_key(vellmark_content::TREE_RECORDS_KEY)) {
         on_gpu.records = vellmark_content::TreeRecords::from_bytes(bytes)?;
     }
     Ok((scene, on_gpu))
@@ -227,20 +182,12 @@ pub fn load_scene(
 
 /// What the rules need of a scene: the boxes loose letters land on and bounce from,
 /// and the things in it that can be broken.
-pub fn scene_rules(
-    scene: &vellmark_content::Scene,
-) -> (
-    Vec<vellmark_sim::debris::Solid>,
-    Vec<vellmark_sim::BreakableThing>,
-) {
+pub fn scene_rules(scene: &vellmark_content::Scene) -> (Vec<vellmark_sim::debris::Solid>, Vec<vellmark_sim::BreakableThing>) {
     use glam::{Affine3A, Mat3A, Vec3, Vec3A};
     let solids = scene
         .colliders
         .iter()
-        .map(|b| vellmark_sim::debris::Solid {
-            min: b.min.into(),
-            max: b.max.into(),
-        })
+        .map(|b| vellmark_sim::debris::Solid { min: b.min.into(), max: b.max.into() })
         .collect();
     let breakables = scene
         .breakables
@@ -248,12 +195,7 @@ pub fn scene_rules(
         .map(|b| {
             let t = &b.transform;
             let to_world = Affine3A::from_mat3_translation(
-                Mat3A::from_cols(
-                    Vec3A::new(t[0], t[4], t[8]),
-                    Vec3A::new(t[1], t[5], t[9]),
-                    Vec3A::new(t[2], t[6], t[10]),
-                )
-                .into(),
+                Mat3A::from_cols(Vec3A::new(t[0], t[4], t[8]), Vec3A::new(t[1], t[5], t[9]), Vec3A::new(t[2], t[6], t[10])).into(),
                 Vec3::new(t[3], t[7], t[11]),
             );
             vellmark_sim::BreakableThing {
@@ -273,19 +215,12 @@ pub fn scene_rules(
 
 /// The trunks of a scene's trees, which bodies cannot walk through: where each stands,
 /// from its object, and how thick, from its record.
-pub fn tree_trunks(
-    pack: &vellmark_content::Pack,
-    scene: &vellmark_content::Scene,
-) -> Vec<vellmark_sim::Trunk> {
-    use vellmark_content::{AssetId, AssetKind, TREE_RECORDS_KEY, TreeRecords};
-    let Some(records) = pack
-        .get(AssetKind::Table, AssetId::from_key(TREE_RECORDS_KEY))
-        .and_then(|b| TreeRecords::from_bytes(b).ok())
-    else {
+pub fn tree_trunks(pack: &vellmark_content::Pack, scene: &vellmark_content::Scene) -> Vec<vellmark_sim::Trunk> {
+    use vellmark_content::{AssetId, AssetKind, TreeRecords, TREE_RECORDS_KEY};
+    let Some(records) = pack.get(AssetKind::Table, AssetId::from_key(TREE_RECORDS_KEY)).and_then(|b| TreeRecords::from_bytes(b).ok()) else {
         return Vec::new();
     };
-    let girth: std::collections::HashMap<u64, f32> =
-        records.trees.iter().map(|r| (r.tree.0, r.girth)).collect();
+    let girth: std::collections::HashMap<u64, f32> = records.trees.iter().map(|r| (r.tree.0, r.girth)).collect();
     scene
         .objects
         .iter()
@@ -304,24 +239,13 @@ pub fn tree_trunks(
 
 /// The words, as the rules know them, from the word table.
 pub fn word_rules(pack: &vellmark_content::Pack) -> vellmark_sim::emendation::WordRules {
-    use vellmark_content::{AssetId, AssetKind, Outcome, WORDS_KEY, WordTable};
+    use vellmark_content::{AssetId, AssetKind, Outcome, WordTable, WORDS_KEY};
     use vellmark_sim::emendation::{CompoundRule, RuleOutcome, WordRule, WordRules};
-    let Some(t) = pack
-        .get(AssetKind::Table, AssetId::from_key(WORDS_KEY))
-        .and_then(|b| WordTable::from_bytes(b).ok())
-    else {
+    let Some(t) = pack.get(AssetKind::Table, AssetId::from_key(WORDS_KEY)).and_then(|b| WordTable::from_bytes(b).ok()) else {
         return WordRules::default();
     };
     let rule = |o: &Outcome| match o {
-        Outcome::Effect {
-            effect,
-            strength,
-            preview,
-        } => RuleOutcome::Effect {
-            effect: effect.clone(),
-            strength: *strength,
-            preview: preview.0,
-        },
+        Outcome::Effect { effect, strength, preview } => RuleOutcome::Effect { effect: effect.clone(), strength: *strength, preview: preview.0 },
         Outcome::Refusal(line) => RuleOutcome::Refusal(line.0),
     };
     WordRules {
@@ -346,59 +270,30 @@ pub fn word_rules(pack: &vellmark_content::Pack) -> vellmark_sim::emendation::Wo
             .filter_map(|c| {
                 let a = t.words.iter().position(|w| w.word == c.words[0])?;
                 let b = t.words.iter().position(|w| w.word == c.words[1])?;
-                Some(CompoundRule {
-                    name: c.name.clone(),
-                    words: [a, b],
-                    outcomes: c.outcomes.iter().map(rule).collect(),
-                })
+                Some(CompoundRule { name: c.name.clone(), words: [a, b], outcomes: c.outcomes.iter().map(rule).collect() })
             })
             .collect(),
     }
 }
 
 /// A scene's things that carry Inscriptions, for the rules.
-pub fn scene_targets(
-    pack: &vellmark_content::Pack,
-    scene_key: &str,
-    rules: &vellmark_sim::emendation::WordRules,
-) -> Vec<vellmark_sim::emendation::Target> {
-    use vellmark_content::{AssetId, AssetKind, InscribedThings, targets_key};
+pub fn scene_targets(pack: &vellmark_content::Pack, scene_key: &str, rules: &vellmark_sim::emendation::WordRules) -> Vec<vellmark_sim::emendation::Target> {
+    use vellmark_content::{targets_key, AssetId, AssetKind, InscribedThings};
     use vellmark_sim::emendation::{Resistance, Target};
-    let Some(things) = pack
-        .get(AssetKind::Table, AssetId::from_key(&targets_key(scene_key)))
-        .and_then(|b| InscribedThings::from_bytes(b).ok())
-    else {
+    let Some(things) = pack.get(AssetKind::Table, AssetId::from_key(&targets_key(scene_key))).and_then(|b| InscribedThings::from_bytes(b).ok()) else {
         return Vec::new();
     };
     things
         .items
         .iter()
-        .filter_map(|t| {
-            Some(Target::new(
-                t.id.0,
-                rules.class(&t.class)?,
-                t.centre.into(),
-                t.radius,
-                Resistance::from_index(t.resistance),
-                &t.words,
-            ))
-        })
+        .filter_map(|t| Some(Target::new(t.id.0, rules.class(&t.class)?, t.centre.into(), t.radius, Resistance::from_index(t.resistance), &t.words)))
         .collect()
 }
 
 /// A scene's texts that can be read, for the rules.
-pub fn scene_readables(
-    pack: &vellmark_content::Pack,
-    scene_key: &str,
-) -> Vec<vellmark_sim::reading::ReadableText> {
-    use vellmark_content::{AssetId, AssetKind, Readables, readables_key};
-    let Some(r) = pack
-        .get(
-            AssetKind::Table,
-            AssetId::from_key(&readables_key(scene_key)),
-        )
-        .and_then(|b| Readables::from_bytes(b).ok())
-    else {
+pub fn scene_readables(pack: &vellmark_content::Pack, scene_key: &str) -> Vec<vellmark_sim::reading::ReadableText> {
+    use vellmark_content::{readables_key, AssetId, AssetKind, Readables};
+    let Some(r) = pack.get(AssetKind::Table, AssetId::from_key(&readables_key(scene_key))).and_then(|b| Readables::from_bytes(b).ok()) else {
         return Vec::new();
     };
     r.items
@@ -439,15 +334,7 @@ impl Renderer {
         let atlas = AtlasGpu::new(gpu, assets.glyphs);
         let surface = SurfaceResources::new(gpu, assets.materials, assets.glyphs, &atlas)?;
         Ok(Self {
-            world: ScenePass::new(
-                gpu,
-                registry,
-                shaders,
-                &surface,
-                target_format,
-                assets.grade.clone(),
-                assets.wind.to_vec(),
-            )?,
+            world: ScenePass::new(gpu, registry, shaders, &surface, target_format, assets.grade.clone(), assets.wind.to_vec())?,
             ui: UiPass::new(gpu, registry, shaders, &atlas, target_format)?,
             surface,
             atlas,
@@ -476,39 +363,19 @@ impl Renderer {
     pub fn set_quality(&mut self, quality: Quality) {
         self.world.quality = quality;
         if let Some(t) = self.terrain.as_mut() {
-            t.grass.set_tuning(grass::GrassTuning {
-                density: quality.grass_density,
-                near: quality.grass_near,
-            });
+            t.grass.set_tuning(grass::GrassTuning { density: quality.grass_density, near: quality.grass_near });
         }
         self.world.forget_grass_patches();
     }
 
     /// Replaces the terrain being drawn, or removes it. Buffers and textures only, so it
     /// is safe in play.
-    pub fn set_terrain(
-        &mut self,
-        gpu: &Gpu,
-        tiles: &[&vellmark_content::TerrainTile],
-        materials: &MaterialSet,
-    ) -> Result<(), String> {
+    pub fn set_terrain(&mut self, gpu: &Gpu, tiles: &[&vellmark_content::TerrainTile], materials: &MaterialSet) -> Result<(), String> {
         self.world.forget_terrain();
-        self.terrain = if tiles.is_empty() {
-            None
-        } else {
-            Some(terrain::TerrainGpu::new(
-                gpu,
-                self.world.terrain_layout(),
-                tiles,
-                materials,
-            )?)
-        };
+        self.terrain = if tiles.is_empty() { None } else { Some(terrain::TerrainGpu::new(gpu, self.world.terrain_layout(), tiles, materials)?) };
         let q = self.world.quality;
         if let Some(t) = self.terrain.as_mut() {
-            t.grass.set_tuning(grass::GrassTuning {
-                density: q.grass_density,
-                near: q.grass_near,
-            });
+            t.grass.set_tuning(grass::GrassTuning { density: q.grass_density, near: q.grass_near });
         }
         Ok(())
     }
@@ -590,18 +457,7 @@ impl Renderer {
             self.surface.set_generated_page(gpu, &written);
         }
         self.scene.set_generated(self.bark.pages());
-        self.world.render(
-            gpu,
-            encoder,
-            target,
-            target_size,
-            frame,
-            &self.scene,
-            &self.surface,
-            self.terrain.as_ref(),
-            &self.magic,
-            timers,
-        );
+        self.world.render(gpu, encoder, target, target_size, frame, &self.scene, &self.surface, self.terrain.as_ref(), &self.magic, timers);
 
         if let Some(canvas) = frame.ui.filter(|c| !c.quads.is_empty()) {
             self.ui.prepare(gpu, target_size, canvas);
@@ -611,10 +467,7 @@ impl Renderer {
                     view: target,
                     depth_slice: None,
                     resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: timers.render_pass("interface"),

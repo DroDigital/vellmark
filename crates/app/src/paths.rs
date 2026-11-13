@@ -2,16 +2,9 @@ use std::path::PathBuf;
 
 /// Where saves, settings, and logs go: each platform's standard place for user data.
 pub fn user_data_dir() -> PathBuf {
-    let home = || {
-        std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-    };
+    let home = || std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
     let dir = if cfg!(target_os = "windows") {
-        std::env::var_os("APPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(home)
-            .join("Vellmark")
+        std::env::var_os("APPDATA").map(PathBuf::from).unwrap_or_else(home).join("Vellmark")
     } else if cfg!(target_os = "macos") {
         home().join("Library/Application Support/Vellmark")
     } else {
