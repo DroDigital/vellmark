@@ -1,10 +1,10 @@
 // Phase S02, trees: the orchard's rows of apples; under an apple; its leaf cards at arm's
-// length, written as `^ A v`; an oak's and an apple's bark at arm's length, each recording its
-// age; the east wood's edge from the field, where the levels of
-// detail meet; inside the wood; the north wood from above Tithe Hill, where it is the far
-// forms; and the shimmer check up into the wood's canopy, a slow sideways move of a small
-// part of a pixel a frame. (The grass in front of the wood's edge fails the shimmer check
-// seen almost edge on: that is S02-T07b's.) Every shot is also a glyph-off comparison.
+// length, written as `^ A v`; an oak's and an apple's bark at arm's length, each
+// recording its age; the east wood's edge from the field, where the levels of detail
+// meet; inside the wood; the north wood from above Tithe Hill, where it is the far forms;
+// and the shimmer check up into the wood's canopy, a slow sideways move of a small part
+// of a pixel a frame. The grass in front of the wood's edge has its own shimmer shot in
+// `s02_weathers.ron`. Every shot is also a glyph-off comparison.
 #![enable(implicit_some)]
 (
     name: "s02_trees",
