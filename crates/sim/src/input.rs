@@ -23,6 +23,7 @@ pub mod buttons {
     pub const READ: u32 = 1 << 4;
     pub const ATTACK_MAIN: u32 = 1 << 5;
     pub const ATTACK_OFF: u32 = 1 << 6;
+    pub const SIDESTEP: u32 = 1 << 7;
 }
 
 impl PlayerInput {

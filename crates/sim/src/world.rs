@@ -1,16 +1,14 @@
 use crate::clock::STEP_SECONDS;
 use crate::hash::Fnv64;
-use crate::input::{buttons, PlayerInput};
+use crate::input::PlayerInput;
 use crate::debris::{shatter, Debris, Solid};
 use crate::snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 use std::sync::Arc;
 
 /// Height of the eye above the feet, in metres.
 pub const EYE_HEIGHT: f32 = 1.68;
 
-const WALK_SPEED: f32 = 4.2;
-const SPRINT_SPEED: f32 = 7.0;
 const MAX_PITCH: f32 = 1.48;
 
 /// Identifies a player for the whole session. Never reused.
@@ -44,9 +42,21 @@ pub struct BreakableThing {
 #[derive(Clone, Debug)]
 struct Player {
     id: PlayerId,
-    feet: Vec3,
+    body: crate::character::Body,
     yaw: f32,
     pitch: f32,
+}
+
+/// The ground as the body asks about it.
+struct Around<'a>(Option<&'a dyn crate::Ground>);
+
+impl crate::character::Surroundings for Around<'_> {
+    fn ground(&self, x: f32, z: f32) -> Option<f32> {
+        self.0.and_then(|g| g.height(x, z))
+    }
+    fn water(&self, x: f32, z: f32) -> Option<f32> {
+        self.0.and_then(|g| g.water(x, z))
+    }
 }
 
 /// The whole mutable state of the game. Stepping it is deterministic: the same
@@ -67,6 +77,11 @@ pub struct World {
     heat: Arc<Vec<(u64, f32)>>,
     ground: Option<Arc<dyn crate::Ground>>,
     weather: crate::weather::WeatherState,
+    /// The scene's solid boxes and its trees' trunks, for the still world.
+    solids: Vec<Solid>,
+    trunks: Vec<crate::character::Trunk>,
+    /// The still world the bodies move against, rebuilt when the ground or scene changes.
+    statics: Option<Arc<crate::character::Statics>>,
 }
 
 impl World {
@@ -88,6 +103,9 @@ impl World {
             heat: Arc::default(),
             ground: None,
             weather: Default::default(),
+            solids: Vec::new(),
+            trunks: Vec::new(),
+            statics: None,
         }
     }
 
@@ -96,14 +114,31 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, feet, yaw, pitch: 0.0 });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0 });
         id
     }
 
     /// Gives the world the scene's solid boxes and the things in it that can break.
     pub fn set_scene(&mut self, solids: Vec<Solid>, breakables: Vec<BreakableThing>) {
+        self.solids = solids.clone();
         self.debris.set_solids(solids);
         self.breakables = breakables;
+        self.rebuild_statics();
+    }
+
+    /// Gives the world the trunks of the scene's trees, which bodies cannot walk through.
+    pub fn set_trunks(&mut self, trunks: Vec<crate::character::Trunk>) {
+        self.trunks = trunks;
+        self.rebuild_statics();
+    }
+
+    fn rebuild_statics(&mut self) {
+        let patches = self.ground.as_ref().map(|g| g.patches()).unwrap_or_default();
+        if patches.is_empty() && self.solids.is_empty() && self.trunks.is_empty() {
+            self.statics = None;
+            return;
+        }
+        self.statics = Some(Arc::new(crate::character::Statics::new(&patches, &self.solids, &self.trunks)));
     }
 
     /// Breaks a thing into its letters, thrown outwards from `blow`. Returns how many
@@ -170,10 +205,11 @@ impl World {
     pub fn set_ground(&mut self, ground: Arc<dyn crate::Ground>) {
         self.ground = Some(ground);
         for p in &mut self.players {
-            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.feet.x, p.feet.z)) {
-                p.feet.y = h;
+            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.body.feet.x, p.body.feet.z)) {
+                p.body.feet.y = h;
             }
         }
+        self.rebuild_statics();
     }
 
     pub fn loose_letters(&self) -> usize {
@@ -224,20 +260,7 @@ impl World {
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
 
-            let mut wish = Vec2::new(input.move_x, input.move_y);
-            if wish.length_squared() > 1.0 {
-                wish = wish.normalize();
-            }
-            let speed = if input.held(buttons::SPRINT) { SPRINT_SPEED } else { WALK_SPEED };
-            let (sin, cos) = p.yaw.sin_cos();
-            // Forward is -Z at yaw 0, and yaw turns right.
-            let forward = Vec3::new(sin, 0.0, -cos);
-            let right = Vec3::new(cos, 0.0, sin);
-            p.feet += (right * wish.x + forward * wish.y) * speed * STEP_SECONDS;
-            // Feet on the ground. Steps, slopes, and falling come with the character in S03.
-            if let Some(h) = self.ground.as_ref().and_then(|g| g.height(p.feet.x, p.feet.z)) {
-                p.feet.y = h;
-            }
+            p.body.step(&input, p.yaw, self.statics.as_deref(), &Around(self.ground.as_deref()));
         }
         if self.debris.awake() > 0 {
             self.debris.step(STEP_SECONDS);
@@ -254,14 +277,23 @@ impl World {
         let players: Vec<PlayerSnap> = self
             .players
             .iter()
-            .map(|p| PlayerSnap { id: p.id, feet: p.feet, yaw: p.yaw, pitch: p.pitch })
+            .map(|p| PlayerSnap {
+                id: p.id,
+                feet: p.body.feet,
+                yaw: p.yaw,
+                pitch: p.pitch,
+                grounded: p.body.grounded,
+                crouching: p.body.crouching,
+                swimming: p.body.swimming,
+                untouchable: p.body.untouchable(),
+            })
             .collect();
         let views = self
             .players
             .iter()
             .map(|p| ViewSnap {
                 player: p.id,
-                eye: p.feet + Vec3::Y * EYE_HEIGHT,
+                eye: p.body.feet + Vec3::Y * p.body.eye,
                 yaw: p.yaw,
                 pitch: p.pitch,
             })
@@ -295,9 +327,7 @@ impl World {
         h.u32(self.players.len() as u32);
         for p in &self.players {
             h.u32(p.id.0);
-            h.f32(p.feet.x);
-            h.f32(p.feet.y);
-            h.f32(p.feet.z);
+            p.body.hash(&mut h);
             h.f32(p.yaw);
             h.f32(p.pitch);
         }
@@ -314,6 +344,7 @@ impl World {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input::buttons;
 
     fn scripted_input(world: &mut World, step: u64, player: usize) -> PlayerInput {
         let r = world.next_random();

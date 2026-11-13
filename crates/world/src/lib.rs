@@ -77,6 +77,29 @@ impl vellmark_sim::Ground for Terrain {
     fn height(&self, x: f32, z: f32) -> Option<f32> {
         self.height_at(x, z)
     }
+
+    fn water(&self, x: f32, z: f32) -> Option<f32> {
+        self.water_at(x, z)
+    }
+
+    /// The finest level's tiles: the ground a body walks on.
+    fn patches(&self) -> Vec<vellmark_sim::HeightPatch> {
+        let Some(&finest) = self.levels.first() else { return Vec::new() };
+        let mut tiles: Vec<&TerrainTile> = self.tiles.values().filter(|t| t.coord.level == finest).collect();
+        tiles.sort_by_key(|t| (t.coord.x, t.coord.z));
+        tiles
+            .into_iter()
+            .map(|t| {
+                let (x0, z0) = t.coord.origin();
+                vellmark_sim::HeightPatch {
+                    origin: glam::Vec2::new(x0, z0),
+                    spacing: t.spacing,
+                    samples: vellmark_content::TILE_SAMPLES,
+                    heights: t.heights.clone(),
+                }
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]

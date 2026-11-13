@@ -89,6 +89,7 @@ fn player_input(actions: &ActionState, bindings: &Bindings, dt: f32, first_step:
         (Action::Read, buttons::READ),
         (Action::MainHand, buttons::ATTACK_MAIN),
         (Action::OffHand, buttons::ATTACK_OFF),
+        (Action::Sidestep, buttons::SIDESTEP),
     ] {
         if actions.held(action) {
             held |= bit;
@@ -217,6 +218,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     #[cfg_attr(not(feature = "dev"), allow(unused_variables))]
     let breakable_places: Vec<(u64, Vec3)> = breakables.iter().map(|b| (b.id, Vec3::from(b.to_world.translation))).collect();
     world.set_scene(solids, breakables);
+    world.set_trunks(vellmark_render::tree_trunks(&base, &scene));
     // The simulation holds the feet; the scene's spawn is given as an eye.
     let spawn = scene.spawn;
     world.add_player(Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]), spawn[3]);

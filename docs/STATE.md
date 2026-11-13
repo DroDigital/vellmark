@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T01, the first-person controller.
+**Current task:** S03-T02, the two-hand input model and settings.
 
 ## Lane: Render
 
@@ -31,7 +31,7 @@
 
 ## Lane: Sim
 
-Nothing yet.
+**Done:** S03-T01, the first-person body on `rapier3d` (`crates/sim/src/character.rs`): jog 5 m/s and sprint 7.5 m/s with acceleration, a jump of about a metre with grace either side of an edge, crouch that stays down under a roof, a mantle onto ledges up to 1.9 m, wading and swimming with the eye just above the water, and the 2 m sidestep whose first 0.12 s attacks pass through. The terrain's finest tiles are heightfields split as the terrain is drawn, the scene's boxes and the trees' trunks are solid, and stepping stays deterministic. Tests: `crates/sim/tests/controller.rs`, `crates/harness/tests/walk.rs`.
 
 ## Lane: Content
 

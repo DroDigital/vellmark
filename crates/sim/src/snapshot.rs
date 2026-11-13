@@ -8,6 +8,11 @@ pub struct PlayerSnap {
     pub feet: Vec3,
     pub yaw: f32,
     pub pitch: f32,
+    pub grounded: bool,
+    pub crouching: bool,
+    pub swimming: bool,
+    /// Attacks pass through it now: the first moments of a sidestep.
+    pub untouchable: bool,
 }
 
 /// One camera. There is one for each player, and the renderer draws the whole list.

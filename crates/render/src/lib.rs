@@ -200,6 +200,30 @@ pub fn scene_rules(scene: &vellmark_content::Scene) -> (Vec<vellmark_sim::debris
     (solids, breakables)
 }
 
+/// The trunks of a scene's trees, which bodies cannot walk through: where each stands,
+/// from its object, and how thick, from its record.
+pub fn tree_trunks(pack: &vellmark_content::Pack, scene: &vellmark_content::Scene) -> Vec<vellmark_sim::Trunk> {
+    use vellmark_content::{AssetId, AssetKind, TreeRecords, TREE_RECORDS_KEY};
+    let Some(records) = pack.get(AssetKind::Table, AssetId::from_key(TREE_RECORDS_KEY)).and_then(|b| TreeRecords::from_bytes(b).ok()) else {
+        return Vec::new();
+    };
+    let girth: std::collections::HashMap<u64, f32> = records.trees.iter().map(|r| (r.tree.0, r.girth)).collect();
+    scene
+        .objects
+        .iter()
+        .filter_map(|o| {
+            let girth = *girth.get(&o.key.0)?;
+            let t = &o.transform;
+            let scale = (t[0] * t[0] + t[8] * t[8]).sqrt();
+            Some(vellmark_sim::Trunk {
+                foot: glam::Vec3::new(t[3], t[7], t[11]),
+                radius: (girth / std::f32::consts::TAU * scale).max(0.08),
+                height: 3.2 * scale,
+            })
+        })
+        .collect()
+}
+
 pub struct Renderer {
     world: ScenePass,
     surface: SurfaceResources,

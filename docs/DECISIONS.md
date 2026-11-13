@@ -2,6 +2,26 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: the body (S03-T01)
+
+**Rapier for the still world; the body's own state for the rest.** The terrain's finest
+tiles become heightfields, each cell split from its least corner to its greatest as the
+terrain is drawn (rapier's zigzag split), so feet stand exactly on the drawn ground. The
+scene's solid boxes are cuboids and each tree's trunk a capsule as thick as its record
+says. This world never changes once loaded, so it is shared between copies of the
+`World`. A player is a capsule moved by rapier's kinematic character controller, with
+autostep to 0.38 m and snapping to the ground; jumping, the sidestep, the mantle,
+crouching, and swimming are the body's own small state, stepped at the fixed rate, so
+the same inputs give the same body. `enhanced-determinism` is on.
+
+**Numbers.** Jog 5 m/s and sprint 7.5 m/s (the brief's), crouch 2.4, swim 2.6 and 3.8
+sprinting. Gravity 20 m/s² and a jump of 6.4 m/s, about a metre, with 0.12 s of grace
+before landing and after leaving an edge. The sidestep is 2 m in 0.22 s, fast out and
+easing in, untouchable for its first 0.12 s, with 0.18 s before the next. A ledge from
+0.45 m to 1.9 m above the feet is mantled in 0.42 s when the body jumps at it or pushes at
+it in the air. Water deeper than 1.25 m is swum, the eye 0.18 m above it; shallower water
+slows the legs. All of it is feel, for the owner's hands at the Play Gate.
+
 ## 2026-11-13: the ambience is synthesized until the samples come (S02-T13)
 
 **Our own mixer, on SDL3's audio stream.** `vellmark-audio` holds a mixer that the
