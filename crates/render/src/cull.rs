@@ -17,6 +17,8 @@ struct CullUniform {
     viewport: [f32; 4],
     pyramid: [f32; 4],
     counts: [u32; 4],
+    /// The eye, for choosing levels of detail.
+    eye: [f32; 4],
 }
 
 /// The size of one indirect indexed draw, in bytes.
@@ -265,6 +267,7 @@ impl Culling {
                 viewport: [view.viewport.0, view.viewport.1, view.viewport.2, view.viewport.3],
                 pyramid: [pyramid.size.0 as f32, pyramid.size.1 as f32, pyramid.levels as f32, if occlusion { 1.0 } else { 0.0 }],
                 counts: [instance_count as u32, ((1 + v) * MAX_INSTANCES) as u32, (v * MAX_GROUPS * 5) as u32, 0],
+                eye: [view.eye.x, view.eye.y, view.eye.z, 0.0],
             };
             gpu.queue.write_buffer(&self.uniforms, v as u64 * self.stride, bytemuck::bytes_of(&uniform));
             self.previous[v] = Some(Seen { view_proj: view.view_proj, eye: view.eye, forward: view.forward });

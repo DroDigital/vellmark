@@ -8,6 +8,9 @@ struct Instance {
     model: mat4x4<f32>,
     state: vec4<f32>,
     bounds: vec4<f32>,
+    // x: its batch. y: where the batch starts in a list. z: how many levels of detail
+    // (1 for none) in the low byte, and above it how many instances the batch has. w:
+    // where its first coarser level's batch starts in a list.
     group: vec4<u32>,
 }
 
@@ -22,7 +25,11 @@ struct Cull {
     pyramid: vec4<f32>,
     // x: instances. y: where this view's list starts. z: where its draws start.
     counts: vec4<u32>,
+    // xyz: the eye, for choosing levels of detail.
+    eye: vec4<f32>,
 }
+
+#import lod
 
 @group(0) @binding(0) var<storage, read> instances: array<Instance>;
 @group(0) @binding(1) var<storage, read_write> visible: array<u32>;
@@ -104,7 +111,30 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     if outside_frustum(centre, radius) || hidden_behind(centre, radius) {
         return;
     }
-    let group = object.group.x;
+    // A thing with levels of detail goes to the level it is seen at, and, while it is
+    // crossfading, to the next as well. Each level's batch has its own part of the list.
+    let levels = max(object.group.z & 0xffu, 1u);
+    var level = 0u;
+    var both = false;
+    if levels > 1u {
+        let chosen = lod_of(radius, distance(cull.eye.xyz, centre), levels);
+        level = u32(chosen.x);
+        both = chosen.y > 0.0;
+    }
+    emit(i, object, level);
+    if both {
+        emit(i, object, level + 1u);
+    }
+}
+
+fn emit(i: u32, object: Instance, level: u32) {
+    let group = object.group.x + level;
     let slot = atomicAdd(&draws[cull.counts.z + group * 5u + 1u], 1u);
-    visible[cull.counts.y + object.group.y + slot] = i;
+    // The finest level's batch is where the thing's own place is; the coarser follow
+    // one another after every placed thing's.
+    var base = object.group.y;
+    if level > 0u {
+        base = object.group.w + (level - 1u) * (object.group.z >> 8u);
+    }
+    visible[cull.counts.y + base + slot] = i;
 }

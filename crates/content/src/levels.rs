@@ -38,7 +38,7 @@ impl MeshLevels {
             return Err("not a table of mesh levels".into());
         }
         let mut at = 8;
-        let mut u32_at = |at: &mut usize| -> Result<u32, String> {
+        let u32_at = |at: &mut usize| -> Result<u32, String> {
             let b = bytes.get(*at..*at + 4).ok_or("the table of mesh levels is cut short")?;
             *at += 4;
             Ok(u32::from_le_bytes(b.try_into().unwrap()))

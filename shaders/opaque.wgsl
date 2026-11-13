@@ -3,6 +3,8 @@
 #import frame
 #import shading
 #import glyph
+#import lod
+#import leaves
 
 struct Instance {
     model: mat4x4<f32>,
@@ -15,7 +17,8 @@ struct Instance {
 }
 
 struct Batch {
-    // x: where this batch starts in the list being drawn.
+    // x: where this batch starts in the list being drawn. y: its level of detail. z: the
+    // leaf cards' material, from 1; 0 if there is none. w: how many levels its mesh has.
     base: vec4<u32>,
 }
 
@@ -353,6 +356,108 @@ fn rain_rings(p: vec2<f32>, rain: f32) -> vec2<f32> {
 
 @fragment
 fn fs(in: Varyings) -> @location(0) vec4<f32> {
+    return shade_mesh(in);
+}
+
+// ---- trees ----
+
+// A tree's coarsest level: the crossed cards of its far form.
+const FAR_LEVEL: u32 = 3u;
+// Samples in each pixel. Matches `SAMPLES` in the scene pass.
+const PIXEL_SAMPLES: u32 = 4u;
+// The share of a leaf card that is leaf, on average: what a card is seen as when its
+// leaves are too small to tell apart.
+const LEAF_SHARE: f32 = 0.42;
+
+// `count` of the pixel's samples, a run starting at sample `start` and wrapping round.
+fn samples_from(count: u32, start: u32) -> u32 {
+    let run = (1u << min(count, PIXEL_SAMPLES)) - 1u;
+    return ((run << start) | (run >> (PIXEL_SAMPLES - start))) & ((1u << PIXEL_SAMPLES) - 1u);
+}
+
+// How many of a pixel's samples a coverage from 0 to 1 is.
+fn samples_of(cover: f32, door: f32) -> u32 {
+    return u32(clamp(floor(cover * f32(PIXEL_SAMPLES) + door), 0.0, f32(PIXEL_SAMPLES)));
+}
+
+// Which samples of a tree's pixel are drawn. A crossfade between two levels shares out
+// the samples, the coarser level taking a run and the finer the rest, so the two
+// together cover the tree once. A leaf card covers the samples its leaves do, and the
+// far form those its picture does, so their edges are as smooth as any other and do not
+// crawl when the eye moves. The depth pre-pass and the lit pass both call it, so they
+// agree on every sample.
+fn tree_samples(in: Varyings) -> u32 {
+    let object = instances[in.instance];
+    // Taken for every fragment, before any choice, so their slopes are known everywhere.
+    let leaf = leaf_at(in.anchor, in.thickness);
+    let leaf_width = fwidth(leaf);
+    let m = materials.entries[in.material];
+    let uv = vec2<f32>(in.anchor.x, -in.anchor.y) / m.surface.x;
+    let picture = textureSample(material_normal, material_sampler, uv, in.material).w;
+    let picture_width = fwidth(picture);
+
+    let all = (1u << PIXEL_SAMPLES) - 1u;
+    var mask = all;
+    let door = screen_door(in.position.xy, 0.0);
+    let start = u32(screen_door(in.position.xy, 0.53) * f32(PIXEL_SAMPLES)) % PIXEL_SAMPLES;
+    let lod = lod_of(object.bounds.w, distance(view.eye_time.xyz, object.bounds.xyz), batch.base.w);
+    let chosen = u32(lod.x + 0.5);
+    let coarser = samples_from(samples_of(lod.y, door), start);
+    if batch.base.y == chosen {
+        mask &= all & ~coarser;
+    } else if batch.base.y == chosen + 1u {
+        mask &= coarser;
+    }
+    // Leaves too small to tell apart are seen as a card of their average cover.
+    if in.material + 1u == batch.base.z && batch.base.y != FAR_LEVEL {
+        let sharp = clamp((1.0 - leaf) / max(leaf_width, 1.0e-4) + 0.5, 0.0, 1.0);
+        let cover = mix(sharp, LEAF_SHARE, smoothstep(0.6, 2.5, leaf_width));
+        mask &= samples_from(samples_of(cover, 0.5), (start + 1u) % PIXEL_SAMPLES);
+    }
+    if batch.base.y == FAR_LEVEL {
+        let cover = clamp((picture - 0.5) / max(picture_width, 1.0e-4) + 0.5, 0.0, 1.0);
+        mask &= samples_from(samples_of(cover, 0.5), (start + 2u) % PIXEL_SAMPLES);
+    }
+    return mask;
+}
+
+@fragment
+fn fs_tree_depth(in: Varyings) -> @builtin(sample_mask) u32 {
+    let mask = tree_samples(in);
+    if mask == 0u {
+        discard;
+    }
+    return mask;
+}
+
+struct TreeOut {
+    @location(0) colour: vec4<f32>,
+    @builtin(sample_mask) mask: u32,
+}
+
+// Leaf cards are seen from both sides. From behind, the card is turned round so that its
+// letters still read the right way: the anchor runs back along the card and the normal
+// and tangent turn with it.
+@fragment
+fn fs_tree(seen: Varyings, @builtin(front_facing) front: bool) -> TreeOut {
+    let mask = tree_samples(seen);
+    if mask == 0u {
+        discard;
+    }
+    var in = seen;
+    if !front {
+        in.normal = -in.normal;
+        if in.material + 1u == batch.base.z {
+            let card = card_of(in.anchor);
+            in.anchor.x = card * CARD_STRIDE + in.thickness - (in.anchor.x - card * CARD_STRIDE);
+            in.tangent = vec4<f32>(-in.tangent.xyz, in.tangent.w);
+        }
+    }
+    return TreeOut(shade_mesh(in), mask);
+}
+
+// A placed thing's surface, lit, with its fine print.
+fn shade_mesh(in: Varyings) -> vec4<f32> {
     let m = materials.entries[in.material];
     let uv = vec2<f32>(in.anchor.x, -in.anchor.y) / m.surface.x;
     let colour_texel = textureSample(material_colour, material_sampler, uv, in.material);

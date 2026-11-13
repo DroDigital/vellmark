@@ -33,8 +33,9 @@ pub struct InstanceGpu {
     /// The sphere that holds it, in the world: centre and radius.
     pub bounds: [f32; 4],
     /// x: its group, the mesh it is drawn from. y: where the group's batch starts in a
-    /// list. z: how many levels of detail it has, 1 for none. w: how many instances the
-    /// group has, which is how far apart its levels' batches are in a list.
+    /// list. z: how many levels of detail it has (1 for none) in the low byte, and above
+    /// it how many instances the group has, which is how far apart its coarser levels'
+    /// batches are. w: where its first coarser level's batch starts in a list.
     pub group: [u32; 4],
 }
 
@@ -235,7 +236,8 @@ impl SceneGpu {
                     bounds: [centre.x, centre.y, centre.z, mesh.radius * scale],
                     group: {
                         let g = &self.groups[p.group];
-                        [p.group as u32, g.list_base, g.levels.max(1), g.count]
+                        let coarser = if g.levels > 1 { self.groups[p.group + 1].list_base } else { 0 };
+                        [p.group as u32, g.list_base, g.levels.max(1) | (g.count << 8), coarser]
                     },
                 }
             })
@@ -276,6 +278,8 @@ pub struct SurfaceResources {
     page_sheet: wgpu::Texture,
     /// Bit i is set if material i gives off light.
     pub glowing: u32,
+    /// The trees' leaf cards' material, counted from 1; 0 if the set has none.
+    pub leaves: u32,
 }
 
 fn array_texture(gpu: &Gpu, label: &str, size: u32, mips: u32, layers: u32, format: wgpu::TextureFormat) -> wgpu::Texture {
@@ -471,7 +475,8 @@ impl SurfaceResources {
             ],
         });
         let glowing = set.materials.iter().enumerate().filter(|(_, m)| m.emissive > 0.0).fold(0u32, |bits, (i, _)| bits | 1 << i);
-        let resources = Self { layout, bind_group, page_table, page_sheet, glowing };
+        let leaves = set.index_of(AssetId::from_key("material.leaves")).map_or(0, |i| i + 1);
+        let resources = Self { layout, bind_group, page_table, page_sheet, glowing, leaves };
         resources.set_pages(gpu, &TextPages::default());
         Ok(resources)
     }

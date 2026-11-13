@@ -21,6 +21,8 @@ const RAIN_DROPS: u32 = 160 * 160;
 
 const BLOOM_LEVELS: usize = 5;
 const CUBE_FACES: usize = 6;
+/// The level of detail a tree casts its shadows from.
+const SHADOW_LEVEL: usize = 2;
 /// The size of one cascade or cube-face uniform: a matrix and a row of flags.
 const CASCADE_UNIFORM: u64 = 80;
 
@@ -67,6 +69,9 @@ struct Pipelines {
     terrain: wgpu::RenderPipeline,
     grass_depth: wgpu::RenderPipeline,
     grass: wgpu::RenderPipeline,
+    tree_shadow: wgpu::RenderPipeline,
+    tree_depth: wgpu::RenderPipeline,
+    tree: wgpu::RenderPipeline,
     water: wgpu::RenderPipeline,
     rain: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
@@ -87,6 +92,8 @@ pub struct ScenePass {
     water_sampler: wgpu::Sampler,
     /// Made for the terrain and the targets of the moment; remade when either changes.
     water_group: Option<wgpu::BindGroup>,
+    /// The trees' leaf cards' material, counted from 1; 0 if there is none.
+    leaves: u32,
     lights: Lights,
     view_buffer: wgpu::Buffer,
     view_stride: u64,
@@ -329,7 +336,8 @@ impl ScenePass {
             entries: &[
                 storage(0, wgpu::ShaderStages::VERTEX_FRAGMENT),
                 storage(1, wgpu::ShaderStages::VERTEX),
-                uniform_entry(2, wgpu::ShaderStages::VERTEX, true, 16),
+                // The batch: the trees' fragments read their level and leaves from it.
+                uniform_entry(2, wgpu::ShaderStages::VERTEX_FRAGMENT, true, 16),
             ],
         });
         let cascade_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -541,6 +549,7 @@ impl ScenePass {
             post_buffer,
             grade,
             wind_sentences,
+            leaves: surface.leaves,
             gust: None,
             post_sampler,
             shadow_sampler,
@@ -703,6 +712,77 @@ impl ScenePass {
                 }),
                 primitive: Default::default(),
                 // Only where nothing was drawn: depth still at its cleared value.
+                depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Equal)),
+                multisample,
+                multiview_mask: None,
+                cache: None,
+            },
+        );
+        // Trees: drawn from both sides, for their leaf cards, and cut in the fragment stage
+        // to their leaves, their crossfades, and their far form's picture.
+        let both_sides = wgpu::PrimitiveState { cull_mode: None, ..Default::default() };
+        let tree_shadow = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("tree shadow"),
+                layout: Some(&shadow_layout),
+                vertex: wgpu::VertexState {
+                    module: &shadow_module,
+                    entry_point: Some("vs_tree"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(vertex_layout())],
+                },
+                fragment: Some(wgpu::FragmentState { module: &shadow_module, entry_point: Some("fs_tree"), compilation_options: Default::default(), targets: &[] }),
+                primitive: both_sides,
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    stencil: Default::default(),
+                    bias: wgpu::DepthBiasState { constant: 2, slope_scale: 2.5, clamp: 0.0 },
+                }),
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            },
+        );
+        let tree_depth = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("tree depth"),
+                layout: Some(&world_layout),
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(vertex_layout())],
+                },
+                fragment: Some(wgpu::FragmentState { module: &opaque_module, entry_point: Some("fs_tree_depth"), compilation_options: Default::default(), targets: &[] }),
+                primitive: both_sides,
+                depth_stencil: Some(depth_state(true, wgpu::CompareFunction::Greater)),
+                multisample,
+                multiview_mask: None,
+                cache: None,
+            },
+        );
+        let tree = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("tree"),
+                layout: Some(&world_layout),
+                vertex: wgpu::VertexState {
+                    module: &opaque_module,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(vertex_layout())],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_tree"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(HDR_FORMAT.into())],
+                }),
+                primitive: both_sides,
                 depth_stencil: Some(depth_state(false, wgpu::CompareFunction::Equal)),
                 multisample,
                 multiview_mask: None,
@@ -965,7 +1045,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, water, rain, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, tree_shadow, tree_depth, tree, water, rain, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -1138,28 +1218,47 @@ impl ScenePass {
 
     /// Every mesh of the scene that view `v` can see, one indirect batch each, as the
     /// culling pass left them.
-    fn draw_scene_culled(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, v: usize, object_group: u32) {
+    /// A mesh with levels of detail is a tree's, drawn with `tree`; every other with `plain`.
+    fn draw_scene_culled(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, v: usize, object_group: u32, plain: &wgpu::RenderPipeline, tree: &wgpu::RenderPipeline) {
         let (Some(vertices), Some(indices)) = (&scene.vertices, &scene.indices) else { return };
         pass.set_vertex_buffer(0, vertices.slice(..));
         pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+        let mut current: Option<bool> = None;
         for (g, group) in scene.groups.iter().enumerate() {
             if group.count == 0 || scene.meshes[group.mesh].index_count == 0 {
                 continue;
+            }
+            let leveled = group.levels != 1;
+            if current != Some(leveled) {
+                pass.set_pipeline(if leveled { tree } else { plain });
+                current = Some(leveled);
             }
             pass.set_bind_group(object_group, &self.object_bind_group, &[self.batch_offset(1 + v, g)]);
             pass.draw_indexed_indirect(&self.culling.draws, crate::cull::Culling::draw_offset(v, g));
         }
     }
 
-    /// Every mesh of the scene, one batch each, from list `list`.
-    fn draw_scene(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, list: usize, object_group: u32) {
+    /// Every mesh of the scene, one batch each, from list `list`, for the shadows. A mesh
+    /// with levels of detail casts from one coarse level, with `tree`; every other is
+    /// drawn with `plain`.
+    fn draw_scene(&self, pass: &mut wgpu::RenderPass<'_>, scene: &SceneGpu, list: usize, object_group: u32, plain: &wgpu::RenderPipeline, tree: &wgpu::RenderPipeline) {
         let (Some(vertices), Some(indices)) = (&scene.vertices, &scene.indices) else { return };
         pass.set_vertex_buffer(0, vertices.slice(..));
         pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+        let mut current: Option<bool> = None;
         for (g, group) in scene.groups.iter().enumerate() {
-            let mesh = &scene.meshes[group.mesh];
+            if group.is_coarser_level() {
+                continue;
+            }
+            let leveled = group.levels > 1;
+            // The third level's branches and cards, which is close enough for a shadow map.
+            let mesh = &scene.meshes[scene.groups[g + if leveled { SHADOW_LEVEL.min(group.levels as usize - 1) } else { 0 }].mesh];
             if group.count == 0 || mesh.index_count == 0 {
                 continue;
+            }
+            if current != Some(leveled) {
+                pass.set_pipeline(if leveled { tree } else { plain });
+                current = Some(leveled);
             }
             pass.set_bind_group(object_group, &self.object_bind_group, &[self.batch_offset(list, g)]);
             pass.draw_indexed(mesh.first_index..mesh.first_index + mesh.index_count, mesh.base_vertex, 0..group.count);
@@ -1295,8 +1394,17 @@ impl ScenePass {
             let every: Vec<u32> = (0..instances.len() as u32).collect();
             gpu.queue.write_buffer(&self.visible_buffer, 0, bytemuck::cast_slice(&every));
             for list in 0..=views.len().min(MAX_VIEWS) {
+                // List 0 holds every instance in order, so a batch starts where its group's
+                // instances do; a view's list has a place for every level of detail.
+                let mut finest = 0;
                 for (g, group) in scene.groups.iter().enumerate() {
-                    let base = [(list * MAX_INSTANCES) as u32 + group.first_instance, 0, 0, 0];
+                    if !group.is_coarser_level() {
+                        finest = g;
+                    }
+                    let start = if list == 0 { group.first_instance } else { group.list_base };
+                    // x: where the batch starts. y: its level of detail. z: the leaf cards'
+                    // material, from 1. w: how many levels its mesh has.
+                    let base = [(list * MAX_INSTANCES) as u32 + start, (g - finest) as u32, self.leaves, scene.groups[finest].levels];
                     gpu.queue.write_buffer(&self.draw_buffer, self.batch_offset(list, g) as u64, bytemuck::cast_slice(&base));
                 }
             }
@@ -1312,8 +1420,11 @@ impl ScenePass {
         let mut instance_count = instances.len();
         if let Some(t) = terrain.filter(|_| grass_group + crate::grass::LEVELS <= MAX_GROUPS) {
             let eyes: Vec<glam::Vec3> = views.iter().map(|v| v.camera.eye).collect();
-            let chosen = t.grass.choose(&eyes, MAX_INSTANCES - instances.len());
-            let (patches, counts) = t.grass.instances(&chosen, instances.len() as u32, grass_group as u32);
+            // Grass follows every place the scene's batches take in a list, the trees'
+            // coarser levels included.
+            let list_end = scene.list_end.max(instances.len() as u32);
+            let chosen = t.grass.choose(&eyes, MAX_INSTANCES.saturating_sub(list_end as usize));
+            let (patches, counts) = t.grass.instances(&chosen, list_end, grass_group as u32);
             grass_counts = counts;
             instance_count += patches.len();
             headers.extend_from_slice(&t.grass.draw_headers());
@@ -1325,7 +1436,7 @@ impl ScenePass {
                 }
                 self.grass_sent = Some(key);
             }
-            let mut start = instances.len() as u32;
+            let mut start = list_end;
             for (l, count) in counts.iter().enumerate() {
                 for list in 1..=views.len().min(MAX_VIEWS) {
                     let base = [(list * MAX_INSTANCES) as u32 + start, 0, 0, 0];
@@ -1489,9 +1600,8 @@ impl ScenePass {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            pass.set_pipeline(&self.pipelines.shadow);
             pass.set_bind_group(0, &self.cascade_bind_group, &[(layer as u64 * self.cascade_stride) as u32]);
-            self.draw_scene(&mut pass, scene, 0, 1);
+            self.draw_scene(&mut pass, scene, 0, 1, &self.pipelines.shadow, &self.pipelines.tree_shadow);
             self.draw_letter_shadows(&mut pass, letter_count);
             if terrain.is_some() {
                 pass.set_pipeline(&self.pipelines.terrain_shadow);
@@ -1516,9 +1626,8 @@ impl ScenePass {
                 multiview_mask: None,
             });
             {
-                pass.set_pipeline(&self.pipelines.shadow);
                 pass.set_bind_group(0, &self.cascade_bind_group, &[((CASCADES * SHADOWED_VIEWS + face) as u64 * self.cascade_stride) as u32]);
-                self.draw_scene(&mut pass, scene, 0, 1);
+                self.draw_scene(&mut pass, scene, 0, 1, &self.pipelines.shadow, &self.pipelines.tree_shadow);
                 self.draw_letter_shadows(&mut pass, letter_count);
             }
         }
@@ -1570,12 +1679,11 @@ impl ScenePass {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            pass.set_pipeline(&self.pipelines.depth);
             pass.set_bind_group(1, &surface.bind_group, &[]);
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
-                self.draw_scene_culled(&mut pass, scene, i, 2);
+                self.draw_scene_culled(&mut pass, scene, i, 2, &self.pipelines.depth, &self.pipelines.tree_depth);
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain_depth);
                     self.draw_terrain(&mut pass, terrain, 2);
@@ -1622,8 +1730,7 @@ impl ScenePass {
             for (i, &(x, y, w, h)) in viewports.iter().enumerate() {
                 pass.set_viewport(x, y, w, h, 0.0, 1.0);
                 pass.set_bind_group(0, &self.frame_bind_groups[i.min(SHADOWED_VIEWS - 1)], &[(i as u64 * self.view_stride) as u32]);
-                pass.set_pipeline(&self.pipelines.opaque);
-                self.draw_scene_culled(&mut pass, scene, i, 2);
+                self.draw_scene_culled(&mut pass, scene, i, 2, &self.pipelines.opaque, &self.pipelines.tree);
                 if terrain.is_some() {
                     pass.set_pipeline(&self.pipelines.terrain);
                     self.draw_terrain(&mut pass, terrain, 2);

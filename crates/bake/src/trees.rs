@@ -242,7 +242,9 @@ fn card(mesh: &mut Mesh, c: &Card, scale: f32, leaves: u32, kind: &Kind, index: 
     for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
         let position = c.centre + right * x * half + c.up * y * half;
         let anchor = Vec2::new((x + 1.0) * half + (index % 64) as f32 * CARD_STRIDE, (y + 1.0) * half);
-        mesh.vertices.push(vertex(position, c.normal, right, 1.0, anchor, leaves, 0.02, sky_of(position, kind)));
+        // The card's side, which the shaders need to find their place on it, is carried
+        // as its thickness.
+        mesh.vertices.push(vertex(position, c.normal, right, 1.0, anchor, leaves, half * 2.0, sky_of(position, kind)));
     }
     mesh.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }
@@ -379,7 +381,8 @@ pub fn impostor(kind: &Kind, size: usize) -> Vec<([f32; 3], f32)> {
         // A little lighter where a card faces the light, from above and the side.
         let lit = 0.8 + 0.4 * c.normal.dot(Vec3::new(0.3, 0.8, 0.5).normalize()).max(0.0);
         let colour = [leaf[0] * lit, leaf[1] * lit, leaf[2] * lit];
-        let seed = i as u32 * 7919 + kind.seed;
+        // The same spray the near levels cut from this card: see `leaves.wgsl`.
+        let seed = (i % 64) as u32 * 7919;
         // Barycentric (w1, w2) on each triangle maps back to the card's own square.
         fill(t[0], t[1], t[2], &|w| leafy(w.x + w.y, w.y, seed).then_some(colour));
         fill(t[0], t[2], t[3], &|w| leafy(w.x, w.x + w.y, seed).then_some(colour));
