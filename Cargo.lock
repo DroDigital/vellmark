@@ -1435,6 +1435,7 @@ name = "vellmark-bake"
 version = "0.1.0"
 dependencies = [
  "fdsm",
+ "glam 0.34.3",
  "image",
  "nalgebra",
  "png",

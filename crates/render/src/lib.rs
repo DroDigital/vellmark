@@ -142,7 +142,11 @@ pub fn load_scene(gpu: &Gpu, pack: &vellmark_content::Pack, key: &str) -> Result
         Some(bytes) => TextPages::from_bytes(bytes)?,
         None => TextPages::default(),
     };
-    let on_gpu = SceneGpu::new(gpu, &scene, pages, &|id| pack.get(AssetKind::Mesh, id).and_then(|b| Mesh::from_bytes(b).ok()))?;
+    let levels = match pack.get(AssetKind::Table, AssetId::from_key(vellmark_content::MESH_LEVELS_KEY)) {
+        Some(bytes) => vellmark_content::MeshLevels::from_bytes(bytes)?,
+        None => vellmark_content::MeshLevels::default(),
+    };
+    let on_gpu = SceneGpu::new(gpu, &scene, pages, &levels, &|id| pack.get(AssetKind::Mesh, id).and_then(|b| Mesh::from_bytes(b).ok()))?;
     Ok((scene, on_gpu))
 }
 

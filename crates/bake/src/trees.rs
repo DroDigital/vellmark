@@ -230,13 +230,18 @@ fn tube(mesh: &mut Mesh, b: &Branch, sides: usize, bark: u32, kind: &Kind) {
     }
 }
 
-fn card(mesh: &mut Mesh, c: &Card, scale: f32, leaves: u32, kind: &Kind) {
+/// Each card's page is set this far along from the last, so that the shader can tell
+/// the cards apart and cut each into its own spray of leaves. Matches `CARD_STRIDE` in
+/// `shaders/opaque.wgsl`.
+pub const CARD_STRIDE: f32 = 100.0;
+
+fn card(mesh: &mut Mesh, c: &Card, scale: f32, leaves: u32, kind: &Kind, index: usize) {
     let base = mesh.vertices.len() as u32;
     let right = c.up.cross(c.normal).normalize();
     let half = c.size * scale * 0.5;
     for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)] {
         let position = c.centre + right * x * half + c.up * y * half;
-        let anchor = Vec2::new((x + 1.0) * half, (y + 1.0) * half);
+        let anchor = Vec2::new((x + 1.0) * half + (index % 64) as f32 * CARD_STRIDE, (y + 1.0) * half);
         mesh.vertices.push(vertex(position, c.normal, right, 1.0, anchor, leaves, 0.02, sky_of(position, kind)));
     }
     mesh.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
@@ -291,8 +296,8 @@ pub fn meshes(kind: &Kind, bark: u32, leaves: u32, impostor: u32) -> Vec<(AssetI
             };
             tube(&mut mesh, b, sides, bark, kind);
         }
-        for c in tree.cards.iter().step_by(every) {
-            card(&mut mesh, c, scale, leaves, kind);
+        for (i, c) in tree.cards.iter().enumerate().step_by(every) {
+            card(&mut mesh, c, scale, leaves, kind, i);
         }
         out.push((mesh_id(&kind.key, LEVELS[level]), mesh));
     }

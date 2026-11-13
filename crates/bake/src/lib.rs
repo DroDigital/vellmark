@@ -106,7 +106,9 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     // The trees: every level of every kind.
     let kinds = trees::read_kinds(&inputs.assets.join("trees/kinds.ron"))?;
     let index = |key: &str| set.index_of(materials::material_id(key)).ok_or_else(|| BakeError(format!("the trees need the material `{key}`")));
+    let mut chains = vellmark_content::MeshLevels::default();
     for kind in &kinds {
+        chains.chains.push(trees::LEVELS.iter().map(|l| trees::mesh_id(&kind.key, l)).collect());
         let levels = trees::meshes(kind, index("bark")?, index("leaves")?, index(&trees::impostor_key(&kind.key))?);
         let triangles: Vec<usize> = levels.iter().map(|(_, m)| m.indices.len() / 3).collect();
         report.push(format!("tree.{}: {triangles:?} triangles by level", kind.key));
@@ -114,6 +116,7 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
             base.add(AssetKind::Mesh, id, mesh.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
         }
     }
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::MESH_LEVELS_KEY), chains.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
     let tiles = terrain::bake_tiles(&inputs.assets.join("terrain/valley.ron"), inputs.cache.as_deref())?;
     report.push(format!("terrain.valley: {} tiles", tiles.len()));
     // The ground's height anywhere, from the finest tile that holds the place, for

@@ -32,7 +32,9 @@ pub struct InstanceGpu {
     pub state: [f32; 4],
     /// The sphere that holds it, in the world: centre and radius.
     pub bounds: [f32; 4],
-    /// x: its group, the mesh it is drawn from. y: the group's first instance.
+    /// x: its group, the mesh it is drawn from. y: where the group's batch starts in a
+    /// list. z: how many levels of detail it has, 1 for none. w: how many instances the
+    /// group has, which is how far apart its levels' batches are in a list.
     pub group: [u32; 4],
 }
 
@@ -48,11 +50,26 @@ pub struct MeshRange {
 }
 
 /// Every instance of one mesh, which are kept together in the instance buffer.
+///
+/// A mesh with coarser levels of detail has a group for each level, one after another.
+/// Only the finest holds instances; the culling pass moves each to the level it is seen
+/// at, writing it into that level's own batch in the view's list.
 #[derive(Clone, Copy, Debug)]
 pub struct Group {
     pub mesh: usize,
     pub first_instance: u32,
     pub count: u32,
+    /// Where the group's batch starts in a list.
+    pub list_base: u32,
+    /// For the finest of a chain, how many levels it has; 1 for a mesh with none; 0 for
+    /// a coarser level, which holds no instances of its own.
+    pub levels: u32,
+}
+
+impl Group {
+    pub fn is_coarser_level(&self) -> bool {
+        self.levels == 0
+    }
 }
 
 /// One placed thing: what it is and where.
@@ -76,6 +93,8 @@ pub struct SceneGpu {
     pub lights: Vec<vellmark_content::Light>,
     /// The scene's authored text. The renderer uploads it when the scene is set.
     pub pages: TextPages,
+    /// Where the scene's batches end in a list; what follows (grass) starts here.
+    pub list_end: u32,
 }
 
 fn bounds_of(mesh: &Mesh) -> (glam::Vec3, f32) {
@@ -95,12 +114,24 @@ fn bounds_of(mesh: &Mesh) -> (glam::Vec3, f32) {
 
 impl SceneGpu {
     /// `mesh_of` returns a mesh by its ID, from the pack.
-    pub fn new(gpu: &Gpu, scene: &Scene, pages: TextPages, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
-        // Every distinct mesh once, in the pool.
+    pub fn new(gpu: &Gpu, scene: &Scene, pages: TextPages, levels: &vellmark_content::MeshLevels, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
+        // Every distinct mesh once, in the pool; a mesh with levels of detail is followed
+        // by its coarser levels.
         let mut ids: Vec<AssetId> = vec![scene.static_mesh];
+        let mut chain_len: Vec<u32> = vec![1];
         for object in &scene.objects {
             if !ids.contains(&object.mesh) {
                 ids.push(object.mesh);
+                match levels.chain(object.mesh) {
+                    Some(chain) if chain.len() > 1 => {
+                        chain_len.push(chain.len() as u32);
+                        for coarser in &chain[1..] {
+                            ids.push(*coarser);
+                            chain_len.push(0);
+                        }
+                    }
+                    _ => chain_len.push(1),
+                }
             }
         }
         let mut vertices: Vec<Vertex> = Vec::new();
@@ -133,16 +164,31 @@ impl SceneGpu {
             let m = ids.iter().position(|id| *id == object.mesh).unwrap();
             by_mesh[m].push((object.key, transform));
         }
-        let mut groups = Vec::new();
+        let mut groups: Vec<Group> = Vec::new();
         let mut placed = Vec::new();
         for (m, list) in by_mesh.into_iter().enumerate() {
-            groups.push(Group { mesh: m, first_instance: placed.len() as u32, count: list.len() as u32 });
+            let first = placed.len() as u32;
+            groups.push(Group { mesh: m, first_instance: first, count: list.len() as u32, list_base: first, levels: chain_len[m] });
             for (key, transform) in list {
                 placed.push(Placed { key, group: m, transform });
             }
         }
-        if placed.len() > MAX_INSTANCES {
-            return Err(format!("the scene has {} placed things; the limit is {MAX_INSTANCES}", placed.len()));
+        // A coarser level holds as many as its finest might send it, in its own part of
+        // each list, after every placed thing's.
+        let mut list_end = placed.len() as u32;
+        let mut finest = 0;
+        for g in 0..groups.len() {
+            if groups[g].levels >= 1 {
+                finest = g;
+            } else {
+                groups[g].count = groups[finest].count;
+                groups[g].first_instance = groups[finest].first_instance;
+                groups[g].list_base = list_end;
+                list_end += groups[finest].count;
+            }
+        }
+        if list_end as usize > MAX_INSTANCES {
+            return Err(format!("the scene needs {list_end} places in a list; the limit is {MAX_INSTANCES}"));
         }
         let make = |label, bytes: &[u8], usage| {
             let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -162,6 +208,7 @@ impl SceneGpu {
             placed,
             lights: scene.lights.clone(),
             pages,
+            list_end,
         })
     }
 
@@ -186,7 +233,10 @@ impl SceneGpu {
                     model: p.transform.to_cols_array(),
                     state: [heat, hidden, 0.0, 0.0],
                     bounds: [centre.x, centre.y, centre.z, mesh.radius * scale],
-                    group: [p.group as u32, self.groups[p.group].first_instance, 0, 0],
+                    group: {
+                        let g = &self.groups[p.group];
+                        [p.group as u32, g.list_base, g.levels.max(1), g.count]
+                    },
                 }
             })
             .collect()
