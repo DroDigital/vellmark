@@ -35,6 +35,8 @@ pub enum Command {
     /// Mouse sensitivity, as a multiple of the default.
     Sensitivity(f32),
     InvertY(bool),
+    /// Learn a word, by its spelling, or `all` of them.
+    Learn(String),
     /// Move an action to a button: a key, `mouse_left`, or a pad button such as `south`.
     Bind(String, String),
     Quit,
@@ -210,6 +212,7 @@ impl Overlay {
                 Some(button) => self.commands.push(Command::Bind(action.to_string(), button.to_string())),
                 None => self.say("bind takes an action, then a key, `mouse_left`, or a pad button such as `south`"),
             },
+            (Some("learn"), Some(word)) => self.commands.push(Command::Learn(word.to_ascii_uppercase())),
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),
         }

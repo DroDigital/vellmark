@@ -156,6 +156,15 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
                 // What its bark records.
                 let kind = kinds.iter().find(|k| k.key == p.kind).ok_or_else(|| BakeError(format!("no tree kind `{}`", p.kind)))?;
                 records.trees.push(vellmark_content::TreeRecord { tree: key, kind: kind.key.clone(), years: trees::years(kind, k, p.x, p.z), girth: trees::girth(kind) });
+                // A tree is a plant to write on: its sphere about its crown.
+                baked.inscribed.items.push(vellmark_content::InscribedThing {
+                    id: key,
+                    class: "plant".into(),
+                    centre: [p.x, y + kind.height * k * 0.55, p.z],
+                    radius: kind.height * k * 0.45,
+                    resistance: 0,
+                    words: Vec::new(),
+                });
                 baked.scene.objects.push(vellmark_content::Object {
                     key,
                     mesh: trees::mesh_id(p.kind, trees::LEVELS[0]),
@@ -172,6 +181,16 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
         if let Some(pages) = &baked.pages {
             report.push(format!("{}.pages: {} pages", baked.key, pages.entries.len()));
             base.add(AssetKind::TextPage, baked.scene.pages, pages.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+        }
+        // Every inscribed thing's class must be a target class the words know.
+        for t in &baked.inscribed.items {
+            if !words.table.classes.contains(&t.class) {
+                return Err(BakeError(format!("{}: no target class `{}`", baked.key, t.class)));
+            }
+        }
+        if !baked.inscribed.items.is_empty() {
+            report.push(format!("{}: {} things inscribed", baked.key, baked.inscribed.items.len()));
+            base.add(AssetKind::Table, AssetId::from_key(&vellmark_content::targets_key(&baked.key)), baked.inscribed.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
         }
         if !baked.readables.items.is_empty() {
             report.push(format!("{}: {} texts to read", baked.key, baked.readables.items.len()));

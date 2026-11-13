@@ -2,6 +2,21 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: Inscriptions and casting (S03-T05)
+
+**Numbers, for the Play Gate.** A charge is full in 1.2 s. Tough targets need half a
+charge, Hard a full one; both hands holding the same word reach a tier further, half again
+as strong, and cost 1.6 times as much. A staggered or unaware target resists a tier less.
+Written words hold 45 s from a tap and up to 120 s from a full charge, half as long again
+from both hands, then fade back to what they replaced. Ink: 100, refilling at 2.5 a second
+while no hand charges; a word costs its sheet's Ink, more on larger things (0.6 to 3
+times by size), on tougher ones (up to twice), and with its charge (up to twice). Words
+reach 40 m.
+
+**A word joins or replaces.** A word replaces the word of its class on a target; if there
+is none it joins the Inscription, up to three words, a written one giving way when full.
+So `BURNING` on the yard's `LOCKED` door gives `LOCKED BURNING`, and the door burns locked.
+
 ## 2026-11-13: the word sheets (S03-T04)
 
 **Thirteen target classes.** The brief asks for a result or a refusal for every word on

@@ -90,6 +90,8 @@ fn player_input(actions: &ActionState, bindings: &Bindings, dt: f32, first_step:
         (Action::MainHand, buttons::ATTACK_MAIN),
         (Action::OffHand, buttons::ATTACK_OFF),
         (Action::Sidestep, buttons::SIDESTEP),
+        (Action::NextWord, buttons::NEXT_WORD),
+        (Action::PreviousWord, buttons::PREVIOUS_WORD),
     ] {
         if actions.held(action) {
             held |= bit;
@@ -220,6 +222,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     world.set_scene(solids, breakables);
     world.set_trunks(vellmark_render::tree_trunks(&base, &scene));
     world.set_readables(vellmark_render::scene_readables(&base, &scene_key));
+    let rules = vellmark_render::word_rules(&base);
+    world.set_targets(vellmark_render::scene_targets(&base, &scene_key, &rules));
+    world.set_word_rules(rules);
     // The simulation holds the feet; the scene's spawn is given as an eye.
     let spawn = scene.spawn;
     world.add_player(Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]), spawn[3]);
@@ -267,6 +272,17 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     log::line(&format!("preset {preset:?}"));
 
     let mut sound = crate::sound::Sound::start(&platform, &scene);
+    // Doors that words have opened swing on their hinges: each door's place as built, and
+    // how far open it is now, 0 to 1.
+    let door_places: Vec<(vellmark_content::AssetId, glam::Mat4)> = scene
+        .objects
+        .iter()
+        .map(|o| {
+            let t = o.transform;
+            (o.key, glam::Mat4::from_cols_array(&[t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7], t[11], 1.0]))
+        })
+        .collect();
+    let mut door_open: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
 
     'frames: loop {
         let now = Instant::now();
@@ -343,6 +359,18 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         log::line(&format!("preset {p:?}"));
                     }
                     Command::Wind(n) => forced_gust = Some((n, started.elapsed().as_secs_f32())),
+                    Command::Learn(word) => {
+                        let id = current.players[0].id;
+                        let all: Vec<String> = world.word_rules().words.iter().map(|w| w.spelling.clone()).collect();
+                        let words = if word == "ALL" { all } else { vec![word] };
+                        for w in words {
+                            if world.learn(id, &w) {
+                                log::line(&format!("learned {w}"));
+                            } else {
+                                log::line(&format!("no word {w}"));
+                            }
+                        }
+                    }
                     Command::Sensitivity(n) => input_settings.mouse_sensitivity = n,
                     Command::InvertY(on) => input_settings.invert_y = on,
                     Command::Bind(action, button) => {
@@ -439,6 +467,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
             vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() }
                 .draw(&mut canvas, player, &actions, &bindings, style);
+            if player.reading == vellmark_sim::reading::ReadingSnap::None {
+                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), size: screen.size(), density: window.pixel_density() }.draw(&mut canvas, player);
+            }
         }
         #[cfg(feature = "dev")]
         dev_tools.draw(&mut canvas, &assets.glyphs, screen.size(), window.pixel_density(), frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), &registry, &tuning);
@@ -466,6 +497,17 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
 
         sound.update(camera.eye, &current.weather, hour, terrain.as_deref());
+        // Open doors swing, eased; closed ones swing back.
+        for t in current.targets.iter() {
+            let Some((key, place)) = door_places.iter().find(|(k, _)| k.0 == t.id) else { continue };
+            let want = if t.effects.iter().any(|e| e == "open") { 1.0 } else { 0.0 };
+            let now = door_open.entry(t.id).or_insert(0.0);
+            if *now != want {
+                *now += (want - *now).clamp(-frame_time.as_secs_f32() * 1.5, frame_time.as_secs_f32() * 1.5);
+                let eased = *now * *now * (3.0 - 2.0 * *now);
+                renderer.scene_mut().set_transform(*key, *place * glam::Mat4::from_rotation_y(-eased * 95f32.to_radians()));
+            }
+        }
 
         if let Some(frame) = screen.acquire(&gpu) {
             let target = frame.texture.create_view(&Default::default());

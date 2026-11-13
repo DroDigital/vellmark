@@ -17,6 +17,36 @@ pub struct PlayerSnap {
     pub reading: crate::reading::ReadingSnap,
     /// The text it would read if it held Read now, by its ID.
     pub in_focus: Option<u64>,
+    pub ink: f32,
+    /// What each hand holds: main, then off.
+    pub holding: [crate::casting::Holding; 2],
+    /// Each hand's charge, 0 to 1, and both hands' together.
+    pub charge: [f32; 3],
+    /// What the crosshair shows for each hand's word, if it holds one and something is
+    /// in the gaze: the target, and what the word would do.
+    pub preview: [Option<(u64, crate::emendation::Preview)>; 2],
+}
+
+/// A thing with an Inscription, as drawn.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TargetSnap {
+    pub id: u64,
+    pub centre: Vec3,
+    pub radius: f32,
+    /// Its words, in order.
+    pub words: Vec<String>,
+    /// The effects of the written words on it now.
+    pub effects: Vec<String>,
+}
+
+/// A word on its way.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlightSnap {
+    pub word: String,
+    pub from: Vec3,
+    pub at: Vec3,
+    pub target: u64,
+    pub charge: f32,
 }
 
 /// One camera. There is one for each player, and the renderer draws the whole list.
@@ -67,6 +97,12 @@ pub struct Snapshot {
     pub heat: std::sync::Arc<Vec<(u64, f32)>>,
     /// The weather of this step.
     pub weather: crate::Weather,
+    /// Every thing with an Inscription. Shared with the last snapshot while none changed.
+    pub targets: std::sync::Arc<Vec<TargetSnap>>,
+    /// Words in flight.
+    pub flights: Vec<FlightSnap>,
+    /// Words that landed this step.
+    pub landings: Vec<crate::casting::CastEvent>,
 }
 
 impl Snapshot {

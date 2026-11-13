@@ -122,6 +122,23 @@ struct Authored {
     lights: Vec<AuthoredLight>,
     #[serde(default)]
     texts: Vec<AuthoredText>,
+    /// The things that carry Inscriptions.
+    #[serde(default)]
+    inscribed: Vec<AuthoredInscribed>,
+}
+
+#[derive(Deserialize)]
+struct AuthoredInscribed {
+    /// An object's or light's key.
+    thing: String,
+    /// Its target class, as in `assets/data/words/targets.ron`.
+    class: String,
+    /// Its words, each with its class.
+    #[serde(default)]
+    words: Vec<(String, String)>,
+    /// 0 Plain, 1 Tough, 2 Hard, 3 Sealed.
+    #[serde(default)]
+    resistance: u8,
 }
 
 /// The six faces of a box: normal, the direction the page's first coordinate grows
@@ -287,6 +304,50 @@ pub struct BakedScene {
     pub pages: Option<TextPages>,
     /// The texts that can be read with the Read action.
     pub readables: vellmark_content::Readables,
+    /// The things that carry Inscriptions.
+    pub inscribed: vellmark_content::InscribedThings,
+}
+
+/// The scene's things that carry Inscriptions: each object's sphere from its boxes, or a
+/// light's from where it hangs.
+fn inscribed_of(authored: &Authored, name: &str, file: &Path) -> Result<vellmark_content::InscribedThings, BakeError> {
+    let mut items = Vec::new();
+    for i in &authored.inscribed {
+        let (centre, radius) = if let Some(o) = authored.objects.iter().find(|o| o.key == i.thing) {
+            let (s, c) = o.yaw.to_radians().sin_cos();
+            let mut lo = [f32::MAX; 3];
+            let mut hi = [f32::MIN; 3];
+            for b in &o.boxes {
+                for corner in 0..8 {
+                    let p = [if corner & 1 == 0 { b.min.0 } else { b.max.0 }, if corner & 2 == 0 { b.min.1 } else { b.max.1 }, if corner & 4 == 0 { b.min.2 } else { b.max.2 }];
+                    let w = [c * p[0] + s * p[2] + o.position.0, p[1] + o.position.1, -s * p[0] + c * p[2] + o.position.2];
+                    for k in 0..3 {
+                        lo[k] = lo[k].min(w[k]);
+                        hi[k] = hi[k].max(w[k]);
+                    }
+                }
+            }
+            let centre = [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5, (lo[2] + hi[2]) * 0.5];
+            let half = [(hi[0] - lo[0]) * 0.5, (hi[1] - lo[1]) * 0.5, (hi[2] - lo[2]) * 0.5];
+            (centre, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt() * 0.75)
+        } else if let Some(l) = authored.lights.iter().find(|l| l.key == i.thing) {
+            ([l.position.0, l.position.1, l.position.2], 0.35)
+        } else {
+            return Err(BakeError(format!("{}: nothing called `{}` to inscribe", file.display(), i.thing)));
+        };
+        if i.words.len() > 3 {
+            return Err(BakeError(format!("{}: `{}` has more than three words", file.display(), i.thing)));
+        }
+        items.push(vellmark_content::InscribedThing {
+            id: AssetId::from_key(&format!("scene.{name}.{}", i.thing)),
+            class: i.class.clone(),
+            centre,
+            radius,
+            resistance: i.resistance.min(3),
+            words: i.words.clone(),
+        });
+    }
+    Ok(vellmark_content::InscribedThings { items })
 }
 
 /// Every authored text of a scene as a thing to be read: the box round the boxes its
@@ -521,7 +582,8 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
         };
         let pages = (!pages.entries.is_empty()).then_some(pages);
         let readables = readables_of(&authored, &name, strings, &file)?;
-        out.push(BakedScene { key: format!("scene.{name}"), scene, meshes, pages, readables });
+        let inscribed = inscribed_of(&authored, &name, &file)?;
+        out.push(BakedScene { key: format!("scene.{name}"), scene, meshes, pages, readables, inscribed });
     }
     Ok(out)
 }

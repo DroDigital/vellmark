@@ -2,4 +2,9 @@
 // rename.
 {
     "ui.read": "Read",
+    "ui.crosshair": "+",
+    "ui.sealed": "It is sealed.",
+    "ui.ring.full": "o",
+    "ui.ring.empty": ".",
+    "ui.ink.stroke": "|",
 }

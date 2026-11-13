@@ -24,6 +24,8 @@ pub trait Ground: Send + Sync + std::fmt::Debug {
 pub mod character;
 pub mod hands;
 pub mod reading;
+pub mod emendation;
+pub mod casting;
 mod hash;
 mod input;
 mod snapshot;

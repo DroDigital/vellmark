@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T05, Inscriptions and casting.
+**Current task:** S03-T06, the five-part magic effect.
 
 ## Lane: Render
 
@@ -31,6 +31,7 @@
 
 ## Lane: Sim
 
+**Done:** S03-T05, Inscriptions and casting (`crates/sim/src/emendation.rs`, `casting.rs`): things carry Inscriptions of at most one word a class, three in all, declared in each scene's `inscribed` list and baked into `targets.<scene>` (the valley's 612 trees are plants); the words come from `words.table`. A word in a hand is written on the thing in the gaze within 40 m by a tap, a charge (full in 1.2 s, reaching Tough at half and Hard when full), or both hands holding the same word (a tier further, half again as strong, dearer); it flies at its sheet's speed and lands, replacing its class's word or joining the others, or is refused, resisted, or sealed. Written words fade after 45 s to 120 s, longer from both hands, and bring back what they replaced. Ink costs by size, toughness, charge, and hands, and comes back at 2.5 a second while no hand charges. The crosshair shows the plain preview, the refusal line, a ring that fills to the charge a tough target needs, or "It is sealed." Heating and cooling words make things hot and cold; `OPEN` swings the yard's door open, inward. Console `learn <word>` or `learn all`. Evidence: `docs/evidence/S03/open.jpg`. Tests: `crates/sim/tests/casting.rs`, `crates/harness/tests/casting.rs`.
 **Done:** S03-T03, reading (`crates/sim/src/reading.rs`): the text the eye is on within 2.6 m, unless something solid hides it, is read while Read is held, with the hidden lines the reader's Perception reaches; with no text in focus Read is close reading, and in solo play the world (bodies, debris, weather, the clock) runs at a third of its pace while it is held, never in co-op. Each scene's texts are baked into `readables.<scene>` with their hidden lines. Reading mode sets the text large on paper over the dimmed view, as large as fits, hidden lines in a red-brown ink beneath; a `[R] Read` prompt shows when a text is in focus. Stamina drain while close reading joins Stamina in S03-T09. Evidence: `docs/evidence/S03/reading.jpg`. Tests: `crates/sim/tests/reading.rs`, `crates/harness/tests/reading.rs`.
 **Done:** S03-T01, the first-person body on `rapier3d` (`crates/sim/src/character.rs`): jog 5 m/s and sprint 7.5 m/s with acceleration, a jump of about a metre with grace either side of an edge, crouch that stays down under a roof, a mantle onto ledges up to 1.9 m, wading and swimming with the eye just above the water, and the 2 m sidestep whose first 0.12 s attacks pass through. The terrain's finest tiles are heightfields split as the terrain is drawn, the scene's boxes and the trees' trunks are solid, and stepping stays deterministic. Tests: `crates/sim/tests/controller.rs`, `crates/harness/tests/walk.rs`.
 

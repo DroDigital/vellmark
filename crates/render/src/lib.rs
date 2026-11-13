@@ -224,6 +224,59 @@ pub fn tree_trunks(pack: &vellmark_content::Pack, scene: &vellmark_content::Scen
         .collect()
 }
 
+/// The words, as the rules know them, from the word table.
+pub fn word_rules(pack: &vellmark_content::Pack) -> vellmark_sim::emendation::WordRules {
+    use vellmark_content::{AssetId, AssetKind, Outcome, WordTable, WORDS_KEY};
+    use vellmark_sim::emendation::{CompoundRule, RuleOutcome, WordRule, WordRules};
+    let Some(t) = pack.get(AssetKind::Table, AssetId::from_key(WORDS_KEY)).and_then(|b| WordTable::from_bytes(b).ok()) else {
+        return WordRules::default();
+    };
+    let rule = |o: &Outcome| match o {
+        Outcome::Effect { effect, strength, preview } => RuleOutcome::Effect { effect: effect.clone(), strength: *strength, preview: preview.0 },
+        Outcome::Refusal(line) => RuleOutcome::Refusal(line.0),
+    };
+    WordRules {
+        classes: t.classes.clone(),
+        words: t
+            .words
+            .iter()
+            .map(|w| WordRule {
+                spelling: w.word.clone(),
+                class: w.class.clone(),
+                ink: w.ink,
+                flight_speed: w.look.flight_speed,
+                outcomes: w.outcomes.iter().map(rule).collect(),
+                weapon: rule(&w.weapon),
+                typo: w.typo.word.clone(),
+                typo_outcomes: w.typo.outcomes.iter().map(rule).collect(),
+            })
+            .collect(),
+        compounds: t
+            .compounds
+            .iter()
+            .filter_map(|c| {
+                let a = t.words.iter().position(|w| w.word == c.words[0])?;
+                let b = t.words.iter().position(|w| w.word == c.words[1])?;
+                Some(CompoundRule { name: c.name.clone(), words: [a, b], outcomes: c.outcomes.iter().map(rule).collect() })
+            })
+            .collect(),
+    }
+}
+
+/// A scene's things that carry Inscriptions, for the rules.
+pub fn scene_targets(pack: &vellmark_content::Pack, scene_key: &str, rules: &vellmark_sim::emendation::WordRules) -> Vec<vellmark_sim::emendation::Target> {
+    use vellmark_content::{targets_key, AssetId, AssetKind, InscribedThings};
+    use vellmark_sim::emendation::{Resistance, Target};
+    let Some(things) = pack.get(AssetKind::Table, AssetId::from_key(&targets_key(scene_key))).and_then(|b| InscribedThings::from_bytes(b).ok()) else {
+        return Vec::new();
+    };
+    things
+        .items
+        .iter()
+        .filter_map(|t| Some(Target::new(t.id.0, rules.class(&t.class)?, t.centre.into(), t.radius, Resistance::from_index(t.resistance), &t.words)))
+        .collect()
+}
+
 /// A scene's texts that can be read, for the rules.
 pub fn scene_readables(pack: &vellmark_content::Pack, scene_key: &str) -> Vec<vellmark_sim::reading::ReadableText> {
     use vellmark_content::{readables_key, AssetId, AssetKind, Readables};

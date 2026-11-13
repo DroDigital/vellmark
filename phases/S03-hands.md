@@ -28,7 +28,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S03-T02** [Shell] Add the two-hand input model, button prompts drawn in letters, and settings for sensitivity, invert, and remapping
 - [x] **S03-T03** [Sim] Build reading: the Read action, close reading, reading mode with enlarged text, and hidden lines
 - [x] **S03-T04** [Content] Build the word sheet format and its bake, with sheets for the seven words, and generate the word matrix from them
-- [ ] **S03-T05** [Sim] Implement Inscriptions on targets, tap and charge from either hand, both hands together, resistance, fading, Ink, and the plain preview at the crosshair
+- [x] **S03-T05** [Sim] Implement Inscriptions on targets, tap and charge from either hand, both hands together, resistance, fading, Ink, and the plain preview at the crosshair
 - [ ] **S03-T06** [Render] Build the five-part magic effect on the shared particle system: charge, flight as a moving light, impact, the rewrite wave in the surface shader, and lasting states
 - [ ] **S03-T07** [Sim] Add typos for the seven words, the five compounds, and the systemic chain between neighbouring targets
 - [ ] **S03-T08** [Sim] Add physics props, breakable props that fracture along their text, and the bridge as a marked structure that `WHOLE` pulls back together. Loose letters are already built (see `docs/PLAN_CHANGES.md`, 2026-11-11): fracture pieces should crumble into them, and `WHOLE` should use each letter's home

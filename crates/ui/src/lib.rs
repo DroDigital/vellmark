@@ -5,6 +5,7 @@
 //! rectangles, in pixels, and the renderer draws the canvas.
 
 pub mod reading_view;
+pub mod hud;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 

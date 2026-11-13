@@ -50,6 +50,7 @@ struct Player {
     in_focus: Option<usize>,
     /// How sharp a reader: hidden lines up to this are seen.
     perception: u32,
+    caster: crate::casting::Caster,
 }
 
 /// The ground as the body asks about it.
@@ -93,6 +94,13 @@ pub struct World {
     seconds: f64,
     /// The share of a step's time that passed in the last step: 1, or less while slowed.
     pace: f32,
+    /// The words, as the rules know them.
+    rules: Arc<crate::emendation::WordRules>,
+    /// Every thing with an Inscription.
+    targets: Vec<crate::emendation::Target>,
+    targets_snap: Arc<Vec<crate::snapshot::TargetSnap>>,
+    flights: Vec<crate::emendation::Flight>,
+    landings: Vec<crate::casting::CastEvent>,
 }
 
 impl World {
@@ -120,6 +128,11 @@ impl World {
             readables: Arc::default(),
             seconds: 0.0,
             pace: 1.0,
+            rules: Arc::default(),
+            targets: Vec::new(),
+            targets_snap: Arc::default(),
+            flights: Vec::new(),
+            landings: Vec::new(),
         }
     }
 
@@ -128,7 +141,7 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0 });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default() });
         id
     }
 
@@ -138,6 +151,63 @@ impl World {
         self.debris.set_solids(solids);
         self.breakables = breakables;
         self.rebuild_statics();
+    }
+
+    /// Gives the world the words, as compiled from their sheets.
+    pub fn set_word_rules(&mut self, rules: crate::emendation::WordRules) {
+        self.rules = Arc::new(rules);
+    }
+
+    pub fn word_rules(&self) -> &crate::emendation::WordRules {
+        &self.rules
+    }
+
+    /// Gives the world the things that carry Inscriptions.
+    pub fn set_targets(&mut self, targets: Vec<crate::emendation::Target>) {
+        self.targets = targets;
+        self.refresh_targets();
+    }
+
+    /// A player learns a word, by its spelling. Returns whether there is such a word.
+    pub fn learn(&mut self, id: PlayerId, spelling: &str) -> bool {
+        let Some(w) = self.rules.word(spelling) else { return false };
+        if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+            p.caster.learn(w);
+        }
+        true
+    }
+
+    /// Puts a word, by its spelling, in a player's hand: 0 main, 1 off.
+    pub fn hold_word(&mut self, id: PlayerId, hand: usize, spelling: &str) {
+        let Some(w) = self.rules.word(spelling) else { return };
+        if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+            p.caster.learn(w);
+            p.caster.holding[hand.min(1)] = crate::casting::Holding::Word(w);
+        }
+    }
+
+    fn refresh_targets(&mut self) {
+        self.targets_snap = Arc::new(
+            self.targets
+                .iter()
+                .map(|t| crate::snapshot::TargetSnap {
+                    id: t.id,
+                    centre: t.centre,
+                    radius: t.radius,
+                    words: t.words.iter().map(|w| w.spelling.clone()).collect(),
+                    effects: t.effects.iter().map(|e| e.effect.clone()).collect(),
+                })
+                .collect(),
+        );
+        // Words that heat and cool make things hot and cold.
+        let mut all: Vec<(u64, f32)> = self.heat.iter().copied().filter(|(id, _)| !self.targets.iter().any(|t| t.id == *id)).collect();
+        for t in &self.targets {
+            let h = crate::casting::heat_of(t);
+            if h != 0.0 {
+                all.push((t.id, h));
+            }
+        }
+        self.heat = Arc::new(all);
     }
 
     /// Gives the world the texts that can be read.
@@ -312,6 +382,37 @@ impl World {
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
             p.body.step(&input, p.yaw, self.statics.as_deref(), &Around(self.ground.as_deref()), dt);
         }
+        // Casting: the hands' taps and charges become words in flight, which land.
+        self.landings.clear();
+        let mut hand_events = Vec::new();
+        for (i, p) in self.players.iter_mut().enumerate() {
+            let input = inputs.get(i).copied().unwrap_or_default();
+            let pressed = input.buttons & !p.caster.last_buttons;
+            p.caster.last_buttons = input.buttons;
+            if pressed & buttons::NEXT_WORD != 0 {
+                p.caster.cycle(1);
+            }
+            if pressed & buttons::PREVIOUS_WORD != 0 {
+                p.caster.cycle(-1);
+            }
+            let eye = p.body.feet + Vec3::Y * p.body.eye;
+            let (sy, cy) = p.yaw.sin_cos();
+            let (sp, cp) = p.pitch.sin_cos();
+            let gaze = Vec3::new(sy * cp, sp, -cy * cp);
+            let right = Vec3::new(cy, 0.0, sy);
+            crate::casting::take_aim(&mut p.caster, eye, gaze, &self.targets);
+            // While reading, the hands are still.
+            let reading = p.reading != Reading::None;
+            p.caster.hands.step(input.held(buttons::ATTACK_MAIN) && !reading, input.held(buttons::ATTACK_OFF) && !reading, &mut hand_events);
+            crate::casting::release(p.id.0, &mut p.caster, &hand_events, &self.rules, &self.targets, eye, gaze, right, &mut self.flights);
+            crate::casting::refill(&mut p.caster, dt);
+        }
+        let landed_before = self.landings.len();
+        crate::casting::fly(&mut self.flights, &mut self.targets, &self.rules, dt, self.seconds, &mut self.landings);
+        let faded = crate::casting::fade_all(&mut self.targets, self.seconds);
+        if faded || self.landings.len() > landed_before {
+            self.refresh_targets();
+        }
         if self.debris.awake() > 0 {
             self.debris.step(dt);
             self.refresh_letters();
@@ -349,6 +450,17 @@ impl World {
                     }
                 },
                 in_focus: p.in_focus.map(|t| self.readables[t].id),
+                ink: p.caster.ink,
+                holding: p.caster.holding,
+                charge: [
+                    p.caster.charge(Some(crate::hands::Hand::Main)),
+                    p.caster.charge(Some(crate::hands::Hand::Off)),
+                    p.caster.charge(None),
+                ],
+                preview: [
+                    crate::casting::preview_for(&p.caster, &self.rules, &self.targets, crate::hands::Hand::Main),
+                    crate::casting::preview_for(&p.caster, &self.rules, &self.targets, crate::hands::Hand::Off),
+                ],
             })
             .collect();
         let views = self
@@ -371,6 +483,13 @@ impl World {
             broken: self.broken.clone(),
             heat: self.heat.clone(),
             weather: self.weather.now,
+            targets: self.targets_snap.clone(),
+            flights: self
+                .flights
+                .iter()
+                .map(|f| crate::snapshot::FlightSnap { word: self.rules.words[f.word].spelling.clone(), from: f.from, at: f.at, target: f.target, charge: f.charge })
+                .collect(),
+            landings: self.landings.clone(),
         })
     }
 
@@ -392,8 +511,22 @@ impl World {
         for p in &self.players {
             h.u32(p.id.0);
             p.body.hash(&mut h);
+            h.f32(p.caster.ink);
             h.f32(p.yaw);
             h.f32(p.pitch);
+        }
+        for t in &self.targets {
+            for w in &t.words {
+                for b in w.spelling.bytes() {
+                    h.u32(b as u32);
+                }
+            }
+        }
+        h.u32(self.flights.len() as u32);
+        for f in &self.flights {
+            h.f32(f.at.x);
+            h.f32(f.at.y);
+            h.f32(f.at.z);
         }
         h.u32(self.debris.letters.len() as u32);
         for l in &self.debris.letters {
