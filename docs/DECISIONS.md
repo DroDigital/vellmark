@@ -2,6 +2,26 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: grass about a pixel wide is shaded as the sward (S02-T07b)
+
+**Prefiltered, not blurred.** Pasture seen almost edge on, and barley against a low sun,
+failed the shimmer check: a blade a pixel or two wide carried detail finer than the
+pixels (its root's shadow, its rounded and randomly turned face, a lit tip over a shaded
+root), and 4x MSAA turned it on and off as the eye moved. The brief allows no temporal
+accumulation, so the detail is filtered where it is made. A blade's `seen`, from 0 at
+about a pixel and a half wide to 1 at four, blends it towards the sward's average:
+the sward's normal (90%), the root's shadow at its mean, the sward's share of the sky
+(55% of the root's), and the sun's shadow taken partway up the sward (0.15 m in pasture,
+0.6 m in barley), where the ground under it takes it too. Each blade keeps its own tint
+and its paler tip. Against a low sun the ground under a sward glows as its blades do.
+Thin blades are darkened to 0.8 so the field keeps its brightness: the near pasture's
+mean colour is within 1% of what it was, and its contrast from pixel to pixel falls
+from 0.080 to 0.061. Evidence: `docs/evidence/S02/grass_grazing.jpg`.
+
+**The barley's shimmer shots moved into the field.** The road's hedges, placed in
+S02-T08b, stand where S02-T14 took them from (-60, 44); they are now taken from inside
+the barley at (-50, -20). Three grazing pasture shots were added to the exit captures.
+
 ## 2026-11-13: trees drawn (S02-T08c)
 
 **The level is chosen once, in culling.** Each tree's level comes from the share of the

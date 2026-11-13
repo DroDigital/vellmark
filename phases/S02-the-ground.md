@@ -29,7 +29,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S02-T05** [Content] Bake sky visibility for every surface, and use it for ambient light with contact occlusion at half resolution
 - [x] **S02-T06** [Render] Add GPU culling and instancing through one instance buffer, with the depth pyramid from the last frame
 - [x] **S02-T07** [Render] Add grass as instanced blades that sway and bend around a moving point, with each blade a line of characters up close
-- [ ] **S02-T07b** [Render] Grass seen almost edge on passes the shimmer check: the pasture east from x 160, z 120 at pitch 9, with and without the wood behind it (found in T08c)
+- [x] **S02-T07b** [Render] Grass seen almost edge on passes the shimmer check: the pasture east from x 160, z 120 at pitch 9, with and without the wood behind it (found in T08c)
 - [x] **S02-T08a** [Content] Generate tree meshes in the bake: trunks and branches in bark, leaf cards, three levels of detail and a far form, for a few kinds
 - [x] **S02-T08b** [Content] Place the woods, the orchard, and hedgerow trees in the valley as instances with permanent IDs
 - [x] **S02-T08c** [Render] Draw trees through the instance buffer, the level chosen in culling and crossfaded; leaf cards cut out, their leaves written as `^ A v` at arm's length (after T08a)
