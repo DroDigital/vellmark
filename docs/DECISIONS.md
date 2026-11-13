@@ -2,6 +2,24 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: a tree's bark records its age (S02-T08d)
+
+**The truth is data.** The bake records each placed tree's kind, age, and girth in a
+`trees.records` table beside the scene. A tree's age is its kind's age at its grown size
+(`age` in `assets/trees/kinds.ron`: oak 140, ash 90, apple 40, hawthorn 55), older as the
+tree is larger (scale to the power 1.6), and up to 15% older or younger by where it
+stands. Nothing about it is written into the pack as text.
+
+**The text is written where it is read.** The page table keeps its last eight pages, and
+the page sheet its bottom 128 rows, for generated truth; authored text has the rest, and
+the bake refuses more. The renderer lends the eight pages to the trees nearest any eye,
+within 14 m, and rewrites a page only when the tree it is lent to changes. A tree's
+instance tells its bark which page to read, and any surface of it without an authored
+page reads it, its leaves never. The record runs round the trunk from 0.35 m to 2.75 m
+up, at the second level of the cascade (letters about 2.5 cm tall), a blank row between
+lines and each line a little further round than the last. Its words are in the string
+table (`assets/text/en/trees.ron`): `Oak. Stood 130 years.`, after the yard's bench.
+
 ## 2026-11-13: grass about a pixel wide is shaded as the sward (S02-T07b)
 
 **Prefiltered, not blurred.** Pasture seen almost edge on, and barley against a low sun,
