@@ -984,6 +984,9 @@ struct GrassVaryings {
     @location(6) @interpolate(flat) blade: vec2<f32>,
     // How hard the wind's sentence presses this blade.
     @location(7) @interpolate(flat) pressed: f32,
+    // How well the blade is seen: 0 where it is about a pixel wide and is shaded as the
+    // sward's average, 1 where it is wide enough to show its own light and shade.
+    @location(8) @interpolate(flat) seen: f32,
 }
 
 @vertex
@@ -998,6 +1001,7 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     out.material = 0u;
     out.blade = vec2<f32>(0.0);
     out.pressed = 0.0;
+    out.seen = 0.0;
 
     let object = instances[instance_of(index)];
     let origin = object.model[3].xyz;
@@ -1130,8 +1134,11 @@ fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     // Rounded across its width, so it catches the light as a real blade does, and bent
     // towards the sky, as the sward together faces it: a field is lit as the ground it
     // covers, and each blade still has its own light.
-    let own = normalize(cross(across, tangent) + across * sign * 0.5);
-    out.normal = normalize(mix(own, slope, 0.55));
+    // A blade too narrow to show its rounding is shaded as the sward is: what is finer
+    // than the pixels cannot be drawn, and drawn anyway it flickers as the eye moves.
+    out.seen = smoothstep(1.5, 4.0, 2.0 * max(wide * 0.5, pixel * 0.55) / pixel);
+    let own = normalize(cross(across, tangent) + across * sign * 0.5 * out.seen);
+    out.normal = normalize(mix(own, slope, mix(0.7, 0.55, out.seen)));
     out.page = vec2<f32>(s * tall, sign * cell_side * widths[level] * 0.5);
     out.up = s;
     out.seed = seed;
@@ -1251,7 +1258,9 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
         n = normalize(reflect(n, normalize(vec3<f32>(n.x, 0.0, n.z) + vec3<f32>(0.0, 1.0e-4, 0.0))));
     }
     // Low in the sward the blades shade one another.
-    let ao = mix(0.5, 1.0, smoothstep(0.0, 0.8, in.up));
+    // A blade about a pixel wide is drawn as the sward's average, not its own light and
+    // shade: its root's shadow, its own tint, and its paler tip each tend to their mean.
+    let ao = mix(0.8, mix(0.5, 1.0, smoothstep(0.0, 0.8, in.up)), in.seen);
     let place = vec2<f32>(unit(in.seed), unit(in.seed >> 16u));
     let texel = textureSampleLevel(material_colour, material_sampler, place, in.material, 5.0);
     var albedo = texel.rgb * (0.8 + 0.4 * unit(in.seed >> 9u));
