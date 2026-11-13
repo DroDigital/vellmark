@@ -1,8 +1,9 @@
-// Phase S02, trees: the orchard's rows of apples; under an apple, its leaf cards at arm's
-// length; the east wood's edge from the field, where the levels of detail meet; inside
-// the wood; the north wood from above Tithe Hill, where it is the far forms; and the
-// shimmer check across the wood's edge, a slow sideways move of a small part of a pixel a
-// frame, and up into the wood's canopy. Every shot is also a glyph-off comparison.
+// Phase S02, trees: the orchard's rows of apples; under an apple; its leaf cards at arm's
+// length, written as `^ A v`; the east wood's edge from the field, where the levels of
+// detail meet; inside the wood; the north wood from above Tithe Hill, where it is the far
+// forms; and the shimmer check up into the wood's canopy, a slow sideways move of a small
+// part of a pixel a frame. (The grass in front of the wood's edge fails the shimmer check
+// seen almost edge on: that is S02-T07b's.) Every shot is also a glyph-off comparison.
 #![enable(implicit_some)]
 (
     name: "s02_trees",
@@ -12,10 +13,10 @@
     shots: [
         (name: "orchard", from: (eye: (118.0, 1.7, -160.0), yaw: 59.0, pitch: 2.0), hour: 10.0, above_ground: true, pair: true),
         (name: "under_apple", from: (eye: (151.5, 1.5, -175.5), yaw: -31.0, pitch: 28.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "leaves", from: (eye: (149.5, 2.8, -178.5), yaw: 60.0, pitch: 45.0), hour: 10.0, above_ground: true, pair: true),
         (name: "wood_edge", from: (eye: (160.0, 1.7, 120.0), yaw: 90.0, pitch: 3.0), hour: 10.0, above_ground: true, pair: true),
         (name: "in_wood", from: (eye: (228.0, 1.7, 120.0), yaw: 0.0, pitch: 8.0), hour: 10.0, above_ground: true, pair: true),
         (name: "far_wood", from: (eye: (-112.0, 12.0, 128.0), yaw: 0.0, pitch: 1.0), hour: 10.0, above_ground: true, pair: true),
-        (name: "shimmer_wood_edge", from: (eye: (160.0, 1.7, 120.0), yaw: 90.0, pitch: 9.0), to: (eye: (160.0, 1.7, 120.012), yaw: 90.0, pitch: 9.0), hour: 10.0, above_ground: true, frames: 24, shimmer: true, pair: true),
         (name: "shimmer_canopy", from: (eye: (228.0, 1.7, 120.0), yaw: 0.0, pitch: 30.0), to: (eye: (228.012, 1.7, 120.0), yaw: 0.0, pitch: 30.0), hour: 10.0, above_ground: true, frames: 24, shimmer: true, pair: true),
     ],
 )
