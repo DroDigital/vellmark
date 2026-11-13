@@ -114,7 +114,39 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
             base.add(AssetKind::Mesh, id, mesh.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
         }
     }
-    for baked in scene::bake_all(&inputs.assets.join("scenes"), &set, &table.text)? {
+    let tiles = terrain::bake_tiles(&inputs.assets.join("terrain/valley.ron"), inputs.cache.as_deref())?;
+    report.push(format!("terrain.valley: {} tiles", tiles.len()));
+    // The ground's height anywhere, from the finest tile that holds the place, for
+    // standing the trees on it.
+    let mut decoded: Vec<vellmark_content::TerrainTile> =
+        tiles.iter().map(|(_, bytes)| vellmark_content::TerrainTile::from_bytes(bytes)).collect::<Result<_, _>>().map_err(|e| BakeError(e.to_string()))?;
+    decoded.sort_by_key(|t| t.coord.level);
+    let ground = |x: f32, z: f32| -> Option<f32> {
+        decoded.iter().find(|t| {
+            let (x0, z0) = t.coord.origin();
+            x >= x0 && z >= z0 && x < x0 + t.coord.side() && z < z0 + t.coord.side()
+        }).map(|t| t.height_at(x, z))
+    };
+    let tree_places = terrain::tree_places(&inputs.assets.join("terrain/valley.ron"))?;
+    for (id, bytes) in tiles {
+        base.add(AssetKind::Tile, id, bytes).map_err(|e| BakeError(e.to_string()))?;
+    }
+
+    for mut baked in scene::bake_all(&inputs.assets.join("scenes"), &set, &table.text)? {
+        // The valley's trees, each with an ID from where it stands, which never changes.
+        if baked.scene.terrain == AssetId::from_key("terrain.valley") {
+            for p in &tree_places {
+                let Some(y) = ground(p.x, p.z) else { continue };
+                let (s, c) = p.yaw.sin_cos();
+                let k = p.scale;
+                baked.scene.objects.push(vellmark_content::Object {
+                    key: AssetId::from_key(&format!("{}.tree.{}.{}.{}", baked.key, p.kind, p.x.round() as i32, p.z.round() as i32)),
+                    mesh: trees::mesh_id(p.kind, trees::LEVELS[0]),
+                    transform: [c * k, 0.0, s * k, p.x, 0.0, k, 0.0, y - 0.1, -s * k, 0.0, c * k, p.z],
+                });
+            }
+            report.push(format!("{}: {} trees", baked.key, tree_places.len()));
+        }
         for (id, mesh) in &baked.meshes {
             base.add(AssetKind::Mesh, *id, mesh.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
         }
@@ -129,11 +161,6 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     base.add(AssetKind::MaterialSet, AssetId::from_key(materials::MATERIAL_SET_KEY), set.to_bytes())
         .map_err(|e| BakeError(e.to_string()))?;
 
-    let tiles = terrain::bake_tiles(&inputs.assets.join("terrain/valley.ron"), inputs.cache.as_deref())?;
-    report.push(format!("terrain.valley: {} tiles", tiles.len()));
-    for (id, bytes) in tiles {
-        base.add(AssetKind::Tile, id, bytes).map_err(|e| BakeError(e.to_string()))?;
-    }
 
     for (key, bytes) in grades::bake_all(&inputs.assets.join("grades"))? {
         report.push(format!("{key}: {} bytes", bytes.len()));

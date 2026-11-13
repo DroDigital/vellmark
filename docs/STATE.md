@@ -35,7 +35,7 @@ Nothing yet.
 
 ## Lane: Content
 
-**Done:** S02-T08a, trees grown in the bake: oak, ash, apple, and hawthorn, three levels and a far form each, bark that carries a page, leaf cards, and an impostor material per kind. Evidence: `docs/evidence/S02/tree_far_forms.png`. **Next:** S02-T08b, placing them; S02-T08c (Render) draws them.
+**Done:** S02-T08a, trees grown in the bake: oak, ash, apple, and hawthorn, three levels and a far form each, bark that carries a page, leaf cards, and an impostor material per kind. Evidence: `docs/evidence/S02/tree_far_forms.png`. **Done:** S02-T08b, 612 trees in the valley: the two woods (oak, ash, hawthorn on a jittered seven-metre grid), the Quiet Orchard's rows of apples, and hawthorn hedges along the roads, each an object with an ID from where it stands. **Next:** S02-T08c (Render) draws them; S02-T08d, the bark's age.
 
 **Asked by Render:** the brook's mouth into the River Quill (about x -12, z -106) is carved as a steep, pale gully that reads as a block from the north bank. Soften it.
 
