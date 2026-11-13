@@ -13,6 +13,7 @@ pub mod scene;
 pub mod sha256;
 pub mod strings;
 pub mod terrain;
+pub mod trees;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -102,6 +103,17 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
 
     let set = materials::bake_set(&inputs.assets.join("materials/materials.ron"))?;
     report.push(format!("{}: {} materials at {} px", materials::MATERIAL_SET_KEY, set.materials.len(), set.size));
+    // The trees: every level of every kind.
+    let kinds = trees::read_kinds(&inputs.assets.join("trees/kinds.ron"))?;
+    let index = |key: &str| set.index_of(materials::material_id(key)).ok_or_else(|| BakeError(format!("the trees need the material `{key}`")));
+    for kind in &kinds {
+        let levels = trees::meshes(kind, index("bark")?, index("leaves")?, index(&trees::impostor_key(&kind.key))?);
+        let triangles: Vec<usize> = levels.iter().map(|(_, m)| m.indices.len() / 3).collect();
+        report.push(format!("tree.{}: {triangles:?} triangles by level", kind.key));
+        for (id, mesh) in levels {
+            base.add(AssetKind::Mesh, id, mesh.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+        }
+    }
     for baked in scene::bake_all(&inputs.assets.join("scenes"), &set, &table.text)? {
         for (id, mesh) in &baked.meshes {
             base.add(AssetKind::Mesh, *id, mesh.to_bytes()).map_err(|e| BakeError(e.to_string()))?;

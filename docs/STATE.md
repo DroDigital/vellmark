@@ -35,6 +35,8 @@ Nothing yet.
 
 ## Lane: Content
 
+**Done:** S02-T08a, trees grown in the bake: oak, ash, apple, and hawthorn, three levels and a far form each, bark that carries a page, leaf cards, and an impostor material per kind. Evidence: `docs/evidence/S02/tree_far_forms.png`. **Next:** S02-T08b, placing them; S02-T08c (Render) draws them.
+
 **Asked by Render:** the brook's mouth into the River Quill (about x -12, z -106) is carved as a steep, pale gully that reads as a block from the north bank. Soften it.
 
 **Done:** S02-T01, the terrain as tiles (192 tiles in three levels). Maps in `docs/evidence/S02/`.

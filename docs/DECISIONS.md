@@ -2,6 +2,30 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-13: trees grown in the bake (S02-T08a)
+
+**Grown, not modelled.** The kinds are data (`assets/trees/kinds.ron`: oak, ash, apple,
+hawthorn), each grown from its seed by `bake::trees` the same way every time: a leaning
+trunk, branches leaving it in golden-angle turns above the crown line, each branch
+branching again, drooping under its weight and reaching up at its ends; cards of leaves
+at the ends of the finest branches, facing out from the crown with some scatter.
+Approved model packs (Quaternius in the catalogue) wait for the owner's download list.
+
+**Bark carries a page.** Each branch is a tube whose page runs round it and up it, with
+one seam, so its letters wrap the trunk. Its material is `bark` (`| ! 1 l`, and its
+lexicon). Leaves are `leaves` (`^ A v`). Cards are squares; the shader cuts each into a
+spray of leaf ovals (`trees::leafy`, to be mirrored in the shader in S02-T08c).
+
+**Levels.** Three levels and a far form. Each level draws fewer, coarser tubes (9, 6,
+and 4 sides for the trunk; twigs dropped) and one card in 1, 2, then 5, made larger by
+the square root of what was dropped so the crown keeps its cover. An oak is 5,886, 1,684,
+and 556 triangles.
+
+**The far form keeps the true silhouette.** Two crossed cards as wide as the crown and as
+tall as the tree, in an impostor material per kind (`impostor.oak` and so on), made in
+the material bake by projecting the finest level from the side: bark first, leaves over
+it, each card cut to its leaves, coverage in the height channel. Far forms have no words.
+
 ## 2026-11-13: every weather, and the shimmer across the barley (S02-T14)
 
 **Fog is weather.** The rules keep a fog amount beside the rain; it gathers and lifts at

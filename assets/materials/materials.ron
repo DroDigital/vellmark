@@ -25,5 +25,12 @@
         (key: "rock", generator: Rock, tile_metres: 4.0, family: "#%&@8", contrast: 0.36, relief: -0.6),
         (key: "erasure", generator: Paper, tile_metres: 4.0, family: ".,'", contrast: 0.12, relief: -0.1),
         (key: "water", generator: Water, tile_metres: 4.0, family: "~-=_", contrast: 0.24, relief: 0.2),
+        (key: "bark", generator: Bark, tile_metres: 1.5, family: "|!1l", contrast: 0.34, relief: -0.5),
+        (key: "leaves", generator: Leaves, tile_metres: 1.0, family: "^Av", contrast: 0.30, relief: 0.3),
+        // The trees' far forms: each is the tree itself, seen from the side, never read.
+        (key: "impostor.oak", generator: Impostor, tile_metres: 1.0, family: ".", contrast: 0.0, relief: 0.0, tree: Some("oak")),
+        (key: "impostor.ash", generator: Impostor, tile_metres: 1.0, family: ".", contrast: 0.0, relief: 0.0, tree: Some("ash")),
+        (key: "impostor.apple", generator: Impostor, tile_metres: 1.0, family: ".", contrast: 0.0, relief: 0.0, tree: Some("apple")),
+        (key: "impostor.hawthorn", generator: Impostor, tile_metres: 1.0, family: ".", contrast: 0.0, relief: 0.0, tree: Some("hawthorn")),
     ],
 )

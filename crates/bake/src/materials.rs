@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::path::Path;
 use vellmark_content::{AssetId, Material, MaterialSet, Lexicon};
 
-#[derive(Deserialize, Clone, Copy, Debug)]
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 enum Generator {
     Masonry,
     Timber,
@@ -27,6 +27,10 @@ enum Generator {
     Rock,
     Paper,
     Water,
+    Bark,
+    Leaves,
+    /// A tree's far form, projected from the tree itself: `tree` names its kind.
+    Impostor,
 }
 
 #[derive(Deserialize)]
@@ -39,6 +43,9 @@ struct Authored {
     relief: f32,
     #[serde(default)]
     emissive: f32,
+    /// For an impostor: the kind of tree, from `assets/trees/kinds.ron`.
+    #[serde(default)]
+    tree: Option<String>,
 }
 
 /// One material's words, from `lexicon.ron`.
@@ -377,6 +384,24 @@ fn water(u: f32, v: f32) -> Texel {
     }
 }
 
+/// Bark: deep vertical furrows, broken into plates, grey-brown.
+fn bark(u: f32, v: f32) -> Texel {
+    let furrow = fbm(u * 1.0, v * 0.25, 18, 3, 4, 227);
+    let plates = cellular(u, v * 0.4, 14, 229).0;
+    let ridge = step(0.35, 0.65, furrow) * (0.6 + 0.4 * step(0.1, 0.4, plates));
+    let colour = mix3([0.10, 0.08, 0.06], [0.30, 0.26, 0.21], ridge);
+    Texel { colour: scale3(colour, 0.9 + fbm(u, v, 40, 40, 2, 233) * 0.2), height: ridge, roughness: 0.9, metal: 0.0 }
+}
+
+/// Leaves: green, a little veined, lighter at the tips. A card's shape is cut by the
+/// shader; this is only its colour.
+fn leaves(u: f32, v: f32) -> Texel {
+    let broad = fbm(u, v, 6, 6, 4, 239);
+    let vein = 1.0 - step(0.0, 0.08, (fbm(u, v, 30, 30, 2, 241) - 0.5).abs());
+    let colour = mix3([0.08, 0.15, 0.04], [0.20, 0.32, 0.08], broad);
+    Texel { colour: scale3(colour, 1.0 + vein * 0.15), height: 0.5 + vein * 0.1, roughness: 0.55, metal: 0.0 }
+}
+
 /// The floor of a wood: moss and fallen leaves.
 fn moss(u: f32, v: f32) -> Texel {
     let broad = fbm(u, v, 6, 6, 4, 191);
@@ -449,10 +474,13 @@ fn relief_depth(generator: Generator) -> f32 {
         Generator::Rock => 0.03,
         Generator::Paper => 0.0005,
         Generator::Water => 0.002,
+        Generator::Bark => 0.02,
+        Generator::Leaves => 0.004,
+        Generator::Impostor => 0.0,
     }
 }
 
-fn generate(generator: Generator, size: u32, tile_metres: f32) -> Maps {
+fn generate(generator: Generator, size: u32, tile_metres: f32, picture: Option<&[([f32; 3], f32)]>) -> Maps {
     use rayon::prelude::*;
     let n = size as usize;
     let texels: Vec<Texel> = (0..n * n)
@@ -474,6 +502,13 @@ fn generate(generator: Generator, size: u32, tile_metres: f32) -> Maps {
                 Generator::Rock => rock(u, v),
                 Generator::Paper => paper(u, v),
                 Generator::Water => water(u, v),
+                Generator::Bark => bark(u, v),
+                Generator::Leaves => leaves(u, v),
+                // Colour, and in the height the share of the texel the tree covers.
+                Generator::Impostor => {
+                    let (colour, cover) = picture.map_or(([0.0; 3], 0.0), |p| p[i]);
+                    Texel { colour, height: cover, roughness: 0.8, metal: 0.0 }
+                }
             }
         })
         .collect();
@@ -544,6 +579,7 @@ pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
     }
     let mips = authored.size.trailing_zeros() + 1;
     let lexicons = read_lexicons(&file.with_file_name("lexicon.ron"))?;
+    let kinds = crate::trees::read_kinds(&file.with_file_name("../trees/kinds.ron"))?;
     let mut materials = Vec::new();
     let mut levels: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     for m in &authored.materials {
@@ -563,8 +599,12 @@ pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
             }
             words.iter().map(word).collect()
         };
-        let Some(words) = lexicons.iter().find(|l| l.key == m.key) else {
-            return err(format!("{}: `{}` has no entry in lexicon.ron", file.display(), m.key));
+        // A far form is never near enough to read, and has no words of its own.
+        let none = AuthoredLexicon { key: m.key.clone(), name: String::new(), elements: Vec::new(), hot: Vec::new(), cold: Vec::new() };
+        let words = match lexicons.iter().find(|l| l.key == m.key) {
+            Some(words) => words,
+            None if m.generator == Generator::Impostor => &none,
+            None => return err(format!("{}: `{}` has no entry in lexicon.ron", file.display(), m.key)),
         };
         let lexicon = Lexicon {
             name: if words.name.is_empty() { Vec::new() } else { word(&words.name)? },
@@ -581,7 +621,15 @@ pub fn bake_set(file: &Path) -> Result<MaterialSet, BakeError> {
             emissive: m.emissive,
             family: family.to_vec(),
         });
-        let maps = generate(m.generator, authored.size, m.tile_metres);
+        let picture = match (m.generator, &m.tree) {
+            (Generator::Impostor, Some(tree)) => {
+                let kind = kinds.iter().find(|k| &k.key == tree).ok_or_else(|| BakeError(format!("{}: `{}` names no tree kind `{tree}`", file.display(), m.key)))?;
+                Some(crate::trees::impostor(kind, authored.size as usize))
+            }
+            (Generator::Impostor, None) => return err(format!("{}: `{}` is an impostor and names no tree", file.display(), m.key)),
+            _ => None,
+        };
+        let maps = generate(m.generator, authored.size, m.tile_metres, picture.as_deref());
         levels.push((maps.colour, maps.normal));
     }
     let mut texels = Vec::new();
@@ -648,7 +696,7 @@ mod tests {
 
     #[test]
     fn generated_maps_tile_and_point_outwards() {
-        let maps = generate(Generator::Masonry, 64, 2.0);
+        let maps = generate(Generator::Masonry, 64, 2.0, None);
         assert_eq!(maps.colour.len(), 64 * 64 * 4);
         // A normal's third part is implied; the first two must leave room for it.
         for t in maps.normal.chunks_exact(4) {
