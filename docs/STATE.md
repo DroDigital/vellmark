@@ -8,7 +8,7 @@
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02 and S03.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
 **S03:** every task done. The gate's cloud parts pass (`docs/evidence/S03/gate.md`); the Play Gate and the fight's frame budget wait on the owner (`docs/PLAYTEST_CHECKLIST.md`, Phase S03).
-**Current task:** S04-T01.
+**Current task:** S04-T11 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
 
 ## Lane: Render
 
@@ -35,6 +35,8 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S04-T07, enemy AI (`crates/sim/src/ai.rs`): one mind for every species, set by its numbers (`Species`). It notices a player seen in its cone or heard (less when crouched), keeps them in view once it is after them, and follows to where it last knew them for a while before forgetting; it calls its kin when it notices; a pack strikes one at a time (the turn is claimed within the step) while the rest circle to the player's sides; it gathers itself where it can be seen, strikes, and is open after; badly hurt, a species that does falls back for a while and comes again; calm keeps it from fighting, light drives back a thing of ink, burning makes it thrash; it keeps clear of burning kin, never steps into fire, and a thing of ink never into the light of a lit lamp. The Inkling is now a species on it. Tests: `crates/sim/src/ai.rs`, `crates/sim/tests/ai.rs`, and every Inkling test and the scripted run still pass.
 
 **Done:** S03-T14, the scripted run (`crates/harness/tests/scripted_run.rs`): in the real valley, a bot reads the Tithe Hill Stone and learns `OPEN`, opens the yard's locked gate and walks through, lights the lantern, learns `WHOLE` from the bridge's Page, mends the bridge and walks across, and wins the Inkling fight with blade and word, with words alone, and with steel alone. Built for it: Standing Pages (a readable that gives its word after 1.2 s of reading, with the prologue's line on screen and the word's motif), the Tithe Hill Stone and the bridge's Page, a locked gate and an unlit lantern, doors that stop bodies until opened, things that break colliding as turned boxes, a cap so the biggest charged word costs less than a full well of Ink, and a word just learned settling into the writing hand. Evidence: `docs/evidence/S03/scripted_run.md`.
 

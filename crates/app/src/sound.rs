@@ -107,6 +107,7 @@ impl Sound {
                 Heard::Loose { at, .. } => push(CueKind::Loose, at, 0.8),
                 Heard::Thunk { at } => push(CueKind::Thunk, at, 0.9),
                 Heard::Gather { at } => push(CueKind::Gather, at, 0.7),
+                Heard::Call { at } => push(CueKind::Split, at, 0.5),
                 Heard::Split { at } => push(CueKind::Split, at, 0.9),
                 Heard::Spill { at } => push(CueKind::Spill, at, 0.9),
                 Heard::Break { at } => push(CueKind::Break, at, 1.0),

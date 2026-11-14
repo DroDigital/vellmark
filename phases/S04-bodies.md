@@ -30,7 +30,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S04-T04** [Content] Build faces that hold up in a dialogue close-up, with a jaw and eyelid rig and a few expressions
 - [ ] **S04-T05** [Render] Add generated truth: clothing that carries a person's real biography and routine, rebuilt only when it changes
 - [ ] **S04-T06** [Content] Build the creature pipeline for the biped, quadruped, and amorphous rig families, with procedural locomotion
-- [ ] **S04-T07** [Sim] Build enemy AI: perception, telegraphs, flanking, retreat, calling for help, and reactions to words on themselves, their allies, and the place
+- [x] **S04-T07** [Sim] Build enemy AI: perception, telegraphs, flanking, retreat, calling for help, and reactions to words on themselves, their allies, and the place
 - [ ] **S04-T08** [Content] Build the Blot Hound and the Runt that follows, with pack behaviour and the hound's own answer to `CALM`
 - [ ] **S04-T09** [Content] Build the Shambling Entry and the Bone Clerk, with the Clerk's summoned paperwork
 - [ ] **S04-T10** [Content] Rebuild the Inkling on the real pipeline, with splitting

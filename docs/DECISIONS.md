@@ -2,6 +2,12 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: one mind for every creature (S04-T07)
+
+- **Species are numbers, the mind is shared.** Speed, reach, the telegraph, the blow, sight and hearing, memory, whether it hunts as a pack, falls back, calls its kin, or fears light. The Inkling's numbers are its own; each new species (S04-T08 to T10) adds a row.
+- **One at a time.** Of a pack, only the one whose turn it is gathers and strikes at a given player; the turn is claimed within the step, so two never begin together. The rest circle to the player's sides at the edge of their reach.
+- **Words on the place.** A burning thing is kept from within 2.5 m; a lit lamp, by a thing of ink, within 4 m. A creature's step into either is taken away, not merely countered.
+
 ## 2026-11-14: Standing Pages and the scripted run (S03-T14)
 
 - **A Standing Page is a text that teaches.** Read for 1.2 s, it gives its word; the word settles into the writing hand (a word just learned replaces the word in hand; a shield stays), the screen says the prologue's line ("You have learned a word. It is not yours. Nothing here is."), and its motif plays.

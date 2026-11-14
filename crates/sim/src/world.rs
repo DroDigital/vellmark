@@ -137,7 +137,7 @@ pub struct World {
     /// Arrows in flight, and stuck where they can be picked up.
     arrows: Vec<crate::melee::Arrow>,
     /// The minds of the Inklings.
-    minds: Vec<crate::inkling::Mind>,
+    minds: Vec<crate::ai::Mind>,
     /// What was heard this step.
     heard: Vec<crate::snapshot::Heard>,
 }
@@ -211,11 +211,41 @@ impl World {
         if self.minds.is_empty() {
             return;
         }
-        let quarry: Vec<crate::inkling::Quarry> = self
+        let quarry: Vec<crate::ai::Quarry> = self
             .players
             .iter()
             .filter(|p| p.melee.health > 0.0)
-            .map(|p| crate::inkling::Quarry { id: p.id.0, feet: p.body.feet, sneaking: p.body.crouching, untouchable: p.body.untouchable() })
+            .map(|p| crate::ai::Quarry { id: p.id.0, feet: p.body.feet, crouching: p.body.crouching, untouchable: p.body.untouchable() })
+            .collect();
+        // Kin, whose turn it is to strike at each player, and the places to keep from.
+        let kin: Vec<(u64, Vec3, u32, bool)> = self
+            .creatures
+            .iter()
+            .filter(|c| c.alive())
+            .map(|c| (c.id, c.feet, c.marks, self.minds.iter().any(|m| m.id == c.id && m.act.attacking())))
+            .collect();
+        let turn: std::cell::RefCell<Vec<(u32, u64)>> = Default::default();
+        for q in &quarry {
+            let striking = self.minds.iter().filter(|m| m.act.attacking()).filter_map(|m| self.creatures.iter().find(|c| c.id == m.id)).min_by(|a, b| a.feet.distance_squared(q.feet).total_cmp(&b.feet.distance_squared(q.feet)));
+            if let Some(c) = striking {
+                turn.borrow_mut().push((q.id, c.id));
+            }
+        }
+        let hazards: Vec<(Vec3, f32, bool)> = self
+            .targets
+            .iter()
+            .filter(|t| !self.creatures.iter().any(|c| c.id == t.id))
+            .filter_map(|t| {
+                let fire = t.effects.iter().any(|e| matches!(e.effect.as_str(), "ignite" | "flare" | "blaze"));
+                let light = t.effects.iter().any(|e| matches!(e.effect.as_str(), "light" | "glow" | "glint"));
+                if fire {
+                    Some((t.centre, 2.5, false))
+                } else if light {
+                    Some((t.centre, 4.0, true))
+                } else {
+                    None
+                }
+            })
             .collect();
         let ground = self.ground.clone();
         let statics = self.statics.clone();
@@ -234,12 +264,29 @@ impl World {
             ((z ^ (z >> 31)) >> 40) as f32 / (1u64 << 24) as f32
         };
         let mut bites = Vec::new();
+        let mut calls: Vec<(u64, Vec3, f32, Option<(Vec3, f32)>)> = Vec::new();
+        let around = crate::ai::Around { kin: &kin, turn: &turn, hazards: &hazards, ground: &height, open: &open };
         for mind in &mut self.minds {
             if let Some(c) = self.creatures.iter_mut().find(|c| c.id == mind.id) {
+                let Some(species) = crate::ai::species(&c.class) else { continue };
                 let was = c.telegraph;
-                crate::inkling::think(c, mind, &quarry, &height, &open, &mut roll, dt, &mut bites);
+                let out = crate::ai::think(species, c, mind, &quarry, &around, &mut roll, dt, &mut bites);
                 if was == 0.0 && c.telegraph > 0.0 {
                     self.heard.push(crate::snapshot::Heard::Gather { at: c.centre() });
+                }
+                if let Some(range) = out.called {
+                    calls.push((c.id, c.feet, range, mind.last_seen));
+                    self.heard.push(crate::snapshot::Heard::Call { at: c.centre() });
+                }
+            }
+        }
+        // A creature that notices a player calls its kin, which come.
+        for (caller, at, range, seen) in calls {
+            let class = self.creatures.iter().find(|c| c.id == caller).map(|c| c.class.clone()).unwrap_or_default();
+            for c in self.creatures.iter_mut().filter(|c| c.id != caller && c.class == class && c.alive() && c.feet.distance(at) < range) {
+                c.aware = true;
+                if let Some(m) = self.minds.iter_mut().find(|m| m.id == c.id) {
+                    m.last_seen = seen;
                 }
             }
         }
@@ -400,8 +447,8 @@ impl World {
     /// Puts a creature in the world for steel to meet.
     /// It carries an Inscription of its class, as a target words can be written on.
     pub fn add_creature(&mut self, creature: crate::melee::Creature) {
-        if creature.class == "inkling" {
-            self.minds.push(crate::inkling::Mind::new(creature.id, creature.feet));
+        if crate::ai::species(&creature.class).is_some() {
+            self.minds.push(crate::ai::Mind::new(creature.id, creature.feet));
         }
         let target = self.creature_target(&creature);
         self.creatures.push(creature);

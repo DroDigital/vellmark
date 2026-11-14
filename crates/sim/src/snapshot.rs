@@ -170,6 +170,8 @@ pub enum Heard {
     Thunk { at: glam::Vec3 },
     /// An Inkling begins to gather itself, splits, or dies.
     Gather { at: glam::Vec3 },
+    /// A creature noticed a player and calls its kin.
+    Call { at: glam::Vec3 },
     Split { at: glam::Vec3 },
     Spill { at: glam::Vec3 },
     /// A thing falls to its letters, or stands whole again.

@@ -31,6 +31,7 @@ mod input;
 pub mod props;
 pub mod melee;
 pub mod inkling;
+pub mod ai;
 mod snapshot;
 mod world;
 
