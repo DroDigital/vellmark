@@ -54,6 +54,47 @@ Keys: W A S D and the mouse to move and look. Hold **R** to read. **F5** lights 
 
 If something is wrong, a sentence is enough: where you stood and what you saw.
 
+## Phase S03: the Play Gate
+
+Fifteen minutes in the valley, with sound on. It passes when you want to keep playing
+after the steps run out. Get the build from the newest run of pull request 7 (the
+**macOS app for the owner** artifact), as above.
+
+1. Start the game (`Vellmark.app`). You stand by the top of Tithe Hill. Walk to the tall
+   slab ahead of you, hold **Read** on it, and keep reading until it gives you `OPEN`.
+   Try both a controller and the mouse for the walk.
+2. Read a few of its lines close: hold Read with nothing in view to read up close, and
+   watch time slow (it costs Stamina).
+3. Walk down to the bridge road and follow it west, to two fenced yards (about 57, -62;
+   or console `goto 57 -62`). The south yard's gate is `LOCKED`: walk at it,
+   then write `OPEN` on it (tap the off-hand button while looking at it).
+4. Write `LIT` on the lantern by the gate (console `learn LIT`; its Page comes in S06).
+5. Step into the yard. Fight the Inkling with the sword (tap, tap, tap; hold for a heavy
+   blow). When it swells and rears, sidestep. Then fight it again (console `respawn`)
+   writing `COLD` first (`learn COLD`): it stops splitting.
+6. In the north yard, the three annotated ones: hit the `LOCKED` one's front, then write
+   `OPEN` on it charged (hold the off hand). Get bitten by the `BURNING` and `COLD` ones.
+7. Hold both hands' buttons together with `BURNING` in the off hand: the blade carries it.
+8. Type a word's typo on the keyboard while it charges (`TURNING` for `BURNING`): it goes
+   wrong, and you hear it go wrong.
+9. Walk east along the road to the river. Read the Page at the bridge's head, and write
+   `WHOLE` on the bridge, fully charged. Walk out onto it as it comes back. Then do it
+   again (console `break mended_bridge`).
+10. Pick up a crate by the road (Interact) and throw it (main hand) at the keg.
+
+The owner checks:
+
+- [ ] Moving and looking feel right at once, on a controller and with a mouse
+- [ ] Reading a wall was worth doing
+- [ ] The first word obeyed, and it felt like power
+- [ ] The bridge coming back together made you do it twice
+- [ ] Swinging with one hand and writing with the other felt like one way of fighting
+- [ ] The sidestep was enough defence
+- [ ] A typo or a compound happened by accident and made you laugh or try again
+- [ ] Every word looks and sounds different, and expensive
+- [ ] It stayed smooth through all of it: with the fight's every effect on screen, read the
+      report's frame lines (`perf-run.command` after the fight, or F1 during it)
+
 ## Standing items
 
 Added as each system is built.

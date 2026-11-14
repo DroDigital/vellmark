@@ -386,6 +386,18 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                             }
                         }
                     }
+                    Command::Goto(x, z) => {
+                        let id = current.players[0].id;
+                        world.place_player(id, Vec3::new(x, 0.0, z), current.players[0].yaw);
+                        log::line(&format!("went to {x} {z}"));
+                    }
+                    Command::Respawn => {
+                        world.remove_creatures();
+                        for c in vellmark_render::scene_creatures(&scene) {
+                            world.add_creature(c);
+                        }
+                        log::line("the scene's creatures stand again");
+                    }
                     Command::Sensitivity(n) => input_settings.mouse_sensitivity = n,
                     Command::InvertY(on) => input_settings.invert_y = on,
                     Command::Bind(action, button) => {

@@ -1,13 +1,14 @@
 # Build state
 
-**Phase file:** `phases/S03-hands.md`. S02's exit gate and S01's Look Gate wait on the owner (see `docs/PLAN_CHANGES.md`, 2026-11-13).
+**Phase file:** `phases/S04-bodies.md`. S03's Play Gate waits on the owner; S02's exit gate and S01's Look Gate wait on the owner (see `docs/PLAN_CHANGES.md`, 2026-11-13).
 **Status:** In progress. The owner asked for the phases to go on without stopping; each gate is run as far as a cloud session can, and what only the Mac can prove waits below.
 
 ## Integration
 
-**Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
+**Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02 and S03.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T15, the exit gate.
+**S03:** every task done. The gate's cloud parts pass (`docs/evidence/S03/gate.md`); the Play Gate and the fight's frame budget wait on the owner (`docs/PLAYTEST_CHECKLIST.md`, Phase S03).
+**Current task:** S04-T01.
 
 ## Lane: Render
 

@@ -38,7 +38,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S03-T12** [Sim] Add a grey-box Inkling with telegraphed attacks, word reactions, and three annotations, in a yard beside the road
 - [x] **S03-T13** [Shell] Give every word its motif, every hit its sound, and the wrong note for a typo
 - [x] **S03-T14** [Sim] Build the scripted run: read, learn, open, mend, light, fight, and win with blade and word, with a word alone, and with steel alone
-- [ ] **S03-T15** [Shell] Run the exit gate, save the evidence, and write the Play Gate steps
+- [x] **S03-T15** [Shell] Run the exit gate, save the evidence, and write the Play Gate steps
 
 ## Exit gate
 

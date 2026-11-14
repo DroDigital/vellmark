@@ -37,6 +37,10 @@ pub enum Command {
     InvertY(bool),
     /// Learn a word, by its spelling, or `all` of them.
     Learn(String),
+    /// Go to a place on the ground, by its x and z.
+    Goto(f32, f32),
+    /// Put the scene's creatures back as they were at load.
+    Respawn,
     /// Move an action to a button: a key, `mouse_left`, or a pad button such as `south`.
     Bind(String, String),
     Quit,
@@ -213,6 +217,11 @@ impl Overlay {
                 None => self.say("bind takes an action, then a key, `mouse_left`, or a pad button such as `south`"),
             },
             (Some("learn"), Some(word)) => self.commands.push(Command::Learn(word.to_ascii_uppercase())),
+            (Some("goto"), Some(x)) => match (x.parse::<f32>(), words.next().map(str::parse::<f32>)) {
+                (Ok(x), Some(Ok(z))) => self.commands.push(Command::Goto(x, z)),
+                _ => self.say("goto takes an x and a z, in metres"),
+            },
+            (Some("respawn"), _) => self.commands.push(Command::Respawn),
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),
         }

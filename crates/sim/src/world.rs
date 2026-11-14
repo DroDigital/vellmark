@@ -431,6 +431,15 @@ impl World {
         &self.arrows
     }
 
+    /// Takes every creature out of the world, with its mind and its Inscription.
+    pub fn remove_creatures(&mut self) {
+        let ids: Vec<u64> = self.creatures.iter().map(|c| c.id).collect();
+        self.creatures.clear();
+        self.minds.clear();
+        self.targets.retain(|t| !ids.contains(&t.id));
+        self.refresh_targets();
+    }
+
     pub fn creatures(&self) -> &[crate::melee::Creature] {
         &self.creatures
     }
