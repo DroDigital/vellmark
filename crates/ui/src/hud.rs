@@ -52,6 +52,16 @@ impl Hud<'_> {
         let dot = TextStyle { size: (14.0 * d).round(), ..small };
         self.centred(canvas, cx, cy + dot.size * 0.35, &dot, &Shown::from_table(self.strings, sid!("ui.crosshair")));
 
+        // The creature in the gaze, by name; an annotated one is named for its word, in gold.
+        if let Some((species, annotation)) = &player.facing {
+            let key = match annotation {
+                Some(a) => format!("creature.{species}.{}", a.to_ascii_lowercase()),
+                None => format!("creature.{species}"),
+            };
+            let colour = if annotation.is_some() { GOLD } else { WHITE };
+            let style = TextStyle { face: Face::Large, size: (18.0 * d).round(), colour };
+            self.centred(canvas, cx, cy - 40.0 * d, &style, &Shown::from_table(self.strings, StringId::from_key(&key)));
+        }
         // The preview: the off hand's word first, as the hand that writes.
         let preview = player.preview[1].clone().or_else(|| player.preview[0].clone());
         if let Some((_, p)) = preview {

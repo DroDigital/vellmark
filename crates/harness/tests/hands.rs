@@ -38,6 +38,7 @@ fn player() -> PlayerSnap {
         blocking: false,
         staggered: false,
         learned: None,
+        facing: None,
     }
 }
 

@@ -36,6 +36,7 @@ fn player(reading: ReadingSnap, in_focus: Option<u64>) -> PlayerSnap {
         blocking: false,
         staggered: false,
         learned: None,
+        facing: None,
     }
 }
 

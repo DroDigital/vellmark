@@ -44,6 +44,8 @@ pub struct Species {
     pub fears_light: bool,
     /// It weaves from side to side as it comes.
     pub weaves: bool,
+    /// The annotations it may be found with.
+    pub annotations: &'static [&'static str],
 }
 
 /// One creature's mind between steps.
@@ -410,6 +412,14 @@ fn turn_to(c: &mut Creature, to: Vec3, rate: f32) {
     }
     c.yaw += d.clamp(-rate, rate);
 }
+
+/// The Showcase's annotations: the word, its class (a charged word of which replaces
+/// it), and the word that answers it.
+pub const ANNOTATIONS: [(&str, &str, &str); 4] = [("LOCKED", "Access", "OPEN"), ("DARK", "Light", "LIT"), ("BURNING", "Temperature", "COLD"), ("COLD", "Temperature", "BURNING")];
+
+/// How near a creature annotated DARK puts out a lit lamp, and how far it can be seen.
+pub const DARK_REACH: f32 = 6.0;
+pub const DARK_SEEN: f32 = 5.0;
 
 /// Every species of the Showcase, by its key.
 pub fn species(key: &str) -> Option<&'static Species> {

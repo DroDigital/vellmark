@@ -11,5 +11,11 @@
     "ui.stamina.stroke": "|",
     "ui.arrow.stroke": "^",
     // From the prologue's script, when the Tithe Hill Stone gives up its word.
+    // Creatures, by species and annotation, as the crosshair names them.
+    "creature.inkling": "Inkling",
+    "creature.inkling.locked": "Locked Inkling",
+    "creature.inkling.dark": "Dark Inkling",
+    "creature.inkling.burning": "Burning Inkling",
+    "creature.inkling.cold": "Cold Inkling",
     "ui.learned": "You have learned a word. It is not yours. Nothing here is.",
 }

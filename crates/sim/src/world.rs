@@ -467,7 +467,7 @@ impl World {
         let words: Vec<(String, String)> = c
             .annotation
             .iter()
-            .map(|a| (a.clone(), crate::inkling::ANNOTATIONS.iter().find(|(w, _)| w == a).map_or("Mind", |(_, class)| class).to_string()))
+            .map(|a| (a.clone(), crate::ai::ANNOTATIONS.iter().find(|(w, _, _)| w == a).map_or("Mind", |(_, class, _)| class).to_string()))
             .collect();
         let resistance = if words.is_empty() { crate::emendation::Resistance::Plain } else { crate::emendation::Resistance::Tough };
         Some(crate::emendation::Target::new(c.id, class, c.centre(), c.radius.max(c.height * 0.5), resistance, &words))
@@ -942,6 +942,21 @@ impl World {
             }
         }
         // Casting: the hands' taps and charges become words in flight, which land.
+        // A creature annotated DARK puts out the lit lamps near it.
+        let dark: Vec<Vec3> = self.creatures.iter().filter(|c| c.alive() && c.annotation.as_deref() == Some("DARK")).map(|c| c.centre()).collect();
+        if !dark.is_empty() {
+            let mut doused = false;
+            for t in self.targets.iter_mut() {
+                if dark.iter().any(|d| d.distance(t.centre) < crate::ai::DARK_REACH) && !self.creatures.iter().any(|c| c.id == t.id) {
+                    let before = t.effects.len();
+                    t.effects.retain(|e| !matches!(e.effect.as_str(), "light" | "glow" | "glint"));
+                    doused |= t.effects.len() != before;
+                }
+            }
+            if doused {
+                self.refresh_targets();
+            }
+        }
         // A creature annotated LOCKED is armoured shut toward the player it faces.
         for c in &mut self.creatures {
             if c.annotation.as_deref() == Some("LOCKED") {
@@ -1152,10 +1167,14 @@ impl World {
                 changed = true;
             }
         }
-        // Creatures carry their Inscriptions, and what the words do to a fight.
+        // Creatures carry their Inscriptions, and what the words do to a fight. One
+        // annotated DARK cannot be made out, nor written on, from further than a little way.
+        let eyes: Vec<Vec3> = self.players.iter().map(|p| p.body.feet + Vec3::Y * p.body.eye).collect();
         for c in &mut self.creatures {
             let Some(t) = self.targets.iter_mut().find(|t| t.id == c.id) else { continue };
             t.centre = c.centre();
+            let unseen = c.annotation.as_deref() == Some("DARK") && eyes.iter().all(|e| e.distance(t.centre) > crate::ai::DARK_SEEN);
+            t.radius = if unseen || !c.alive() { 0.0 } else { c.radius.max(c.height * 0.5) };
             c.marks = t.effects.iter().fold(0, |m, e| m | crate::melee::marks::of(&e.effect));
             if c.marks & crate::melee::marks::BURNING != 0 && c.alive() {
                 let strength: f32 = t.effects.iter().filter(|e| crate::melee::marks::of(&e.effect) & crate::melee::marks::BURNING != 0).map(|e| e.strength).sum();
@@ -1340,6 +1359,12 @@ impl World {
                 on_weapon: p.melee.on_weapon.iter().map(|(e, _, _)| e.clone()).collect(),
                 blocking: p.melee.blocking,
                 staggered: p.melee.staggered > 0.0,
+                facing: p
+                    .caster
+                    .aimed
+                    .and_then(|i| self.targets.get(i))
+                    .and_then(|t| self.creatures.iter().find(|c| c.id == t.id && c.alive()))
+                    .map(|c| (c.class.clone(), c.annotation.clone())),
                 learned: p.learned.filter(|(_, at)| self.seconds - at < 5.0).map(|(w, _)| self.rules.words[w].spelling.clone()),
             })
             .collect();

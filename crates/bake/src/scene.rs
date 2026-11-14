@@ -652,7 +652,7 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
             })
             .collect();
         const KINDS: &[&str] = &["inkling"];
-        const ANNOTATIONS: &[&str] = &["LOCKED", "BURNING", "COLD"];
+        const ANNOTATIONS: &[&str] = &["LOCKED", "DARK", "BURNING", "COLD"];
         let mut creatures = Vec::new();
         for c in &authored.creatures {
             if !KINDS.contains(&c.kind.as_str()) {

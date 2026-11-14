@@ -43,7 +43,7 @@ fn looking_at(eye: Vec3, at: Vec3) -> Camera {
 fn the_inklings_are_drawn_in_their_yards() {
     let pack = baked_base_pack().expect("the base pack bakes");
     let scene = Scene::from_bytes(pack.get(AssetKind::Scene, AssetId::from_key("scene.valley")).expect("the valley")).unwrap();
-    assert_eq!(scene.creatures.len(), 4, "a plain Inkling and three annotated ones");
+    assert_eq!(scene.creatures.len(), 5, "a plain Inkling and four annotated ones");
     let terrain = std::sync::Arc::new(vellmark_world::Terrain::from_pack(&pack).unwrap());
     let rules = vellmark_render::word_rules(&pack);
     let mut world = World::new(WorldConfig { hours_per_second: 0.0, start_time_of_day: HOUR, ..Default::default() });

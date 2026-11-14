@@ -8,7 +8,7 @@
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02 and S03.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
 **S03:** every task done. The gate's cloud parts pass (`docs/evidence/S03/gate.md`); the Play Gate and the fight's frame budget wait on the owner (`docs/PLAYTEST_CHECKLIST.md`, Phase S03).
-**Current task:** S04-T11 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
+**Current task:** S04-T13 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
 
 ## Lane: Render
 
@@ -35,6 +35,9 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S04-T11, the Showcase's four annotations (`LOCKED`, `DARK`, `BURNING`, `COLD`, in `crates/sim/src/ai.rs`), on every species that lists them (`Species::annotations`; the Inkling lists all four): each stands in the creature's Inscription at Tough resistance, so a charged word of its class strips it and staggers the creature; `LOCKED` turns blows from the front, `DARK` puts out lit lamps within 6 m and cannot be made out or written on from further than 5 m (and is drawn faint), `BURNING` and `COLD` go with its bite. The crosshair names the creature in the gaze, an annotated one for its word and in gold (`Locked Inkling`), from the string tables; the word is written among its letters. A Dark Inkling joins the north yard. Tests: `crates/sim/tests/inkling.rs`.
+**Not yet:** the hound, the Entry, and the Clerk carry them when they are built (S04-T08, T09).
 
 **Done:** S04-T07, enemy AI (`crates/sim/src/ai.rs`): one mind for every species, set by its numbers (`Species`). It notices a player seen in its cone or heard (less when crouched), keeps them in view once it is after them, and follows to where it last knew them for a while before forgetting; it calls its kin when it notices; a pack strikes one at a time (the turn is claimed within the step) while the rest circle to the player's sides; it gathers itself where it can be seen, strikes, and is open after; badly hurt, a species that does falls back for a while and comes again; calm keeps it from fighting, light drives back a thing of ink, burning makes it thrash; it keeps clear of burning kin, never steps into fire, and a thing of ink never into the light of a lit lamp. The Inkling is now a species on it. Tests: `crates/sim/src/ai.rs`, `crates/sim/tests/ai.rs`, and every Inkling test and the scripted run still pass.
 

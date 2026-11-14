@@ -223,6 +223,7 @@
         (key: "yard_inkling_locked", kind: "inkling", position: (47.0, 8.42, -46.0), yaw: 200.0, annotation: "LOCKED"),
         (key: "yard_inkling_burning", kind: "inkling", position: (45.5, 8.42, -42.0), yaw: 120.0, annotation: "BURNING"),
         (key: "yard_inkling_cold", kind: "inkling", position: (50.0, 8.42, -44.5), yaw: 300.0, annotation: "COLD"),
+        (key: "yard_inkling_dark", kind: "inkling", position: (44.0, 8.42, -39.5), yaw: 60.0, annotation: "DARK"),
     ],
     // A marked structure: broken, as authored, and a little tough to mend.
     inscribed: [

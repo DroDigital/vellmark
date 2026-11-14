@@ -178,6 +178,7 @@ impl Magic {
         }
         // Inklings: each a mass of ink characters, gathering itself to strike, and spilt
         // into a pool when it dies. Its annotation shows in its colour and what rises off it.
+        let eye = snap.views.first().map_or(Vec3::ZERO, |v| v.eye);
         for c in snap.creatures.iter().filter(|c| c.class == "inkling") {
             let dying = c.died_at.map_or(0.0, |t| ((snap.seconds - t) as f32 / 0.8).min(1.0));
             let colour = match c.annotation.as_deref() {
@@ -188,10 +189,15 @@ impl Magic {
             };
             let centre = c.feet + Vec3::Y * (c.height * 0.5 * (1.0 - 0.85 * dying));
             let facing = Vec3::new(c.yaw.sin(), 0.0, -c.yaw.cos());
-            let count = (110.0 + 60.0 * c.size).min(160.0);
+            let mut count = (110.0 + 60.0 * c.size).min(160.0);
+            // One annotated DARK is hard to see: little of it shows from further off.
+            if c.annotation.as_deref() == Some("DARK") && eye.distance(centre) > vellmark_sim::ai::DARK_SEEN {
+                count *= 0.2;
+            }
             self.emitters.push((
                 [[centre.x, centre.y, centre.z, 5.0], [facing.x, c.telegraph, facing.z, c.radius], [colour[0], colour[1], colour[2], c.height], [count, 0.085 * c.size.max(0.5), (c.id % 997) as f32, dying]],
-                pack(".,;:"),
+                // Its annotation is written in its letters, among the ink.
+                pack(&c.annotation.as_deref().map_or(".,;:".to_string(), |a| format!(".,;:{a}.,;:"))),
             ));
             if c.alive() {
                 match c.annotation.as_deref() {

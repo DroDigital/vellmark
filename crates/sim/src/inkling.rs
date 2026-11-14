@@ -37,7 +37,7 @@ pub const SPLITTING_BLOW: f32 = 6.0;
 /// A part smaller than this does not split again.
 pub const SMALLEST: f32 = 0.42;
 /// The three annotations of the Showcase and what answers them.
-pub const ANNOTATIONS: [(&str, &str); 3] = [("LOCKED", "Access"), ("BURNING", "Temperature"), ("COLD", "Temperature")];
+pub const ANNOTATIONS: [&str; 4] = ["LOCKED", "DARK", "BURNING", "COLD"];
 
 /// The Inkling's numbers for the mind every creature shares (`crate::ai`).
 pub const SPECIES: crate::ai::Species = crate::ai::Species {
@@ -59,6 +59,7 @@ pub const SPECIES: crate::ai::Species = crate::ai::Species {
     calls: 10.0,
     fears_light: true,
     weaves: true,
+    annotations: &ANNOTATIONS,
 };
 
 /// A new Inkling of its usual size, with an annotation or none.

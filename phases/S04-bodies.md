@@ -34,7 +34,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S04-T08** [Content] Build the Blot Hound and the Runt that follows, with pack behaviour and the hound's own answer to `CALM`
 - [ ] **S04-T09** [Content] Build the Shambling Entry and the Bone Clerk, with the Clerk's summoned paperwork
 - [ ] **S04-T10** [Content] Rebuild the Inkling on the real pipeline, with splitting
-- [ ] **S04-T11** [Sim] Add the four annotations on every creature that supports them, with their names, letters, and the stagger when the word is replaced
+- [x] **S04-T11** [Sim] Add the four annotations on every creature that supports them, with their names, letters, and the stagger when the word is replaced
 - [ ] **S04-T12** [Render] Add damage masks, letters knocked loose by hits, and typographic body language with each species' loud and quiet sets
 - [ ] **S04-T13** [Sim] Add ragdolls for bipeds and quadrupeds, partial ragdoll hit reactions, and bodies that dissolve into pools of characters
 - [ ] **S04-T14** [Render] Build Obelus as a flying form with its strike effect: the black rule and what it leaves behind

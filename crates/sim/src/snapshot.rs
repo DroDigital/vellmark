@@ -42,6 +42,8 @@ pub struct PlayerSnap {
     pub staggered: bool,
     /// A word just learned from a Standing Page, for a few seconds after.
     pub learned: Option<String>,
+    /// The creature in the gaze, if any: its species and its annotation.
+    pub facing: Option<(String, Option<String>)>,
 }
 
 /// A thing with an Inscription, as drawn.

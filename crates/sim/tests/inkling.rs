@@ -214,3 +214,34 @@ fn steel_alone_finishes_every_part() {
     assert!(w.creatures().iter().all(|c| !c.alive()), "every part is finished: {} stand", w.creatures().iter().filter(|c| c.alive()).count());
     assert!(health(&w) > 0.0, "and the player still stands: {}", health(&w));
 }
+
+#[test]
+fn dark_puts_out_lamps_near_it_and_cannot_be_made_out_from_afar_until_lit_strips_it() {
+    // A lit lamp near a Dark Inkling goes out.
+    let mut w = world("LIT", 12.0, Some("DARK"));
+    let mut rules = rules();
+    rules.classes.push("lamp".into());
+    for word in &mut rules.words {
+        word.outcomes.push(RuleOutcome::Effect { effect: if word.spelling == "LIT" { "light".into() } else { "heat".into() }, strength: 1.0, preview: 100 });
+    }
+    w.set_word_rules(rules);
+    let mut lamp = vellmark_sim::emendation::Target::new(900, 1, Vec3::new(0.0, 1.5, -15.0), 0.3, vellmark_sim::emendation::Resistance::Plain, &[]);
+    lamp.effects.push(vellmark_sim::emendation::ActiveEffect { effect: "light".into(), strength: 1.0, by: "LIT".into(), until: None });
+    let mut targets: Vec<_> = vec![lamp];
+    targets.extend(Vec::<vellmark_sim::emendation::Target>::new());
+    w.set_targets(targets);
+    go(&mut w, 2, 0);
+    let lamp = w.snapshot().targets.iter().find(|t| t.id == 900).cloned().unwrap();
+    assert!(!lamp.effects.contains(&"light".to_string()), "the lamp went out");
+    // From 12 m it cannot be written on: nothing is in the gaze.
+    let me = w.snapshot().players[0].clone();
+    let _ = me;
+    let to = (ink(&w).centre() - Vec3::new(0.0, 1.62, 0.0)).normalize();
+    w.step(&[PlayerInput { look_pitch: to.y.asin() - w.snapshot().players[0].pitch, ..Default::default() }]);
+    assert!(w.snapshot().players[0].preview[1].is_none(), "it cannot be made out from afar");
+    // Near, a charged LIT strips it, and staggers it.
+    w.creatures_mut()[0].feet = Vec3::new(0.0, 0.0, -2.0);
+    w.creatures_mut()[0].staggered = 3.0;
+    write(&mut w, true);
+    assert_eq!(ink(&w).annotation, None, "LIT replaced DARK");
+}
