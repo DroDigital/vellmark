@@ -34,6 +34,7 @@ pub mod inkling;
 pub mod ai;
 pub mod items;
 pub mod inventory;
+pub mod merchant;
 mod snapshot;
 mod world;
 

@@ -149,6 +149,11 @@ pub struct World {
     loot: Option<Arc<vellmark_content::LootTable>>,
     /// Items lying in the world: each with where it lies.
     dropped: Vec<(crate::items::Item, Vec3)>,
+    /// Days gone by since the world began.
+    day: u32,
+    /// Mornings come since the world began: each brings the merchants' new stock.
+    mornings: u32,
+    merchants: Vec<crate::merchant::Merchant>,
 }
 
 impl World {
@@ -195,6 +200,9 @@ impl World {
             heard: Vec::new(),
             loot: None,
             dropped: Vec::new(),
+            day: 0,
+            mornings: 0,
+            merchants: Vec::new(),
         }
     }
 
@@ -561,6 +569,69 @@ impl World {
         }
         p.caster.cost_scale = p.melee.gear.word_cost;
         p.caster.refill_scale = p.melee.gear.ink_refill;
+    }
+
+    /// Opens a merchant's trade, with this morning's stock.
+    pub fn add_merchant(&mut self, id: u64) {
+        if let Some(table) = self.loot.clone() {
+            self.merchants.push(crate::merchant::Merchant::new(&table, id, self.mornings));
+        }
+    }
+
+    pub fn merchant(&self, id: u64) -> Option<&crate::merchant::Merchant> {
+        self.merchants.iter().find(|m| m.id == id)
+    }
+
+    /// Days gone by since the world began.
+    pub fn day(&self) -> u32 {
+        self.day
+    }
+
+    /// Gives a player Marks, as a reward or a tool would.
+    pub fn give_marks(&mut self, id: PlayerId, marks: u32) {
+        if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+            p.inventory.marks = p.inventory.marks.saturating_add(marks);
+        }
+    }
+
+    /// A player buys the thing at `index` in a merchant's stock.
+    pub fn buy(&mut self, id: PlayerId, merchant: u64, index: usize) -> Result<(), crate::merchant::Refusal> {
+        use crate::merchant::Refusal;
+        let table = self.loot.clone().ok_or(Refusal::Nothing)?;
+        let m = self.merchants.iter_mut().find(|m| m.id == merchant).ok_or(Refusal::Nothing)?;
+        let p = self.players.iter_mut().find(|p| p.id == id).ok_or(Refusal::Nothing)?;
+        let item = m.stock.get(index).ok_or(Refusal::Nothing)?;
+        let price = m.asks(&table, item);
+        if p.inventory.marks < price {
+            return Err(Refusal::TooDear);
+        }
+        p.inventory.marks -= price;
+        m.purse = m.purse.saturating_add(price);
+        let item = m.stock.remove(index);
+        p.inventory.take(item);
+        Ok(())
+    }
+
+    /// A player sells the thing at `index` in their pack.
+    pub fn sell(&mut self, id: PlayerId, merchant: u64, index: usize) -> Result<(), crate::merchant::Refusal> {
+        use crate::merchant::Refusal;
+        let table = self.loot.clone().ok_or(Refusal::Nothing)?;
+        let m = self.merchants.iter_mut().find(|m| m.id == merchant).ok_or(Refusal::Nothing)?;
+        let p = self.players.iter_mut().find(|p| p.id == id).ok_or(Refusal::Nothing)?;
+        let inv = &p.inventory;
+        let item = inv.items.get(index).ok_or(Refusal::Nothing)?;
+        if inv.equipped().any(|(_, e)| std::ptr::eq(e, item)) {
+            return Err(Refusal::InUse);
+        }
+        let price = m.pays(&table, item);
+        if m.purse < price {
+            return Err(Refusal::PurseEmpty);
+        }
+        m.purse -= price;
+        let item = p.inventory.remove(index).ok_or(Refusal::Nothing)?;
+        p.inventory.marks = p.inventory.marks.saturating_add(price);
+        m.stock.push(item);
+        Ok(())
     }
 
     /// Items lying in the world, and where.
@@ -1489,7 +1560,23 @@ impl World {
         }
         self.seconds += dt as f64;
         self.weather.step(self.seconds);
-        self.time_of_day = (self.time_of_day + self.config.hours_per_second * dt).rem_euclid(24.0);
+        let before = self.time_of_day;
+        let after = before + self.config.hours_per_second * dt;
+        self.time_of_day = after.rem_euclid(24.0);
+        if after >= 24.0 {
+            self.day += 1;
+        }
+        // Each morning, the merchants' new stock comes in.
+        let dawn = crate::merchant::DAWN;
+        if (before < dawn && after >= dawn) || (after >= 24.0 + dawn) {
+            self.mornings += 1;
+            if let Some(table) = self.loot.clone() {
+                let morning = self.mornings;
+                for m in &mut self.merchants {
+                    m.restock(&table, morning);
+                }
+            }
+        }
         self.step += 1;
     }
 
