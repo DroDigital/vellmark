@@ -68,7 +68,9 @@
     sources: [
         (key: "chest", tiers: (0.50, 0.28, 0.14, 0.065, 0.015), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("shield", 2), ("light_coat", 2), ("light_hood", 2), ("heavy_coat", 1), ("heavy_helm", 1), ("ring", 2), ("amulet", 1), ("charm", 1), ("brooch", 1)], materials: [("iron", 5), ("marcher_steel", 2), ("rootwood", 2)]),
         (key: "enemy", tiers: (0.62, 0.32, 0.06, 0.0, 0.0), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 3), ("bow", 1), ("light_hood", 2)], materials: [("iron", 6), ("marcher_steel", 1), ("rootwood", 1)]),
-        (key: "annotated", tiers: (0.0, 0.0, 0.70, 0.25, 0.05), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("shield", 2), ("ring", 2), ("amulet", 2), ("charm", 1), ("brooch", 1)], materials: [("iron", 3), ("marcher_steel", 3), ("rootwood", 2)]),
+        (key: "annotated", tiers: (0.0, 0.0, 0.60, 0.35, 0.05), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("shield", 2), ("ring", 2), ("amulet", 2), ("charm", 1), ("brooch", 1)], materials: [("iron", 3), ("marcher_steel", 3), ("rootwood", 2)]),
+        // The chest in the cellar under the mill: the best loot in the Showcase.
+        (key: "cellar", tiers: (0.0, 0.0, 0.15, 0.70, 0.15), types: [("sword", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("staff", 1), ("amulet", 1), ("ring", 1)], materials: [("marcher_steel", 3), ("rootwood", 2)]),
         (key: "boss", tiers: (0.0, 0.0, 0.0, 0.0, 1.0), types: [("sword", 2), ("mace", 2), ("staff", 2), ("bow", 1), ("heavy_coat", 1), ("amulet", 1)], materials: [("iron", 1), ("marcher_steel", 3), ("rootwood", 2)]),
         (key: "merchant", tiers: (0.60, 0.32, 0.08, 0.0, 0.0), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("shield", 2), ("light_coat", 2), ("light_hood", 2), ("heavy_coat", 1), ("heavy_helm", 1), ("village_shirt", 3), ("ring", 1)], materials: [("iron", 5), ("marcher_steel", 2), ("rootwood", 2)]),
     ],
