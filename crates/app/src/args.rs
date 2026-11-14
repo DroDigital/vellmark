@@ -19,6 +19,8 @@ pub struct Args {
     pub scene: Option<String>,
     /// Low, Medium, or High. Medium if not given.
     pub preset: Option<String>,
+    /// Start from the saved game.
+    pub continue_game: bool,
 }
 
 impl Args {
@@ -29,6 +31,7 @@ impl Args {
             let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
             match arg.as_str() {
                 "--software" => args.software = true,
+                "--continue" => args.continue_game = true,
                 "--fullscreen" => args.fullscreen = true,
                 "--size" => {
                     let v = value("--size")?;

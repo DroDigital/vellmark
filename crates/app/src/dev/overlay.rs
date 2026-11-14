@@ -41,6 +41,9 @@ pub enum Command {
     Goto(f32, f32),
     /// Put the scene's creatures back as they were at load.
     Respawn,
+    /// Save the game, or load the saved game.
+    Save,
+    Load,
     /// Move an action to a button: a key, `mouse_left`, or a pad button such as `south`.
     Bind(String, String),
     Quit,
@@ -222,6 +225,8 @@ impl Overlay {
                 _ => self.say("goto takes an x and a z, in metres"),
             },
             (Some("respawn"), _) => self.commands.push(Command::Respawn),
+            (Some("save"), _) => self.commands.push(Command::Save),
+            (Some("load"), _) => self.commands.push(Command::Load),
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),
         }

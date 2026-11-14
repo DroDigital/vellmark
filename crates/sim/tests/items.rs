@@ -8,7 +8,7 @@ use vellmark_content::{LootMaterial, LootModifier, LootSource, LootTable, LootTy
 use vellmark_sim::inventory::Favourite;
 use vellmark_sim::items::{Item, Tier};
 use vellmark_sim::melee::{Creature, WeaponKind};
-use vellmark_sim::{buttons, PlayerInput, World, WorldConfig, STEP_HZ};
+use vellmark_sim::{buttons, PlayerInput, World, WorldConfig};
 
 fn table() -> LootTable {
     let ty = |key: &str, slot: &str, damage: f32, armour: f32| LootType { key: key.into(), slot: slot.into(), damage, armour, weight: 2.0, value: 20 };

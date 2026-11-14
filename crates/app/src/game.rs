@@ -243,6 +243,17 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             world.equip(me, index);
         }
     }
+    // The game is saved apart from the settings; `--continue` starts from it.
+    let save_path = crate::paths::user_data_dir().join(format!("{}.vsave", scene_key.trim_start_matches("scene.")));
+    if args.continue_game {
+        match std::fs::read(&save_path).map_err(|e| e.to_string()).and_then(|b| vellmark_sim::save::SaveGame::from_bytes(&b)) {
+            Ok(save) => {
+                world.load(&save);
+                log::line("the saved game is loaded");
+            }
+            Err(e) => log::line(&format!("no saved game to continue: {e}")),
+        }
+    }
     let mut previous: Arc<Snapshot> = world.snapshot();
     let mut current: Arc<Snapshot> = previous.clone();
 
@@ -395,6 +406,19 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                             }
                         }
                     }
+                    Command::Save => match crate::paths::write_atomically(&save_path, &world.save().to_bytes()) {
+                        Ok(()) => log::line("the game is saved"),
+                        Err(e) => log::line(&format!("the game could not be saved: {e}")),
+                    },
+                    Command::Load => match std::fs::read(&save_path).map_err(|e| e.to_string()).and_then(|b| vellmark_sim::save::SaveGame::from_bytes(&b)) {
+                        Ok(save) => {
+                            world.load(&save);
+                            previous = world.snapshot();
+                            current = previous.clone();
+                            log::line("the saved game is loaded");
+                        }
+                        Err(e) => log::line(&format!("no saved game: {e}")),
+                    },
                     Command::Goto(x, z) => {
                         let id = current.players[0].id;
                         world.place_player(id, Vec3::new(x, 0.0, z), current.players[0].yaw);
@@ -431,7 +455,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
             if input_settings != settings_before {
                 bindings = input_settings.bindings();
-                match std::fs::write(&settings_path, input_settings.to_text()) {
+                match crate::paths::write_atomically(&settings_path, input_settings.to_text().as_bytes()) {
                     Ok(()) => log::line("settings saved"),
                     Err(e) => log::line(&format!("the settings could not be saved: {e}")),
                 }
@@ -672,6 +696,13 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
     }
 
+    // The game is saved on the way out.
+    if !args.perf_run && args.capture.is_none() {
+        match crate::paths::write_atomically(&save_path, &world.save().to_bytes()) {
+            Ok(()) => log::line("the game is saved"),
+            Err(e) => log::line(&format!("the game could not be saved: {e}")),
+        }
+    }
     if registry.created_during_play() > 0 {
         log::line(&format!(
             "fault: {} pipeline(s) were created during play: {:?}",

@@ -9,7 +9,7 @@
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
 **S03:** every task done. The gate's cloud parts pass (`docs/evidence/S03/gate.md`); the Play Gate and the fight's frame budget wait on the owner (`docs/PLAYTEST_CHECKLIST.md`, Phase S03).
 **S05 begun beside S04:** the item generator and the loot table (S05-T01, T02) need none of the pending packs.
-**Current task:** S05-T11 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
+**Current task:** S05-T12 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
 
 ## Lane: Render
 
@@ -36,6 +36,9 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S05-T11, save and load (`crates/sim/src/save.rs`, `World::save`, `World::load`): the clock, days, and mornings; each player's place, Health, Stamina, Ink, arrows, words (by spelling), hands, pack, equipment, Marks, and favourites; what is broken (its letters settle again), the lasting words on things, the creatures still standing (the fallen stay fallen), where loose things came to rest, items lying about, and the merchants. A damaged save is refused, not believed. Saves and settings are written atomically (a part file, flushed, then renamed), apart from each other (`<scene>.vsave`, `settings.ron`); the game saves on the way out, `--continue` starts from the save, and the console has `save` and `load`. Tests: `crates/sim/tests/save.rs`, `crates/app/src/paths.rs`.
+**Not yet:** a title screen's Continue (S06-T13); saving the scripted parts of the opening once they exist (S06).
 
 **Done:** S05-T09, the merchant (`crates/sim/src/merchant.rs`): ten things drawn from the merchants' list and a purse of 600 Marks, the same for the same merchant on the same morning and new at each dawn (06:00); a player buys at an item's worth and sells at four tenths of it, neither side can pay more than it has, and what is held or worn cannot be sold until it is put away; merchants never stock Illuminated items. The world counts days and mornings. Tests: `crates/sim/tests/merchant.rs`.
 **Not yet:** Tobit Rudd himself, his cart, and the trade screen (S06, and the interface kit S05-T06).

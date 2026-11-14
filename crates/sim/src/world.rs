@@ -571,6 +571,191 @@ impl World {
         p.caster.refill_scale = p.melee.gear.ink_refill;
     }
 
+    /// What the world must remember to be itself again.
+    pub fn save(&self) -> crate::save::SaveGame {
+        use crate::casting::Holding;
+        use crate::save::*;
+        let spelling = |w: usize| self.rules.words.get(w).map_or(String::new(), |r| r.spelling.clone());
+        let players = self
+            .players
+            .iter()
+            .map(|p| {
+                let inv = &p.inventory;
+                let hand = |h: Holding| match h {
+                    Holding::Empty => (0, String::new()),
+                    Holding::Weapon => (1, String::new()),
+                    Holding::Shield => (2, String::new()),
+                    Holding::Word(w) => (3, spelling(w)),
+                };
+                SavedPlayer {
+                    feet: p.body.feet,
+                    yaw: p.yaw,
+                    pitch: p.pitch,
+                    health: p.melee.health,
+                    stamina: p.melee.stamina,
+                    ink: p.caster.ink,
+                    arrows: p.melee.arrows,
+                    known: p.caster.known.iter().map(|w| spelling(*w)).collect(),
+                    holding: [hand(p.caster.holding[0]), hand(p.caster.holding[1])],
+                    items: inv.items.clone(),
+                    equipped: [inv.main, inv.off, inv.body, inv.head, inv.trinkets[0], inv.trinkets[1]].map(|e| e.map(|i| i as u32)),
+                    marks: inv.marks,
+                    favourites: inv
+                        .favourites
+                        .iter()
+                        .map(|(main, off)| {
+                            let main = main.map(|i| i as u32);
+                            match off {
+                                crate::inventory::Favourite::Empty => (main, 0, 0, String::new()),
+                                crate::inventory::Favourite::Item(i) => (main, 1, *i as u32, String::new()),
+                                crate::inventory::Favourite::Word(w) => (main, 2, 0, spelling(*w)),
+                            }
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        let creature_ids: Vec<u64> = self.creatures.iter().map(|c| c.id).collect();
+        SaveGame {
+            seconds: self.seconds,
+            time_of_day: self.time_of_day,
+            day: self.day,
+            mornings: self.mornings,
+            rng: self.rng,
+            players,
+            broken: self.broken.to_vec(),
+            inscriptions: self
+                .targets
+                .iter()
+                .filter(|t| !creature_ids.contains(&t.id))
+                .map(|t| (t.id, t.words.iter().filter(|w| w.fades_at.is_none()).map(|w| (w.spelling.clone(), w.class.clone())).collect()))
+                .collect(),
+            creatures: self
+                .creatures
+                .iter()
+                .filter(|c| c.alive())
+                .map(|c| SavedCreature { id: c.id, class: c.class.clone(), feet: c.feet, yaw: c.yaw, health: c.health, max_health: c.max_health, size: c.size, annotation: c.annotation.clone(), elite: c.elite, drops: c.drops })
+                .collect(),
+            props: self.prop_poses.iter().map(|(id, pose)| {
+                let (_, turn, at) = pose.to_scale_rotation_translation();
+                (*id, at, turn)
+            }).collect(),
+            dropped: self.dropped.clone(),
+            merchants: self.merchants.iter().map(|m| SavedMerchant { id: m.id, day: m.day, purse: m.purse, stock: m.stock.clone() }).collect(),
+        }
+    }
+
+    /// Becomes a saved world again, over the scene as it was loaded: its scene, ground,
+    /// rules, targets, loot, and players are set first.
+    pub fn load(&mut self, save: &crate::save::SaveGame) {
+        use crate::casting::Holding;
+        self.seconds = save.seconds;
+        self.time_of_day = save.time_of_day;
+        self.day = save.day;
+        self.mornings = save.mornings;
+        self.rng = save.rng;
+        let table = self.loot.clone();
+        for (p, s) in self.players.iter_mut().zip(&save.players) {
+            p.body = crate::character::Body::new(s.feet);
+            p.yaw = s.yaw;
+            p.pitch = s.pitch;
+            p.melee.health = s.health;
+            p.melee.stamina = s.stamina;
+            p.melee.arrows = s.arrows;
+            p.caster.ink = s.ink;
+            p.caster.known = s.known.iter().filter_map(|k| self.rules.word(k)).collect();
+            for (h, (kind, word)) in s.holding.iter().enumerate() {
+                p.caster.holding[h] = match kind {
+                    1 => Holding::Weapon,
+                    2 => Holding::Shield,
+                    3 => self.rules.word(word).map_or(Holding::Empty, Holding::Word),
+                    _ => Holding::Empty,
+                };
+            }
+            let e = s.equipped.map(|e| e.map(|i| i as usize));
+            p.inventory = crate::inventory::Inventory {
+                items: s.items.clone(),
+                main: e[0],
+                off: e[1],
+                body: e[2],
+                head: e[3],
+                trinkets: [e[4], e[5]],
+                marks: s.marks,
+                favourites: s
+                    .favourites
+                    .iter()
+                    .map(|(main, kind, item, word)| {
+                        let off = match kind {
+                            1 => crate::inventory::Favourite::Item(*item as usize),
+                            2 => self.rules.word(word).map_or(crate::inventory::Favourite::Empty, crate::inventory::Favourite::Word),
+                            _ => crate::inventory::Favourite::Empty,
+                        };
+                        (main.map(|i| i as usize), off)
+                    })
+                    .collect(),
+            };
+            if let Some(t) = &table {
+                let holding = p.caster.holding;
+                Self::take_up_gear(p, t);
+                p.caster.holding = holding;
+            }
+        }
+        // Lasting words on things, as they were.
+        for (id, words) in &save.inscriptions {
+            if let Some(t) = self.targets.iter_mut().find(|t| t.id == *id) {
+                t.words = words.iter().map(|(s, c)| crate::emendation::InscribedWord { spelling: s.clone(), class: c.clone(), fades_at: None, replaced: None }).collect();
+                t.effects.clear();
+            }
+        }
+        // What was broken lies broken again, its letters settled; nothing authored broken
+        // is broken anew.
+        self.authored_broken = true;
+        self.broken = Arc::default();
+        self.debris = Default::default();
+        if let Some(g) = &self.ground {
+            self.debris.set_ground(g.clone());
+        }
+        self.debris.set_solids(self.solids.clone());
+        for id in &save.broken {
+            let centre = self.targets.iter().find(|t| t.id == *id).map_or(Vec3::ZERO, |t| t.centre);
+            self.break_thing_with(*id, centre + Vec3::Y * 0.5, 0.25);
+        }
+        self.debris.settle(STEP_SECONDS);
+        self.refresh_letters();
+        // The creatures that still stand, as they were.
+        self.remove_creatures();
+        for s in &save.creatures {
+            let mut c = if s.class == "inkling" { crate::inkling::inkling(s.id, s.feet, s.annotation.as_deref()) } else { crate::melee::Creature::new(s.id, s.feet, 0.4, 1.8, s.max_health, 40.0) };
+            c.yaw = s.yaw;
+            c.health = s.health;
+            c.max_health = s.max_health;
+            c.size = s.size;
+            if s.class == "inkling" {
+                c.radius = crate::inkling::RADIUS * s.size;
+                c.height = crate::inkling::HEIGHT * s.size;
+            }
+            c.elite = s.elite;
+            c.drops = s.drops;
+            self.add_creature(c);
+        }
+        // Loose things where they came to rest.
+        let poses: Vec<(u64, glam::Affine3A)> = save.props.iter().map(|(id, at, turn)| (*id, glam::Affine3A::from_rotation_translation(*turn, *at))).collect();
+        for b in &mut self.breakables {
+            if let Some((_, p)) = poses.iter().find(|(id, _)| *id == b.id) {
+                b.to_world = *p;
+            }
+        }
+        if !poses.is_empty() {
+            self.props = None;
+            self.props_settled = true;
+            self.rebuild_props();
+        }
+        self.dropped = save.dropped.clone();
+        self.merchants = save.merchants.iter().map(|m| crate::merchant::Merchant { id: m.id, stock: m.stock.clone(), purse: m.purse, day: m.day }).collect();
+        self.refresh_targets();
+        self.rebuild_statics();
+    }
+
     /// Opens a merchant's trade, with this morning's stock.
     pub fn add_merchant(&mut self, id: u64) {
         if let Some(table) = self.loot.clone() {

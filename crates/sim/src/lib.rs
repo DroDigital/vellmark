@@ -35,6 +35,7 @@ pub mod ai;
 pub mod items;
 pub mod inventory;
 pub mod merchant;
+pub mod save;
 mod snapshot;
 mod world;
 

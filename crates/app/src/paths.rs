@@ -43,3 +43,36 @@ pub fn repo_root() -> Option<PathBuf> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     (root.join("assets").is_dir() && root.join("shaders").is_dir()).then_some(root)
 }
+
+/// Writes a file so that it is either the old one or the whole new one, never half of
+/// either: the bytes go to a file beside it, reach the disk, and are then renamed over it.
+pub fn write_atomically(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut part = path.as_os_str().to_owned();
+    part.push(".part");
+    let part = PathBuf::from(part);
+    {
+        let mut f = std::fs::File::create(&part)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+    }
+    std::fs::rename(&part, path)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn an_atomic_write_leaves_the_whole_new_file_and_nothing_beside_it() {
+        let dir = std::env::temp_dir().join(format!("vellmark-atomic-{}", std::process::id()));
+        let path = dir.join("game.vsave");
+        super::write_atomically(&path, b"first").unwrap();
+        super::write_atomically(&path, b"second, longer").unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"second, longer");
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name()).collect();
+        assert_eq!(left.len(), 1, "no part file is left: {left:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
