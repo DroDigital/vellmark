@@ -7,9 +7,12 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T11, the first-person hands and weapons.
+**Current task:** S03-T12, the grey-box Inkling.
 
 ## Lane: Render
+
+**Done:** S03-T11, the first-person hands (`crates/render/src/viewmodel.rs`, `assets/kit/hands.ron`): forearms, fists, open hands, and the Showcase's weapons, shield, bow, string, and arrows, built as a kit of boxes in new `steel`, `leather`, and `skin` materials and baked into every scene; placed each frame by curves for the tap chain, the heavy draw and blow, the block, the shield's raise and bash, the bow's draw with its string and nocked arrow, and the writing gesture (small strokes faster and wider as the charge builds, a flick on letting go), each forearm reached from its shoulder by two-bone IK, with the walk's bob and breathing. Drawn nearer than the world (depth folded into the nearest half) so a blade never passes into a wall, never culled by last frame's depth, and casting no world shadow. Arrows in flight and stuck are drawn from a pool. The quiver shows in the HUD. Evidence: `docs/evidence/S03/hands.jpg`. Test: `crates/harness/tests/hands.rs`.
+**Not yet:** the kit is grey-box boxes until approved weapon and arm models come; a partner's full-body view of the gestures waits for characters (S04).
 
 **Done:** S02-T02, the terrain drawn (`--scene valley`); S02-T03, the sky: a scattering atmosphere, sun, moon with its phase and faint `@`, stars, two cloud layers, and the Vale's grade by the hour. Evidence: `docs/evidence/S02/sky.jpg`, `captures/s02_sky.ron`.
 **Not yet:** stars as characters in close reading; cloud shadows on the ground; dawn on the placeholder textures reads golden-brown (judge on the Mac).

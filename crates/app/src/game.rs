@@ -287,6 +287,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         .collect();
     let mut door_open: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
 
+    let mut view_model = vellmark_render::viewmodel::ViewModel::default();
     // Hit stop and the kick of a blow landing, in the first view.
     let mut hit_stop = 0.0f32;
     let mut held_view: Option<vellmark_sim::ViewSnap> = None;
@@ -511,6 +512,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let jolt = kick * 0.006;
             camera.rotation = camera.rotation * glam::Quat::from_euler(glam::EulerRot::YXZ, (t * 91.0).sin() * jolt, (t * 73.0).sin() * jolt - jolt, 0.0);
             kick = (kick - frame_time.as_secs_f32() * 10.0).max(0.0);
+        }
+        // The hands and what they hold, placed for this frame from the first player's view.
+        if let Some(player) = current.players.first() {
+            for (key, place) in view_model.place(player, camera.eye, camera.rotation, &current.arrows, started.elapsed().as_secs_f32(), frame_time.as_secs_f32()) {
+                renderer.scene_mut().place_kit(key, place);
+            }
         }
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());

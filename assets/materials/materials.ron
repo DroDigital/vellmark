@@ -32,5 +32,9 @@
         (key: "impostor.ash", generator: Impostor, tile_metres: 1.0, family: ".", contrast: 0.0, relief: 0.0, tree: Some("ash")),
         (key: "impostor.apple", generator: Impostor, tile_metres: 1.0, family: ".", contrast: 0.0, relief: 0.0, tree: Some("apple")),
         (key: "impostor.hawthorn", generator: Impostor, tile_metres: 1.0, family: ".", contrast: 0.0, relief: 0.0, tree: Some("hawthorn")),
+        // The hands and what they hold. Leather is hide, written as skin is.
+        (key: "steel", generator: Steel, tile_metres: 0.5, family: "=+TY", contrast: 0.30, relief: -0.3),
+        (key: "leather", generator: Leather, tile_metres: 0.5, family: "oecas", contrast: 0.30, relief: -0.3),
+        (key: "skin", generator: Skin, tile_metres: 0.25, family: "oecas", contrast: 0.22, relief: -0.2),
     ],
 )

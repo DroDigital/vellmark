@@ -1062,7 +1062,9 @@ impl World {
                 stamina: p.melee.stamina,
                 weapon: p.melee.weapon,
                 swing: p.melee.swing.as_ref().map(|s| (s.kind, (s.t / s.length).min(1.0))),
-                drawing: p.melee.drawing,
+                drawing: p.melee.drawing.or(p.melee.draw),
+                quiver: p.melee.arrows,
+                on_weapon: p.melee.on_weapon.iter().map(|(e, _, _)| e.clone()).collect(),
                 blocking: p.melee.blocking,
                 staggered: p.melee.staggered > 0.0,
             })

@@ -9,4 +9,5 @@
     "ui.ink.stroke": "|",
     "ui.health.stroke": "|",
     "ui.stamina.stroke": "|",
+    "ui.arrow.stroke": "^",
 }

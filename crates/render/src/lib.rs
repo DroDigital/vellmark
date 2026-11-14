@@ -20,6 +20,7 @@ mod grass;
 mod terrain;
 mod ui_pass;
 mod world_gpu;
+pub mod viewmodel;
 
 pub use camera::{sun_direction, Camera, View, Viewport};
 pub use frame::{Atmosphere, GlyphTuning};

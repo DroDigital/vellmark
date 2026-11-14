@@ -111,6 +111,15 @@ impl Hud<'_> {
         bar(canvas, sid!("ui.health.stroke"), player.health / vellmark_sim::melee::HEALTH_MAX, [0.86, 0.32, 0.26, 0.9], cx);
         let stamina_x = w - 28.0 * d - 10.0 * (12.0 * d).round() * 0.6;
         bar(canvas, sid!("ui.stamina.stroke"), player.stamina / vellmark_sim::melee::STAMINA_MAX, [0.55, 0.85, 0.45, 0.9], stamina_x);
+        // With a bow in hand, the quiver: a mark for each arrow, above the Stamina.
+        if player.weapon == vellmark_sim::melee::WeaponKind::Bow && player.holding[0] == Holding::Weapon {
+            let style = TextStyle { face: Face::Small, size: (12.0 * d).round(), colour: WHITE };
+            let mark = Shown::from_table(self.strings, sid!("ui.arrow.stroke"));
+            let step = Canvas::measure(self.atlas, &style, &mark);
+            for k in 0..player.quiver.min(vellmark_sim::melee::QUIVER) {
+                self.shadowed(canvas, w - 28.0 * d - (k + 1) as f32 * step, base, &style, &mark);
+            }
+        }
         // Ink: a row of strokes beneath the off hand's word, as many as there is Ink.
         let strokes = ((player.ink / INK_MAX).clamp(0.0, 1.0) * 20.0).round() as usize;
         let ink_style = TextStyle { face: Face::Small, size: (12.0 * d).round(), colour: [0.62, 0.78, 1.0, 0.85] };

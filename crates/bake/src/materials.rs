@@ -29,6 +29,9 @@ enum Generator {
     Water,
     Bark,
     Leaves,
+    Steel,
+    Leather,
+    Skin,
     /// A tree's far form, projected from the tree itself: `tree` names its kind.
     Impostor,
 }
@@ -260,6 +263,51 @@ fn cloth(u: f32, v: f32) -> Texel {
     }
 }
 
+/// Forged steel, ground and polished along its length: bright, with the grinding's fine
+/// streaks and a few scratches.
+fn steel(u: f32, v: f32) -> Texel {
+    let streak = fbm(u, v, 2, 160, 3, 151);
+    let broad = fbm(u, v, 3, 3, 3, 157);
+    let scratch = step(0.86, 0.93, fbm(u, v, 40, 3, 2, 163));
+    let shade = 0.78 + streak * 0.16 + broad * 0.08 - scratch * 0.1;
+    Texel {
+        colour: scale3([0.56, 0.57, 0.58], shade),
+        height: 0.5 + (streak - 0.5) * 0.1 - scratch * 0.15,
+        roughness: 0.2 + streak * 0.1 + scratch * 0.2,
+        metal: 1.0,
+    }
+}
+
+/// Tanned leather: brown, grained with pores, creased where it bends.
+fn leather(u: f32, v: f32) -> Texel {
+    let (d, id) = cellular(u, v, 60, 167);
+    let pore = 1.0 - step(0.0, 0.25, d);
+    let crease = step(0.5, 0.56, fbm(u, v, 6, 6, 4, 173)) - step(0.56, 0.62, fbm(u, v, 6, 6, 4, 173));
+    let wear = fbm(u, v, 4, 4, 3, 179);
+    let colour = mix3([0.20, 0.11, 0.06], [0.33, 0.20, 0.11], wear * 0.7 + id * 0.3);
+    Texel {
+        colour: scale3(colour, 0.9 - pore * 0.15 - crease.abs() * 0.2),
+        height: 0.55 - pore * 0.2 - crease.abs() * 0.3 + wear * 0.1,
+        roughness: 0.62 - wear * 0.2,
+        metal: 0.0,
+    }
+}
+
+/// Skin: warm, faintly blotched, with fine pores and the lines of the hand.
+fn skin(u: f32, v: f32) -> Texel {
+    let blotch = fbm(u, v, 5, 5, 4, 181);
+    let (d, _) = cellular(u, v, 90, 191);
+    let pore = 1.0 - step(0.0, 0.18, d);
+    let lines = step(0.47, 0.5, fbm(u, v, 10, 3, 3, 193)) - step(0.5, 0.53, fbm(u, v, 10, 3, 3, 193));
+    let colour = mix3([0.62, 0.42, 0.32], [0.72, 0.50, 0.39], blotch);
+    Texel {
+        colour: scale3(colour, 0.95 - pore * 0.06 - lines.abs() * 0.08),
+        height: 0.5 - pore * 0.12 - lines.abs() * 0.2,
+        roughness: 0.55 + blotch * 0.1,
+        metal: 0.0,
+    }
+}
+
 /// Wrought iron: dark, hammered, with rust where water sits.
 fn iron(u: f32, v: f32) -> Texel {
     let (d, id) = cellular(u, v, 14, 71);
@@ -476,6 +524,9 @@ fn relief_depth(generator: Generator) -> f32 {
         Generator::Water => 0.002,
         Generator::Bark => 0.02,
         Generator::Leaves => 0.004,
+        Generator::Steel => 0.0004,
+        Generator::Leather => 0.0012,
+        Generator::Skin => 0.0006,
         Generator::Impostor => 0.0,
     }
 }
@@ -504,6 +555,9 @@ fn generate(generator: Generator, size: u32, tile_metres: f32, picture: Option<&
                 Generator::Water => water(u, v),
                 Generator::Bark => bark(u, v),
                 Generator::Leaves => leaves(u, v),
+                Generator::Steel => steel(u, v),
+                Generator::Leather => leather(u, v),
+                Generator::Skin => skin(u, v),
                 // Colour, and in the height the share of the texel the tree covers.
                 Generator::Impostor => {
                     let (colour, cover) = picture.map_or(([0.0; 3], 0.0), |p| p[i]);

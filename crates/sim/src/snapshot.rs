@@ -31,8 +31,12 @@ pub struct PlayerSnap {
     pub weapon: crate::melee::WeaponKind,
     /// The swing under way, and how far through it is, 0 to 1.
     pub swing: Option<(crate::melee::SwingKind, f32)>,
-    /// The heavy attack drawn back, since this long.
+    /// The heavy attack drawn back, or the bow drawn, since this long.
     pub drawing: Option<f32>,
+    /// Arrows in the quiver.
+    pub quiver: u32,
+    /// Words on the held weapon, by effect.
+    pub on_weapon: Vec<String>,
     pub blocking: bool,
     /// Its guard was broken.
     pub staggered: bool,

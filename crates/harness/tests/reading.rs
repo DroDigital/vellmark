@@ -31,6 +31,8 @@ fn player(reading: ReadingSnap, in_focus: Option<u64>) -> PlayerSnap {
         weapon: vellmark_sim::melee::WeaponKind::Sword,
         swing: None,
         drawing: None,
+        quiver: 20,
+        on_weapon: Vec::new(),
         blocking: false,
         staggered: false,
     }

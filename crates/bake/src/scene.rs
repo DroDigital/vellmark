@@ -501,8 +501,26 @@ fn lay_out_texts(
     Ok((pages, page_of))
 }
 
+/// The first-person kit: parts built of boxes, and the things placed from each.
+#[derive(Deserialize)]
+struct Kit {
+    parts: BTreeMap<String, Vec<AuthoredBox>>,
+    placed: BTreeMap<String, Vec<String>>,
+}
+
+/// The key of a thing placed from the first-person kit: `kit.sword.main`.
+pub fn kit_key(part: &str, which: &str) -> AssetId {
+    AssetId::from_key(&format!("kit.{part}.{which}"))
+}
+
 pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String>) -> Result<Vec<BakedScene>, BakeError> {
     let mut out = Vec::new();
+    let kit_file = dir.parent().unwrap_or(dir).join("kit/hands.ron");
+    let kit: Kit = ron::from_str(&std::fs::read_to_string(&kit_file).map_err(|e| BakeError(format!("{}: {e}", kit_file.display())))?)
+        .map_err(|e| BakeError(format!("{}: {e}", kit_file.display())))?;
+    if let Some(stray) = kit.placed.keys().find(|k| !kit.parts.contains_key(*k)) {
+        return Err(BakeError(format!("{}: nothing called `{stray}` to place", kit_file.display())));
+    }
     for file in sorted_files(dir, "ron")? {
         let name = file.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_owned();
         let text = std::fs::read_to_string(&file).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
@@ -584,6 +602,15 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
                 [t[0] * p[0] + t[1] * p[1] + t[2] * p[2] + t[3] * w, t[4] * p[0] + t[5] * p[1] + t[6] * p[2] + t[7] * w, t[8] * p[0] + t[9] * p[1] + t[10] * p[2] + t[11] * w]
             };
             bake_sky(&mut meshes[i + 1].1, &place, &occluders);
+        }
+        // The first-person kit, in every scene: placed and shown by the view model alone.
+        for (part, boxes) in &kit.parts {
+            let mesh = AssetId::from_key(&format!("scene.{name}.kit.{part}.mesh"));
+            meshes.push((mesh, build(boxes, set, &kit_file, &|_, _| 0)?));
+            for which in kit.placed.get(part).into_iter().flatten() {
+                let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+                objects.push(Object { key: kit_key(part, which), mesh, transform: identity, parent: AssetId(0), piece: 0 });
+            }
         }
         let lights = authored
             .lights

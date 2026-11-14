@@ -2,6 +2,12 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: the first-person hands (S03-T11)
+
+- **A kit, not a model.** Until approved arm and weapon models exist, the hands and what they hold are boxes in `assets/kit/hands.ron`, written in letters like every surface, in three new materials: `steel` (`= + T Y`, as metal), and `leather` and `skin` (`o e c a s`, as skin; leather is hide and is not in the art direction's table).
+- **Drawn in front.** First-person things fold their reversed depth into the nearest half of the range, in the depth pre-pass and the colour pass alike, so they never pass into a wall; they skip occlusion culling and cast no shadow into the world. No second projection: they share the view's field of view.
+- **Curves, not clips.** Each pose is a hand placement in view space; a swing passes through wind-up, strike, and recovery with an eased strike. The writing hand's fingertip rests where the charge gathers (`WRITING_TIP`), so the glyph particles come off the finger.
+
 ## 2026-11-14: words on the weapon, combat lines, and the bow (S03-T10)
 
 - **On the weapon.** Both hands together, weapon and word, write the word on the weapon at once, with no flight, for the word's Ink (half again at full charge). It lasts 30 s, 60 s fully charged; a typo typed as it charges does the typo's `weapon` result. What a weapon carries passes to what it strikes: `ignite` for 5 s, `frost` as a 4 s slow. A sharp edge sets armour aside and cuts 15% deeper.

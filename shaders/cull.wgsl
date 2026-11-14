@@ -108,7 +108,10 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     let centre = object.bounds.xyz;
     let radius = object.bounds.w;
-    if outside_frustum(centre, radius) || hidden_behind(centre, radius) {
+    // The hands in first person are drawn nearer than they stand, so last frame's depth
+    // cannot hide them.
+    let first_person = object.state.y < -0.5 && object.state.y > -1.5;
+    if outside_frustum(centre, radius) || (!first_person && hidden_behind(centre, radius)) {
         return;
     }
     // A thing with levels of detail goes to the level it is seen at, and, while it is

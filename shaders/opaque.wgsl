@@ -106,6 +106,17 @@ fn instance_of(index: u32) -> u32 {
 // A position that every clip test throws away: the triangle is not drawn.
 const NOWHERE: vec4<f32> = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 
+// A thing drawn in first person (the hands and what they hold, state.y near -1) is drawn
+// nearer than anything in the world, so that a blade never passes into a wall: its depth,
+// reversed, is folded into the nearest half of the range.
+fn placed_clip(object: Instance, world: vec4<f32>) -> vec4<f32> {
+    var clip = view.view_proj * world;
+    if object.state.y < -0.5 && object.state.y > -1.5 {
+        clip.z = clip.w * (0.5 + 0.5 * clamp(clip.z / clip.w, 0.0, 1.0));
+    }
+    return clip;
+}
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -138,7 +149,7 @@ fn vs_depth(in: VertexInput) -> @builtin(position) @invariant vec4<f32> {
         return NOWHERE;
     }
     let world = object.model * vec4<f32>(in.position, 1.0);
-    return view.view_proj * world;
+    return placed_clip(object, world);
 }
 
 @vertex
@@ -147,7 +158,7 @@ fn vs(in: VertexInput) -> Varyings {
     let object = instances[id];
     let world = object.model * vec4<f32>(in.position, 1.0);
     var out: Varyings;
-    out.position = view.view_proj * world;
+    out.position = placed_clip(object, world);
     if object.state.y > 0.5 {
         out.position = NOWHERE;
     }

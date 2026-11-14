@@ -160,14 +160,14 @@ impl Magic {
         // The casting hands of the first player, from where their eye is.
         if let (Some(p), Some(v)) = (snap.players.first(), snap.views.first()) {
             let rot = Quat::from_rotation_y(-v.yaw) * Quat::from_rotation_x(v.pitch);
-            for (hand, side) in [(0usize, 0.22f32), (1, -0.22)] {
+            for hand in [0usize, 1] {
                 let Holding::Word(w) = p.holding[hand] else { continue };
                 let charge = p.charge[hand].max(p.charge[2]);
                 if charge <= 0.0 {
                     continue;
                 }
                 let Some(look) = self.looks.get(w).cloned() else { continue };
-                let at = v.eye + rot * Vec3::new(side, -0.24, -0.5);
+                let at = v.eye + rot * crate::viewmodel::WRITING_TIP[hand];
                 let count = (look.charge_glyphs as f32 * (0.3 + 0.7 * charge)).max(4.0);
                 self.emitters.push((
                     [[at.x, at.y, at.z, 0.0], [0.0, 1.0, 0.0, 0.0], [look.colour[0], look.colour[1], look.colour[2], 1.0 + 2.0 * charge], [count, 0.012 + 0.012 * charge, hand as f32, charge]],

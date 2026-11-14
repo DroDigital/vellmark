@@ -38,7 +38,8 @@ fn vs(@location(0) position: vec3<f32>, @location(4) material: u32, @builtin(ins
 
 fn from_light(position: vec3<f32>, material: u32, index: u32) -> vec4<f32> {
     let object = instances[visible[batch.base.x + index]];
-    if (cascade.glowing.x & (1u << material)) != 0u || object.state.y > 0.5 {
+    // Nor do the hands in first person, nor an arrow (state.y below zero).
+    if (cascade.glowing.x & (1u << material)) != 0u || object.state.y > 0.5 || object.state.y < -0.5 {
         // Outside the clip volume: the triangle is thrown away. A lantern's glass casts no
         // shadow, and nor does a broken thing.
         return vec4<f32>(2.0, 2.0, 2.0, 1.0);
