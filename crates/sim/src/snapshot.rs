@@ -92,7 +92,8 @@ pub struct Snapshot {
     pub letters: std::sync::Arc<Vec<LetterSnap>>,
     /// The step at which the loose letters last changed.
     pub letters_step: u64,
-    /// The permanent IDs of the things that have been broken, which are no longer drawn.
+    /// The permanent IDs of what is not drawn: the things that have been broken, and the
+    /// pieces of a thing being mended piece by piece whose letters are not yet home.
     pub broken: std::sync::Arc<Vec<u64>>,
     /// Where each loose thing stands now, as its own space placed in the world.
     pub props: std::sync::Arc<Vec<(u64, glam::Affine3A)>>,

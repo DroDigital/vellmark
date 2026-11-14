@@ -32,6 +32,8 @@ impl vellmark_sim::Ground for Ravine {
 }
 
 const BRIDGE: u64 = 77;
+/// The planks, drawn one by one, from the near end.
+const PLANK: u64 = 100;
 
 fn rules() -> WordRules {
     let e = |effect: &str| RuleOutcome::Effect { effect: effect.into(), strength: 1.0, preview: 100 };
@@ -73,6 +75,7 @@ fn world(inscribed: &str) -> World {
             to_world: Affine3A::IDENTITY,
             boxes: planks,
             mass: 0.0,
+            pieces: (0..10).map(|k| PLANK + k).collect(),
         }],
     );
     w.set_word_rules(rules());
@@ -98,7 +101,8 @@ fn a_bridge_inscribed_broken_lies_in_letters_and_cannot_be_crossed() {
     let mut w = world("BROKEN");
     go(&mut w, 0.1, PlayerInput::default());
     let s = w.snapshot();
-    assert_eq!(*s.broken, [BRIDGE], "it is broken from the start");
+    assert_eq!(s.broken[0], BRIDGE, "it is broken from the start");
+    assert_eq!(s.broken.len(), 11, "and none of its planks is drawn");
     assert!(s.letters.len() > 100, "its letters lie about: {}", s.letters.len());
     let below = s.letters.iter().filter(|l| l.position.y < -3.0).count();
     assert!(below * 10 > s.letters.len() * 9, "they lie in the ravine: {below} of {}", s.letters.len());
@@ -144,7 +148,7 @@ fn hole_knocks_a_whole_thing_down() {
     w.step(&[PlayerInput { buttons: buttons::ATTACK_OFF, typed: PlayerInput::pack_typed("HOLE"), ..Default::default() }]);
     go(&mut w, 0.2, PlayerInput { buttons: buttons::ATTACK_OFF, ..Default::default() });
     go(&mut w, 2.0, PlayerInput::default());
-    assert_eq!(*w.snapshot().broken, [BRIDGE], "HOLE knocks it down");
+    assert_eq!(w.snapshot().broken[0], BRIDGE, "HOLE knocks it down");
     assert_eq!(w.snapshot().targets[0].words, ["BROKEN"]);
 }
 
@@ -162,11 +166,9 @@ fn it_knits_outward_from_the_writer_and_can_be_walked_out_on_as_it_comes() {
     );
     // A moment for the nearest planks.
     go(&mut w, 2.9, PlayerInput::default());
-    assert_eq!(
-        *w.snapshot().broken,
-        [BRIDGE],
-        "the far end is not yet home"
-    );
+    let hidden = w.snapshot().broken.clone();
+    assert_eq!(hidden[0], BRIDGE, "the far end is not yet home");
+    assert!(!hidden.contains(&PLANK) && hidden.contains(&(PLANK + 9)), "the near plank is drawn again and the far one not yet: {hidden:?}");
     let mut lowest = f32::MAX;
     for _ in 0..STEP_HZ * 2 {
         go(

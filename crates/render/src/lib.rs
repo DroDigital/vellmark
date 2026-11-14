@@ -207,6 +207,11 @@ pub fn scene_rules(scene: &vellmark_content::Scene) -> (Vec<vellmark_sim::debris
                     .map(|s| (Vec3::from(s.min), Vec3::from(s.max), s.material))
                     .collect(),
                 mass: b.mass,
+                pieces: {
+                    let mut pieces: Vec<(u32, u64)> = scene.objects.iter().filter(|o| o.parent == b.key).map(|o| (o.piece, o.key.0)).collect();
+                    pieces.sort_unstable();
+                    pieces.into_iter().map(|(_, k)| k).collect()
+                },
             }
         })
         .collect();

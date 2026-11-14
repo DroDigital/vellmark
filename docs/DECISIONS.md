@@ -2,6 +2,14 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: props, breaking, and the Mended Bridge (S03-T08)
+
+- **Letters are the pieces.** The brief pre-fractures breakable props into pieces that fall under physics and crumble into characters within seconds; here a broken thing goes straight to its letters, which already fall and settle with their own physics (`docs/PLAN_CHANGES.md`, 2026-11-11). A marked structure's pieces are its authored boxes, drawn one by one (`pieces: true` in a scene), so that `WHOLE` puts it back a piece at a time.
+- **Mending.** Each letter flies home along an arc from where it lies, which is the parabola it fell along when it fell freely; letters set out so that neighbours arrive together, and later the further their home is from the writer's feet (0.11 s a metre). A piece is drawn and bears weight the moment its last letter is home; the thing is whole, and its Inscription says `WHOLE`, when every letter is. Mending lasts until something breaks it again. `HOLE`, the typo, knocks a whole breakable thing down.
+- **A budget per thing.** One thing falls into at most 24,000 letters (a door's worth). A bigger thing scatters its letters over its faces rather than through its volume, since its print is what is seen.
+- **Props.** Loose props are rigid bodies in their own `rapier3d` world, built on the same still things as the body's, settled at load. Interact picks up a prop of up to 40 kg within 2.6 m; it is drawn 1.3 m before the eye and let go if it catches on something; the main hand throws it at 11 m/s for 5 kg, less for heavier things. A breakable prop whose speed changes by more than 7.5 m/s in one step breaks. Things burning longer than 15 s break.
+- **Not yet:** props neither block the body nor are pushed by it, and do not stand on mended structures. Their weight words (`HEAVY`, `LIGHT`) come with the full game.
+
 ## 2026-11-13: Inscriptions and casting (S03-T05)
 
 **Numbers, for the Play Gate.** A charge is full in 1.2 s. Tough targets need half a

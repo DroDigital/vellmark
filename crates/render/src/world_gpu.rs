@@ -79,6 +79,9 @@ pub struct Placed {
     pub key: AssetId,
     pub group: usize,
     pub transform: Mat4,
+    /// The thing this is a piece of, if it is one: its heat and lasting words are the
+    /// whole thing's.
+    pub parent: AssetId,
 }
 
 /// The scene on the GPU: every mesh in one pool of vertices and indices, and every placed
@@ -162,23 +165,23 @@ impl SceneGpu {
             return Err(format!("the scene has {} meshes; the limit is {MAX_GROUPS}", meshes.len()));
         }
         // Every placed thing, kept together by mesh.
-        let mut by_mesh: Vec<Vec<(AssetId, Mat4)>> = vec![Vec::new(); meshes.len()];
-        by_mesh[0].push((scene.static_mesh, Mat4::IDENTITY));
+        let mut by_mesh: Vec<Vec<(AssetId, Mat4, AssetId)>> = vec![Vec::new(); meshes.len()];
+        by_mesh[0].push((scene.static_mesh, Mat4::IDENTITY, AssetId(0)));
         for object in &scene.objects {
             let t = object.transform;
             let transform = Mat4::from_cols_array(&[
                 t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7], t[11], 1.0,
             ]);
             let m = ids.iter().position(|id| *id == object.mesh).unwrap();
-            by_mesh[m].push((object.key, transform));
+            by_mesh[m].push((object.key, transform, object.parent));
         }
         let mut groups: Vec<Group> = Vec::new();
         let mut placed = Vec::new();
         for (m, list) in by_mesh.into_iter().enumerate() {
             let first = placed.len() as u32;
             groups.push(Group { mesh: m, first_instance: first, count: list.len() as u32, list_base: first, levels: chain_len[m] });
-            for (key, transform) in list {
-                placed.push(Placed { key, group: m, transform });
+            for (key, transform, parent) in list {
+                placed.push(Placed { key, group: m, transform, parent });
             }
         }
         // A coarser level holds as many as its finest might send it, in its own part of
@@ -259,11 +262,12 @@ impl SceneGpu {
                 let mesh = &self.meshes[p.group];
                 let centre = p.transform.transform_point3(mesh.centre);
                 let scale = p.transform.x_axis.truncate().length().max(p.transform.y_axis.truncate().length()).max(p.transform.z_axis.truncate().length());
-                let heat = heat.iter().find(|(id, _)| *id == p.key.0).map_or(0.0, |(_, h)| *h);
+                let owner = if p.parent.0 != 0 { p.parent.0 } else { p.key.0 };
+                let heat = heat.iter().find(|(id, _)| *id == owner).map_or(0.0, |(_, h)| *h);
                 let hidden = if broken.contains(&p.key.0) { 1.0 } else { 0.0 };
                 InstanceGpu {
                     model: p.transform.to_cols_array(),
-                    state: [heat, hidden, lasting.iter().find(|(id, _)| *id == p.key.0).map_or(0.0, |(_, l)| *l), self.generated.get(i).copied().unwrap_or(0) as f32],
+                    state: [heat, hidden, lasting.iter().find(|(id, _)| *id == owner).map_or(0.0, |(_, l)| *l), self.generated.get(i).copied().unwrap_or(0) as f32],
                     bounds: [centre.x, centre.y, centre.z, mesh.radius * scale],
                     group: {
                         let g = &self.groups[p.group];

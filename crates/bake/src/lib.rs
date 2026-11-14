@@ -169,6 +169,8 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
                     key,
                     mesh: trees::mesh_id(p.kind, trees::LEVELS[0]),
                     transform: [c * k, 0.0, s * k, p.x, 0.0, k, 0.0, y - 0.1, -s * k, 0.0, c * k, p.z],
+                    parent: AssetId(0),
+                    piece: 0,
                 });
             }
             report.push(format!("{}: {} trees", baked.key, tree_places.len()));

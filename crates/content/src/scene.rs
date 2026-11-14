@@ -340,6 +340,10 @@ pub struct Object {
     pub mesh: AssetId,
     /// Rows of a 3 by 4 matrix: rotation and scale, then translation in the last column.
     pub transform: [f32; 12],
+    /// For one piece of a marked structure drawn piece by piece: the structure's key,
+    /// and which of its boxes this is. `AssetId(0)` for a thing drawn whole.
+    pub parent: AssetId,
+    pub piece: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -392,7 +396,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    const MAGIC: &'static [u8; 8] = b"VLMKSCN4";
+    const MAGIC: &'static [u8; 8] = b"VLMKSCN5";
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -407,6 +411,8 @@ impl Scene {
             out.extend_from_slice(&o.key.0.to_le_bytes());
             out.extend_from_slice(&o.mesh.0.to_le_bytes());
             put_f32s(&mut out, &o.transform);
+            out.extend_from_slice(&o.parent.0.to_le_bytes());
+            out.extend_from_slice(&o.piece.to_le_bytes());
         }
         for l in &self.lights {
             out.extend_from_slice(&l.key.0.to_le_bytes());
@@ -449,7 +455,7 @@ impl Scene {
         let spawn = r.f32s()?;
         let mut objects = Vec::with_capacity(object_count);
         for _ in 0..object_count {
-            objects.push(Object { key: AssetId(r.u64()?), mesh: AssetId(r.u64()?), transform: r.f32s()? });
+            objects.push(Object { key: AssetId(r.u64()?), mesh: AssetId(r.u64()?), transform: r.f32s()?, parent: AssetId(r.u64()?), piece: r.u32()? });
         }
         let mut lights = Vec::with_capacity(light_count);
         for _ in 0..light_count {
@@ -546,7 +552,7 @@ mod tests {
     fn scene_round_trip() {
         let scene = Scene {
             static_mesh: AssetId(9),
-            objects: vec![Object { key: AssetId(1), mesh: AssetId(2), transform: [1.0; 12] }],
+            objects: vec![Object { key: AssetId(1), mesh: AssetId(2), transform: [1.0; 12], parent: AssetId(3), piece: 2 }],
             lights: vec![Light { key: AssetId(3), position: [1.0, 2.0, 3.0], colour: [4.0, 3.0, 2.0], radius: 9.0, casts_shadow: true }],
             pages: AssetId(77),
             colliders: vec![SolidBox {

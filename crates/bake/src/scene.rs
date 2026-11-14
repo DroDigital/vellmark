@@ -92,6 +92,10 @@ struct AuthoredObject {
     /// object is fixed in place.
     #[serde(default)]
     mass: f32,
+    /// A marked structure drawn piece by piece, one piece to a box, so that it can be
+    /// mended a piece at a time.
+    #[serde(default)]
+    pieces: bool,
 }
 
 #[derive(Deserialize)]
@@ -517,7 +521,9 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
         let mut objects = Vec::new();
         for o in &authored.objects {
             let mesh = AssetId::from_key(&format!("scene.{name}.{}.mesh", o.key));
-            meshes.push((mesh, build(&o.boxes, set, &file, &page_of)?));
+            if !o.pieces {
+                meshes.push((mesh, build(&o.boxes, set, &file, &page_of)?));
+            }
             let (s, c) = o.yaw.to_radians().sin_cos();
             let transform = [c, 0.0, s, o.position.0, 0.0, 1.0, 0.0, o.position.1, -s, 0.0, c, o.position.2];
             let key = AssetId::from_key(&format!("scene.{name}.{}", o.key));
@@ -535,11 +541,16 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
                 boxes: o.boxes.iter().map(|b| solid(b, set)).collect(),
                 mass: o.mass,
             });
-            objects.push(Object {
-                key,
-                mesh,
-                transform,
-            });
+            if o.pieces {
+                for (k, b) in o.boxes.iter().enumerate() {
+                    let piece_mesh = AssetId::from_key(&format!("scene.{name}.{}.piece.{k}.mesh", o.key));
+                    meshes.push((piece_mesh, build(std::slice::from_ref(b), set, &file, &page_of)?));
+                    let piece_key = AssetId::from_key(&format!("scene.{name}.{}.piece.{k}", o.key));
+                    objects.push(Object { key: piece_key, mesh: piece_mesh, transform, parent: key, piece: k as u32 });
+                }
+            } else {
+                objects.push(Object { key, mesh, transform, parent: AssetId(0), piece: 0 });
+            }
         }
         // The sky each vertex sees, against every box of the scene: the still boxes, and
         // the objects' boxes where they stand.

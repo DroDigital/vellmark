@@ -52,12 +52,14 @@ fn world() -> World {
                 to_world: Affine3A::from_translation(Vec3::new(0.0, 0.8, -1.4)),
                 boxes: cube(0.25),
                 mass: 8.0,
+                pieces: Vec::new(),
             },
             BreakableThing {
                 id: CHEST,
                 to_world: Affine3A::from_translation(Vec3::new(3.0, 0.4, 0.0)),
                 boxes: cube(0.4),
                 mass: 200.0,
+                pieces: Vec::new(),
             },
         ],
     );

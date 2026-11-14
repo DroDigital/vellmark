@@ -42,6 +42,9 @@ pub struct BreakableThing {
     /// In kilograms if it is loose, a prop that falls and can be carried; 0 if it is
     /// fixed in place.
     pub mass: f32,
+    /// For a thing drawn piece by piece, each box's piece by its permanent ID; empty for
+    /// a thing drawn whole.
+    pub pieces: Vec<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -391,6 +394,22 @@ impl World {
                 Solid { min: lo, max: hi }
             })
             .collect()
+    }
+
+    /// What is not drawn: the things that are broken, and, of a thing drawn piece by piece
+    /// that is being mended, the pieces whose letters are not all home yet.
+    fn not_drawn(&self) -> Arc<Vec<u64>> {
+        let pieced = |id: &u64| self.breakables.iter().any(|b| b.id == *id && !b.pieces.is_empty());
+        if !self.broken.iter().any(pieced) {
+            return self.broken.clone();
+        }
+        let mut out = (*self.broken).clone();
+        for id in self.broken.iter() {
+            let Some(b) = self.breakables.iter().find(|b| b.id == *id) else { continue };
+            let standing = self.standing.iter().find(|(t, _)| t == id).map(|(_, p)| p.as_slice()).unwrap_or(&[]);
+            out.extend(b.pieces.iter().enumerate().filter(|(k, _)| !standing.contains(&(*k as u32))).map(|(_, key)| *key));
+        }
+        Arc::new(out)
     }
 
     /// The statics take up what a solid thing stands in now.
@@ -873,7 +892,7 @@ impl World {
             views,
             letters: self.letters.clone(),
             letters_step: self.letters_step,
-            broken: self.broken.clone(),
+            broken: self.not_drawn(),
             props: self.prop_poses.clone(),
             heat: self.heat.clone(),
             weather: self.weather.now,
