@@ -12,7 +12,9 @@ use glam::{Quat, Vec3};
 
 use crate::items::{Item, Tier};
 
-const MAGIC: &[u8; 8] = b"VLMKSAV2";
+const MAGIC: &[u8; 8] = b"VLMKSAV3";
+/// The version before the story's flags were kept: still read, with none set.
+const MAGIC_2: &[u8; 8] = b"VLMKSAV2";
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SaveGame {
@@ -30,6 +32,9 @@ pub struct SaveGame {
     pub props: Vec<(u64, Vec3, Quat)>,
     pub dropped: Vec<(Item, Vec3)>,
     pub merchants: Vec<SavedMerchant>,
+    /// The story's flags, and how many lines each Light character has said.
+    pub flags: Vec<String>,
+    pub light_said: Vec<(String, u32)>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -281,13 +286,23 @@ impl SaveGame {
                 w.item(i);
             }
         }
+        w.u32(self.flags.len() as u32);
+        for f in &self.flags {
+            w.s(f);
+        }
+        w.u32(self.light_said.len() as u32);
+        for (k, n) in &self.light_said {
+            w.s(k);
+            w.u32(*n);
+        }
         w.0
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.len() < 8 || &bytes[..8] != MAGIC {
+        if bytes.len() < 8 || (&bytes[..8] != MAGIC && &bytes[..8] != MAGIC_2) {
             return Err("not a Vellmark save".into());
         }
+        let version = if &bytes[..8] == MAGIC { 3 } else { 2 };
         let mut r = R(bytes, 8);
         let mut s = SaveGame { seconds: r.f64()?, time_of_day: r.f32()?, day: r.u32()?, mornings: r.u32()?, rng: r.u64()?, ..Default::default() };
         for _ in 0..r.count()? {
@@ -350,6 +365,14 @@ impl SaveGame {
                 stock.push(r.item()?);
             }
             s.merchants.push(SavedMerchant { id, day, purse, stock });
+        }
+        if version >= 3 {
+            for _ in 0..r.count()? {
+                s.flags.push(r.s()?);
+            }
+            for _ in 0..r.count()? {
+                s.light_said.push((r.s()?, r.u32()?));
+            }
         }
         if r.1 != bytes.len() {
             return Err("the save has trailing bytes".into());

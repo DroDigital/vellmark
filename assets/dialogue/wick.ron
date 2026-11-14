@@ -1,0 +1,48 @@
+// Wick, the gravedigger: the grave and the return, from the script's Q1 as written
+// (full-game/docs/script/01-title-intro-prologue.md). The climb, the character, and the
+// name that fades are the opening's own (S06-T09); the `name_fades` event marks where.
+(
+    key: "wick",
+    talks: [
+        (when: [Not("q1_wick_spoke")], start: "grave"),
+        (when: [Flag("q1_shovel"), Not("q1_complete")], start: "return"),
+    ],
+    nodes: {
+        "grave": (
+            lines: ["line.q1_001", "line.q1_002"],
+            choices: [
+                (text: "choice.q1.where", then: "grave.where"),
+                (text: "choice.q1.who", then: "grave.who"),
+                (text: "choice.q1.remember", then: "grave.remember"),
+            ],
+        ),
+        "grave.where": (lines: ["line.q1_003"], next: "grave.look"),
+        "grave.who": (lines: ["line.q1_004"], next: "grave.look"),
+        "grave.remember": (lines: ["line.q1_005"], next: "grave.look"),
+        "grave.look": (
+            lines: ["line.q1_006", "line.q1_007"],
+            choices: [(text: "choice.q1.name", then: "grave.again")],
+        ),
+        "grave.again": (
+            event: "name_fades",
+            lines: ["line.q1_008"],
+            choices: [(text: "choice.q1.name", then: "grave.pencil")],
+        ),
+        "grave.pencil": (
+            event: "name_fades",
+            lines: ["line.q1_009", "line.q1_010", "line.q1_011", (text: "line.q1_012", when: [Witness])],
+            set: ["q1_wick_spoke"],
+        ),
+        "return": (
+            lines: ["line.q1_014"],
+            choices: [
+                (text: "choice.q1.nobody", then: "return.after"),
+                (text: "choice.q1.grass", then: "return.after"),
+                (text: "choice.q1.white", then: "return.after"),
+            ],
+        ),
+        "return.after": (lines: ["line.q1_018", "line.q1_019"], next: "return.paid"),
+        // He hands over 12 Marks in a twist of paper.
+        "return.paid": (lines: ["line.q1_020"], marks: 12, set: ["q1_complete", "wick_met"]),
+    },
+)

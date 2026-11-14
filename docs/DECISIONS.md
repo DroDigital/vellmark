@@ -2,6 +2,14 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: dialogue (S06-T06)
+
+- **One file to a speaker**, with talks chosen by flags and nodes by name; a Light character is the same file with only `light` lines, so the full game's two character formats share one table.
+- **Lines are keyed by their voice-line ids** (`line.q1_001`) and copied from `full-game/docs/voice/voice_lines.tsv`; a test fails if any differs from it. New lines (Tobit, villagers) get their own keys.
+- **Choices read as the script's, without quotation marks.** The script's direction for the fading name is shown as "(Say your name.)" until the opening's event shows it (S06-T09).
+- **The world stops for no one.** A conversation holds its player still, facing the speaker; in solo play the world goes on around them, as in co-op.
+- **Lines are written out at 70 characters a second**, as ink on paper; a press finishes the line, the next goes on.
+
 ## 2026-11-14: the pause menu and the settings (S07-T05)
 
 - **Brought forward.** Menus need no assets, and every playtest needs them, so S07-T05 is done now while S04 waits on downloads.

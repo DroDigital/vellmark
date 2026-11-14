@@ -11,6 +11,7 @@ pub mod item_text;
 pub mod inventory_view;
 pub mod menu;
 pub mod pages;
+pub mod dialogue_view;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 
@@ -26,6 +27,11 @@ impl<'a> Shown<'a> {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Its first `chars` characters: a line as far as it is written.
+    pub fn prefix(&self, chars: usize) -> Shown<'static> {
+        Shown(Cow::Owned(self.0.chars().take(chars).collect()))
     }
 
     /// Its first `chars` characters, followed by `tail` (itself from the table): for a line

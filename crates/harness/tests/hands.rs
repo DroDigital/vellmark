@@ -43,6 +43,8 @@ fn player() -> PlayerSnap {
         marks: 0,
         lit: false,
         warned: false,
+        talker_in_gaze: None,
+        talking: None,
     }
 }
 

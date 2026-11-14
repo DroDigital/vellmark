@@ -17,6 +17,8 @@ pub struct PlayerInput {
     pub typed: u32,
     /// A pairing chosen from the favourites wheel this step, counted from 1; 0 for none.
     pub favourite: u8,
+    /// A choice taken in a conversation this step, counted from 1; 0 for none.
+    pub say: u8,
 }
 
 impl PlayerInput {

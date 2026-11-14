@@ -97,7 +97,7 @@ fn player_input(actions: &ActionState, bindings: &Bindings, dt: f32, first_step:
             held |= bit;
         }
     }
-    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held, typed: 0, favourite: 0 }
+    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held, typed: 0, favourite: 0, say: 0 }
 }
 
 // `strings` is reloaded here and read once the interface shows text (Phase S03).
@@ -263,6 +263,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             world.equip(me, index);
         }
     }
+    // Who says what.
+    if let Some(table) = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::DIALOGUE_KEY)).and_then(|b| vellmark_content::DialogueTable::from_bytes(b).ok()) {
+        world.set_dialogue(table);
+    }
     // The game is saved apart from the settings; `--continue` starts from it.
     let save_path = crate::paths::user_data_dir().join(format!("{}.vsave", scene_key.trim_start_matches("scene.")));
     if args.continue_game {
@@ -333,6 +337,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut pack_nav = vellmark_ui::kit::NavRepeat::default();
     // The pause menu and the settings, while open. The world holds still in solo play.
     let mut menu: Option<vellmark_ui::pages::Menu> = None;
+    // A conversation: the choice the focus rests on, the choice taken this frame, the line
+    // whose writing a press hurried to its end, and Interact held from that press, so that
+    // it does not also go on to the next line.
+    let mut talk_focus = vellmark_ui::kit::Focus::default();
+    let mut talk_repeat = vellmark_ui::menu::MenuRepeat::default();
+    let mut say: u8 = 0;
+    let mut hurried: Option<u64> = None;
+    let mut hold_interact = false;
     renderer.set_fewer_flashes(settings.fewer_flashes);
     sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume);
 
@@ -366,7 +378,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         if menu.is_some() {
         } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
             pack = None;
-        } else if actions.pressed(Action::Inventory) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None) {
+        } else if actions.pressed(Action::Inventory) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None && p.talking.is_none()) {
             pack = Some(Default::default());
             pack_nav = Default::default();
         } else if actions.pressed(Action::Pause) && menu.is_none() {
@@ -486,6 +498,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         world.place_player(id, Vec3::new(x, 0.0, z), current.players[0].yaw);
                         log::line(&format!("went to {x} {z}"));
                     }
+                    Command::Talk(speaker) => {
+                        let p = &current.players[0];
+                        let ahead = Vec3::new(p.yaw.sin(), 0.0, -p.yaw.cos()) * 2.0;
+                        world.add_talker(vellmark_sim::dialogue::Talker { id: 0x7a1c, speaker: speaker.clone(), feet: p.feet + ahead, height: 1.75 });
+                        log::line(&format!("{speaker} stands ahead"));
+                    }
                     Command::Respawn => {
                         world.remove_creatures();
                         for c in vellmark_render::scene_creatures(&scene) {
@@ -598,6 +616,29 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }));
         }
 
+        // A conversation: choices are taken with the menu keys; a press on a line still
+        // being written writes it out at once.
+        if let (Some(t), None) = (current.players.first().and_then(|p| p.talking.as_ref()), &menu) {
+            if t.choices.is_empty() {
+                talk_focus = Default::default();
+                let done = vellmark_ui::dialogue_view::written(&strings, t, current.seconds) || hurried == Some(t.since.to_bits());
+                if actions.pressed(Action::Interact) && !done {
+                    hurried = Some(t.since.to_bits());
+                    hold_interact = true;
+                }
+            } else {
+                let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut talk_repeat, frame_time.as_secs_f32());
+                let rows = vellmark_ui::dialogue_view::DialogueView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }.rows();
+                talk_focus.step(input.step, t.choices.len(), rows);
+                if input.confirm {
+                    say = talk_focus.at as u8 + 1;
+                }
+            }
+        }
+        if !actions.held(Action::Interact) {
+            hold_interact = false;
+        }
+
         // The pack: move the focus, and equip what it rests on.
         if let (Some(focus), Some(me)) = (pack.as_mut(), current.players.first().map(|p| p.id)) {
             let len = world.inventory(me).map_or(0, |i| i.items.len());
@@ -613,6 +654,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         let plan = clock.advance(if pack.is_some() || menu.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
+            if step == 0 {
+                input.say = std::mem::take(&mut say);
+            }
+            if hold_interact {
+                input.buttons &= !vellmark_sim::buttons::INTERACT;
+            }
             let take: String = typed.drain(..typed.len().min(4)).collect();
             input.typed = PlayerInput::pack_typed(&take);
             world.step(&[input]);
@@ -664,7 +711,21 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
             vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
                 .draw(&mut canvas, player, &actions, &bindings, style);
-            if player.reading == vellmark_sim::reading::ReadingSnap::None && pack.is_none() {
+            let ui_density = window.pixel_density() * settings.interface_scale();
+            let talk_view = vellmark_ui::dialogue_view::DialogueView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: ui_density };
+            if let Some(t) = &player.talking {
+                let now = if hurried == Some(t.since.to_bits()) { f64::MAX / 4.0 } else { current.seconds };
+                let key = match (actions.last_device, t.choices.is_empty()) {
+                    (vellmark_platform::DeviceKind::Pad, false) => Some(format!("prompt.pad.{}.south", vellmark_platform::prompts::style_name(style))),
+                    _ => vellmark_platform::prompts::prompt_key(Action::Interact, actions.last_device, style, &bindings),
+                };
+                talk_view.draw(&mut canvas, t, now, talk_focus, key.as_deref());
+            } else if let (Some(speaker), true) = (&player.talker_in_gaze, player.reading == vellmark_sim::reading::ReadingSnap::None && pack.is_none()) {
+                if let Some(key) = vellmark_platform::prompts::prompt_key(Action::Interact, actions.last_device, style, &bindings) {
+                    talk_view.draw_offer(&mut canvas, speaker, &key);
+                }
+            }
+            if player.reading == vellmark_sim::reading::ReadingSnap::None && pack.is_none() && player.talking.is_none() {
                 vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot: world.loot(), size: screen.size(), density: window.pixel_density() * settings.interface_scale() }.draw(&mut canvas, player);
             }
             if let (Some(focus), Some(inv), Some(loot)) = (pack, world.inventory(player.id), world.loot()) {

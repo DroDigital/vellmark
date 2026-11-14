@@ -41,6 +41,8 @@ pub enum Command {
     Goto(f32, f32),
     /// Put the scene's creatures back as they were at load.
     Respawn,
+    /// Stand a speaker two metres ahead, to talk to, until the people are built (S06-T07).
+    Talk(String),
     /// Save the game, or load the saved game.
     Save,
     Load,
@@ -149,6 +151,7 @@ impl Overlay {
             (Some("help"), _) => {
                 for text in [
                     "hour <0-24>    fix the time of day",
+                    "talk <speaker> stand a speaker ahead to talk to (wick)",
                     "hour run       let the clock run",
                     "glyph on|off   switch the glyph layer",
                     "lamps on|off   light the lamps or put them out",
@@ -225,6 +228,7 @@ impl Overlay {
                 _ => self.say("goto takes an x and a z, in metres"),
             },
             (Some("respawn"), _) => self.commands.push(Command::Respawn),
+            (Some("talk"), Some(speaker)) => self.commands.push(Command::Talk(speaker.to_ascii_lowercase())),
             (Some("save"), _) => self.commands.push(Command::Save),
             (Some("load"), _) => self.commands.push(Command::Load),
             (Some("quit"), _) => self.commands.push(Command::Quit),

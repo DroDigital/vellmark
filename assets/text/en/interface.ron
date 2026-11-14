@@ -82,4 +82,8 @@
     "ui.action.previous_word": "Previous word",
     "ui.action.next_word": "Next word",
     "ui.action.inventory": "Pack",
+    // Conversations.
+    "ui.talk.offer": "{key} Talk to {name}",
+    "ui.talk.continue": "{key} Continue",
+    "ui.talk.choose": "{key} Choose",
 }

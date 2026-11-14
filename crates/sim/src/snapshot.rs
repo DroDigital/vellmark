@@ -53,6 +53,24 @@ pub struct PlayerSnap {
     pub lit: bool,
     /// An Inkling is near, and what it wears warns of it.
     pub warned: bool,
+    /// Someone within reach and in the gaze who can be spoken to: their speaker key.
+    pub talker_in_gaze: Option<String>,
+    /// The conversation under way, if any.
+    pub talking: Option<TalkSnap>,
+}
+
+/// A conversation as shown: who is speaking, the line, and the choices offered.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TalkSnap {
+    pub talker: u64,
+    /// The speaker key of who says the line: named `speaker.<key>`.
+    pub by: String,
+    /// The line's string id, if a line is being said or was last said.
+    pub line: Option<u64>,
+    /// When the line began, in world seconds.
+    pub since: f64,
+    /// The choices offered, by string id; empty until the node's lines are said.
+    pub choices: Vec<u64>,
 }
 
 /// A thing with an Inscription, as drawn.

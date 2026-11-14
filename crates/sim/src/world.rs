@@ -71,6 +71,8 @@ struct Player {
     /// A word it wrote on a creature that its weapon will pass to the next it strikes,
     /// by a word clause: the effect, and until when.
     passing: Option<(String, f64, u64)>,
+    /// The conversation it is in, if any.
+    talking: Option<crate::dialogue::Conversation>,
 }
 
 /// The ground as the body asks about it.
@@ -154,6 +156,15 @@ pub struct World {
     /// Mornings come since the world began: each brings the merchants' new stock.
     mornings: u32,
     merchants: Vec<crate::merchant::Merchant>,
+    /// Who can be spoken to, and what they say.
+    dialogue: Option<Arc<vellmark_content::DialogueTable>>,
+    talkers: Vec<crate::dialogue::Talker>,
+    /// The story's flags: what has been said and done.
+    flags: std::collections::BTreeSet<String>,
+    /// How many lines each Light character has said, so that they say the next.
+    light_said: std::collections::BTreeMap<String, u32>,
+    /// Scripted events begun by dialogue this step, with the player who began them.
+    events: Vec<(u32, String)>,
 }
 
 impl World {
@@ -203,6 +214,11 @@ impl World {
             day: 0,
             mornings: 0,
             merchants: Vec::new(),
+            dialogue: None,
+            talkers: Vec::new(),
+            flags: Default::default(),
+            light_said: Default::default(),
+            events: Vec::new(),
         }
     }
 
@@ -211,7 +227,7 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default(), read_for: 0.0, learned: None, inventory: Default::default(), passing: None });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default(), read_for: 0.0, learned: None, inventory: Default::default(), passing: None, talking: None });
         id
     }
 
@@ -673,6 +689,8 @@ impl World {
             }).collect(),
             dropped: self.dropped.clone(),
             merchants: self.merchants.iter().map(|m| SavedMerchant { id: m.id, day: m.day, purse: m.purse, stock: m.stock.clone() }).collect(),
+            flags: self.flags.iter().cloned().collect(),
+            light_said: self.light_said.iter().map(|(k, n)| (k.clone(), *n)).collect(),
         }
     }
 
@@ -783,8 +801,39 @@ impl World {
         }
         self.dropped = save.dropped.clone();
         self.merchants = save.merchants.iter().map(|m| crate::merchant::Merchant { id: m.id, stock: m.stock.clone(), purse: m.purse, day: m.day }).collect();
+        self.flags = save.flags.iter().cloned().collect();
+        self.light_said = save.light_said.iter().cloned().collect();
+        for p in &mut self.players {
+            p.talking = None;
+        }
         self.refresh_targets();
         self.rebuild_statics();
+    }
+
+    /// The dialogue table: who says what.
+    pub fn set_dialogue(&mut self, table: vellmark_content::DialogueTable) {
+        self.dialogue = Some(Arc::new(table));
+    }
+
+    /// Someone who can be spoken to.
+    pub fn add_talker(&mut self, talker: crate::dialogue::Talker) {
+        self.talkers.retain(|t| t.id != talker.id);
+        self.talkers.push(talker);
+    }
+
+    /// The story's flags.
+    pub fn flags(&self) -> &std::collections::BTreeSet<String> {
+        &self.flags
+    }
+
+    /// Sets a flag, as the story's scripts do.
+    pub fn set_flag(&mut self, flag: &str) {
+        self.flags.insert(flag.to_string());
+    }
+
+    /// Scripted events dialogue began this step, with the player who began each.
+    pub fn events(&self) -> &[(u32, String)] {
+        &self.events
     }
 
     /// Opens a merchant's trade, with this morning's stock.
@@ -1292,11 +1341,54 @@ impl World {
         if !self.authored_broken {
             self.break_authored();
         }
+        // Conversations: Interact on someone in reach begins one, and goes on through its
+        // lines; a choice is taken by number. While one is under way the view turns to the
+        // speaker's face and nothing else is done. Edges are read against the buttons of the
+        // last step, which the hands' loop keeps.
+        self.events.clear();
+        let witness = self.players.len() > 1;
+        // Who talked this step, even if the conversation ended in it: the press that ended
+        // it does nothing else.
+        let mut talked = Vec::with_capacity(self.players.len());
+        for (i, p) in self.players.iter_mut().enumerate() {
+            let input = inputs.get(i).copied().unwrap_or_default();
+            let pressed = input.buttons & !p.caster.last_buttons;
+            let was = p.talking.is_some();
+            if let Some(table) = &self.dialogue {
+                let eye = p.body.feet + Vec3::Y * p.body.eye;
+                let (sy, cy) = p.yaw.sin_cos();
+                let (sp, cp) = p.pitch.sin_cos();
+                let gaze = Vec3::new(sy * cp, sp, -cy * cp);
+                let mut talking = crate::dialogue::Talking { table, flags: &mut self.flags, witness, now: self.seconds, effects: Default::default() };
+                p.talking = match p.talking.take() {
+                    None if pressed & buttons::INTERACT != 0 => crate::dialogue::talker_in_gaze(&self.talkers, eye, gaze).and_then(|t| {
+                        let speaker = table.speaker(&t.speaker)?;
+                        let said = self.light_said.entry(t.speaker.clone()).or_default();
+                        talking.begin(speaker, t.id, said)
+                    }),
+                    None => None,
+                    Some(c) if input.say > 0 => talking.choose(c, input.say as usize - 1),
+                    Some(c) if pressed & buttons::INTERACT != 0 => talking.advance(c),
+                    Some(c) => Some(c),
+                };
+                p.inventory.marks = p.inventory.marks.saturating_add(talking.effects.marks);
+                self.events.extend(talking.effects.events.into_iter().map(|e| (p.id.0, e)));
+                if let Some(t) = p.talking.as_ref().and_then(|c| self.talkers.iter().find(|t| t.id == c.talker)) {
+                    let to = t.face() - eye;
+                    let yaw = to.x.atan2(-to.z);
+                    let pitch = (to.y / to.length().max(1e-3)).asin();
+                    let turn = (yaw - p.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+                    p.yaw += turn * 0.2;
+                    p.pitch += (pitch - p.pitch) * 0.2;
+                }
+            }
+            talked.push(was || p.talking.is_some());
+        }
         use crate::reading::{focus, Reading, CLOSE_READING_PACE};
         // What each player reads. A text in focus is read while Read is held; with none,
         // Read is close reading.
         for (i, p) in self.players.iter_mut().enumerate() {
-            let input = inputs.get(i).copied().unwrap_or_default();
+            let input = if p.talking.is_some() { PlayerInput::default() } else { inputs.get(i).copied().unwrap_or_default() };
             let eye = p.body.feet + Vec3::Y * p.body.eye;
             let (sy, cy) = p.yaw.sin_cos();
             let (sp, cp) = p.pitch.sin_cos();
@@ -1336,7 +1428,7 @@ impl World {
         let dt = STEP_SECONDS * self.pace;
         let solo = self.players.len() == 1;
         for (i, p) in self.players.iter_mut().enumerate() {
-            let input = inputs.get(i).copied().unwrap_or_default();
+            let input = if p.talking.is_some() { PlayerInput::default() } else { inputs.get(i).copied().unwrap_or_default() };
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
             // A sidestep costs Stamina, and needs it. A chilled body is slow; a fallen one
@@ -1403,9 +1495,14 @@ impl World {
         self.heard.clear();
         let mut hand_events = Vec::new();
         for (i, p) in self.players.iter_mut().enumerate() {
-            let input = inputs.get(i).copied().unwrap_or_default();
-            let pressed = input.buttons & !p.caster.last_buttons;
+            let mut input = inputs.get(i).copied().unwrap_or_default();
+            let mut pressed = input.buttons & !p.caster.last_buttons;
             p.caster.last_buttons = input.buttons;
+            // In a conversation, nothing else is done.
+            if talked.get(i).copied().unwrap_or(false) {
+                input = PlayerInput::default();
+                pressed = 0;
+            }
             if pressed & buttons::NEXT_WORD != 0 {
                 p.caster.cycle(1);
             }
@@ -1802,6 +1899,26 @@ impl World {
     }
 
     /// The immutable picture of this step.
+    /// A player's conversation as shown.
+    fn talk_snap(&self, p: &Player) -> Option<crate::snapshot::TalkSnap> {
+        let c = p.talking.as_ref()?;
+        let table = self.dialogue.as_deref()?;
+        // The flags are only read here; a copy keeps the borrow simple.
+        let mut flags = self.flags.clone();
+        let talking = crate::dialogue::Talking { table, flags: &mut flags, witness: self.players.len() > 1, now: self.seconds, effects: Default::default() };
+        let (by, line) = match talking.line(c) {
+            Some((by, line)) => (by, Some(line)),
+            None => (table.speakers[c.speaker].key.clone(), None),
+        };
+        let choices = if c.choosing {
+            let node = &table.speakers[c.speaker].nodes[c.node? as usize];
+            talking.choices(c).map(|i| node.choices[i].text).collect()
+        } else {
+            Vec::new()
+        };
+        Some(crate::snapshot::TalkSnap { talker: c.talker, by, line, since: c.since, choices })
+    }
+
     pub fn snapshot(&self) -> Arc<Snapshot> {
         let players: Vec<PlayerSnap> = self
             .players
@@ -1877,6 +1994,16 @@ impl World {
                 marks: p.inventory.marks,
                 lit: self.wears(p, "lit"),
                 warned: self.wears(p, "lit") && self.creatures.iter().any(|c| c.alive() && c.class == "inkling" && c.feet.distance(p.body.feet) < 15.0),
+                talker_in_gaze: match (&p.talking, &self.dialogue) {
+                    (None, Some(_)) => {
+                        let eye = p.body.feet + Vec3::Y * p.body.eye;
+                        let (sy, cy) = p.yaw.sin_cos();
+                        let (sp, cp) = p.pitch.sin_cos();
+                        crate::dialogue::talker_in_gaze(&self.talkers, eye, Vec3::new(sy * cp, sp, -cy * cp)).map(|t| t.speaker.clone())
+                    }
+                    _ => None,
+                },
+                talking: self.talk_snap(p),
                 learned: p.learned.filter(|(_, at)| self.seconds - at < 5.0).map(|(w, _)| self.rules.words[w].spelling.clone()),
             })
             .collect();
@@ -1987,6 +2114,7 @@ mod tests {
             buttons: if step % 90 < 30 { buttons::SPRINT } else { 0 },
             typed: 0,
             favourite: 0,
+            say: 0,
         }
     }
 

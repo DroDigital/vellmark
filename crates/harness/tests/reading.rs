@@ -41,6 +41,8 @@ fn player(reading: ReadingSnap, in_focus: Option<u64>) -> PlayerSnap {
         marks: 0,
         lit: false,
         warned: false,
+        talker_in_gaze: None,
+        talking: None,
     }
 }
 

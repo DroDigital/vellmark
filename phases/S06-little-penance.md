@@ -29,7 +29,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S06-T03** [Content] Build Tithe Hill: forty gravestones, the wall, the open grave, and the vista
 - [ ] **S06-T04** [Content] Build the Tithe Hill Ossuary: the bronze doors, four rooms, the pressure puzzle, breakable props, and the Bone Clerk's chamber
 - [ ] **S06-T05** [Content] Build the mill, its wheel and pond, the whetstone, and the hidden cellar opened by a line that must be read
-- [ ] **S06-T06** [Sim] Build dialogue with choices, shown in the interface's letters, with the camera on the speaker's face
+- [x] **S06-T06** [Sim] Build dialogue with choices, shown in the interface's letters, with the camera on the speaker's face
 - [ ] **S06-T07** [Content] Add Wick, the Oakes, and Tobit Rudd with their routines from dawn to night, and ten villagers with a few lines each
 - [ ] **S06-T08** [Content] Write Tobit's lines, the villagers' lines, the forty gravestones, the wall text, and three short books, in the Vale's voice
 - [ ] **S06-T09** [Sim] Build the opening from the script as written: the grave, Wick, the climb, the Runt, and the first word
