@@ -37,7 +37,7 @@ mod world;
 pub use clock::{FixedClock, StepPlan, STEP_HZ, STEP_SECONDS};
 pub use hash::Fnv64;
 pub use input::{buttons, PlayerInput};
-pub use snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
+pub use snapshot::{Heard, LetterSnap, PlayerSnap, Snapshot, ViewSnap};
 pub use weather::Weather;
 pub use world::{BreakableThing, PlayerId, World, WorldConfig, EYE_HEIGHT};
 pub use character::{Body, HeightPatch, Trunk};

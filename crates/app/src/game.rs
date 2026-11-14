@@ -275,6 +275,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     log::line(&format!("preset {preset:?}"));
 
     let mut sound = crate::sound::Sound::start(&platform, &scene);
+    if let Some(table) = base.get(vellmark_content::AssetKind::Table, vellmark_content::AssetId::from_key(vellmark_content::WORDS_KEY)).and_then(|b| vellmark_content::WordTable::from_bytes(b).ok()) {
+        sound.set_words(&table);
+    }
     // Letters typed while a word charges, waiting for the next step.
     let mut typing = false;
     let mut typed = String::new();
@@ -487,6 +490,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             world.step(&[input]);
             previous = current;
             current = world.snapshot();
+            sound.heard(&current);
             // Hit stop: a blow that lands holds the striker's view a moment and kicks it.
             // Only the view: the shared world never pauses.
             if let Some(me) = current.players.first() {

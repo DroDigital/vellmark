@@ -132,6 +132,8 @@ pub struct World {
     arrows: Vec<crate::melee::Arrow>,
     /// The minds of the Inklings.
     minds: Vec<crate::inkling::Mind>,
+    /// What was heard this step.
+    heard: Vec<crate::snapshot::Heard>,
 }
 
 impl World {
@@ -175,6 +177,7 @@ impl World {
             hits: Vec::new(),
             arrows: Vec::new(),
             minds: Vec::new(),
+            heard: Vec::new(),
         }
     }
 
@@ -227,7 +230,11 @@ impl World {
         let mut bites = Vec::new();
         for mind in &mut self.minds {
             if let Some(c) = self.creatures.iter_mut().find(|c| c.id == mind.id) {
+                let was = c.telegraph;
                 crate::inkling::think(c, mind, &quarry, &height, &open, &mut roll, dt, &mut bites);
+                if was == 0.0 && c.telegraph > 0.0 {
+                    self.heard.push(crate::snapshot::Heard::Gather { at: c.centre() });
+                }
             }
         }
         // Its blows land, and its annotation's power goes with them.
@@ -260,6 +267,7 @@ impl World {
                         s.struck.push(part.id);
                     }
                 }
+                self.heard.push(crate::snapshot::Heard::Split { at: part.centre() });
                 self.add_creature(part);
             }
         }
@@ -269,6 +277,7 @@ impl World {
         for c in &mut self.creatures {
             if !c.alive() && c.died_at.is_none() {
                 c.died_at = Some(now);
+                self.heard.push(crate::snapshot::Heard::Spill { at: c.feet });
             }
         }
         let gone: Vec<u64> = self.creatures.iter().filter(|c| c.died_at.is_some_and(|t| now - t > 25.0)).map(|c| c.id).collect();
@@ -427,7 +436,9 @@ impl World {
             return 0.0;
         }
         let shield = p.caster.holding[1] == crate::casting::Holding::Shield;
+        let guarded = p.melee.blocking;
         let through = p.melee.take(damage, from, p.body.feet, p.yaw, shield);
+        self.heard.push(crate::snapshot::Heard::Struck { player: id, through, blocked: guarded && through < damage });
         if through > damage * 0.5 {
             self.strike(id);
         }
@@ -636,6 +647,7 @@ impl World {
             return None;
         }
         let mut thing = self.breakables.iter().find(|b| b.id == id)?.clone();
+        self.heard.push(crate::snapshot::Heard::Break { at: blow });
         // A loose thing breaks where it lies now, and its body is gone.
         if let Some(props) = &mut self.props {
             if let Some(p) = props.pose(id) {
@@ -850,6 +862,7 @@ impl World {
         }
         self.landings.clear();
         self.hits.clear();
+        self.heard.clear();
         let mut hand_events = Vec::new();
         for (i, p) in self.players.iter_mut().enumerate() {
             let input = inputs.get(i).copied().unwrap_or_default();
@@ -936,8 +949,15 @@ impl World {
                 }
             }
             let before = self.hits.len();
+            let swinging = p.melee.swing.as_ref().map(|s| s.t);
             p.melee.step(p.id.0, &hand_events, main_weapon, p.caster.holding[1], off_held, eye, gaze, &mut self.creatures, dt, &mut self.hits);
+            if let Some(s) = &p.melee.swing {
+                if swinging.is_none_or(|t| s.t < t) {
+                    self.heard.push(crate::snapshot::Heard::Swing { player: p.id, kind: s.kind });
+                }
+            }
             if let Some(arrow) = p.melee.loosed.take() {
+                self.heard.push(crate::snapshot::Heard::Loose { player: p.id, at: arrow.at });
                 self.arrows.push(arrow);
             }
             // Interact gathers the arrows stuck within reach.
@@ -1004,8 +1024,14 @@ impl World {
                     (w, f) => w.or(f),
                 }
             };
+            let stuck_before = self.arrows.iter().filter(|a| a.stuck).count();
             let before = self.hits.len();
             crate::melee::fly_arrows(&mut self.arrows, &mut self.creatures, &blocked, dt, &mut self.hits);
+            if self.arrows.iter().filter(|a| a.stuck).count() > stuck_before {
+                if let Some(a) = self.arrows.iter().rev().find(|a| a.stuck) {
+                    self.heard.push(crate::snapshot::Heard::Thunk { at: a.at });
+                }
+            }
             for hit in self.hits[before..].iter() {
                 if let Some(p) = self.players.iter_mut().find(|p| p.id.0 == hit.player) {
                     p.caster.ink = (p.caster.ink + crate::melee::ink_for(hit, crate::melee::WeaponKind::Bow)).min(crate::emendation::INK_MAX);
@@ -1118,6 +1144,9 @@ impl World {
         if !mended.is_empty() {
             self.broken = Arc::new(self.broken.iter().copied().filter(|b| !mended.contains(b)).collect());
             for id in &mended {
+                if let Some(t) = self.targets.iter().find(|t| t.id == *id) {
+                    self.heard.push(crate::snapshot::Heard::Mend { at: t.centre });
+                }
                 self.inscribe_state(*id, "WHOLE");
             }
             self.standing.retain(|(t, _)| !mended.contains(t));
@@ -1248,6 +1277,7 @@ impl World {
                 .collect(),
             landings: self.landings.clone(),
             hits: self.hits.clone(),
+            heard: self.heard.clone(),
             arrows: Arc::new(self.arrows.clone()),
             creatures: Arc::new(self.creatures.clone()),
         })

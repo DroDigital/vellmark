@@ -5,6 +5,7 @@
 use std::sync::Arc;
 
 use glam::{Vec2, Vec3};
+use vellmark_audio::cues::{Cue, CueKind, Timbre, MOTIF_NOTES};
 use vellmark_audio::{Controls, Mixer, SAMPLE_RATE};
 use vellmark_platform::{AudioOut, Platform};
 
@@ -18,6 +19,8 @@ pub struct Sound {
     trees: Vec<Vec2>,
     water: f32,
     frame: u64,
+    /// Each word's motif and timbre, by its spelling and its typo's.
+    motifs: Vec<(String, [u8; MOTIF_NOTES], Timbre)>,
 }
 
 impl Sound {
@@ -34,7 +37,82 @@ impl Sound {
         };
         // Where the trees stand, from the scene: their keys say what they are.
         let trees = scene.objects.iter().filter(|o| tree_key(o.mesh)).map(|o| Vec2::new(o.transform[3], o.transform[11])).collect();
-        Self { _out: out, controls, trees, water: 0.0, frame: 0 }
+        Self { _out: out, controls, trees, water: 0.0, frame: 0, motifs: Vec::new() }
+    }
+
+    /// Learns every word's motif from the table of words.
+    pub fn set_words(&mut self, table: &vellmark_content::WordTable) {
+        self.motifs = table
+            .words
+            .iter()
+            .map(|w| {
+                let mut notes = [0u8; MOTIF_NOTES];
+                for (n, m) in notes.iter_mut().zip(&w.motif) {
+                    *n = *m;
+                }
+                (w.word.clone(), notes, Timbre::of_class(&w.class))
+            })
+            .collect();
+    }
+
+    /// The sounds of one step of the rules, heard from the first view: words written,
+    /// blows, swings, arrows, Inklings, things breaking and mending.
+    pub fn heard(&mut self, snap: &vellmark_sim::Snapshot) {
+        let Some(view) = snap.views.first() else { return };
+        let (eye, right) = (view.eye, Vec3::new(view.yaw.cos(), 0.0, view.yaw.sin()));
+        let place = |at: Vec3| {
+            let to = at - eye;
+            let d = to.length();
+            let pan = if d < 0.3 { 0.0 } else { (to / d).dot(right) * 0.85 };
+            (pan, 1.0 / (1.0 + d / 7.0))
+        };
+        let cues = &self.controls.cues;
+        let push = |kind: CueKind, at: Vec3, loud: f32| {
+            let (pan, gain) = place(at);
+            cues.push(Cue { kind, pan, gain: gain * loud, ..Default::default() });
+        };
+        for l in &snap.landings {
+            let Some((_, notes, timbre)) = self.motifs.iter().find(|(w, _, _)| *w == l.word) else { continue };
+            let (pan, gain) = place(l.at);
+            let base = Cue { pan, gain: gain * if l.link > 0 { 0.4 } else { 0.8 }, notes: *notes, timbre: *timbre, charge: l.charge, wrong: l.typo, ..Default::default() };
+            use vellmark_sim::emendation::Landing;
+            match &l.landing {
+                Landing::Took { .. } => cues.push(Cue { kind: CueKind::Motif, ..base }),
+                Landing::Resisted => {
+                    let mut short = base.notes;
+                    for n in short.iter_mut().skip(2) {
+                        *n = 0;
+                    }
+                    cues.push(Cue { kind: CueKind::Motif, notes: short, gain: base.gain * 0.6, ..base });
+                }
+                Landing::Refused(_) | Landing::Sealed => cues.push(Cue { kind: CueKind::Refusal, ..base }),
+            }
+        }
+        use vellmark_sim::melee::SwingKind;
+        for h in &snap.hits {
+            let kind = match h.kind {
+                SwingKind::Heavy => CueKind::HitHeavy,
+                SwingKind::Bash => CueKind::Bash,
+                SwingKind::Light { .. } if h.sneak || h.shattered => CueKind::HitHeavy,
+                SwingKind::Light { .. } => CueKind::Hit,
+            };
+            push(kind, h.at, 0.9);
+        }
+        use vellmark_sim::Heard;
+        let feet_of = |id: vellmark_sim::PlayerId| snap.players.iter().find(|p| p.id == id).map_or(eye, |p| p.feet + Vec3::Y * 1.2);
+        for e in &snap.heard {
+            match *e {
+                Heard::Swing { player, kind } => push(if kind == SwingKind::Heavy { CueKind::SwingHeavy } else { CueKind::Swing }, feet_of(player), 0.7),
+                Heard::Struck { player, blocked, .. } => push(if blocked { CueKind::Block } else { CueKind::Hurt }, feet_of(player), 0.9),
+                Heard::Loose { at, .. } => push(CueKind::Loose, at, 0.8),
+                Heard::Thunk { at } => push(CueKind::Thunk, at, 0.9),
+                Heard::Gather { at } => push(CueKind::Gather, at, 0.7),
+                Heard::Split { at } => push(CueKind::Split, at, 0.9),
+                Heard::Spill { at } => push(CueKind::Spill, at, 0.9),
+                Heard::Break { at } => push(CueKind::Break, at, 1.0),
+                Heard::Mend { at } => push(CueKind::Mend, at, 1.0),
+            }
+        }
     }
 
     pub fn update(&mut self, eye: Vec3, weather: &vellmark_sim::Weather, hour: f32, terrain: Option<&vellmark_world::Terrain>) {

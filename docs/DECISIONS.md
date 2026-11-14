@@ -2,6 +2,12 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: the sounds of words and steel (S03-T13)
+
+- **Synthesized, all of it,** until the approved sample packs are downloaded: motifs as two-operator FM bells, one timbre per word class; combat as filtered noise and pitched thumps. Sounds that are meant to be recorded later (the blade, the ink) will be replaced, not added to.
+- **A typo is heard as a word going wrong**: its motif plays as written until the last note, which falls a semitone flat and slides further, with a sour partial beating against it.
+- **No locks and no allocation on the audio thread**: cues pass through a fixed queue of 64 slots of atomics; a full queue drops a cue rather than wait; a new cue takes the quietest of 24 voices.
+
 ## 2026-11-14: the grey-box Inkling (S03-T12)
 
 - **Drawn as what it is.** The canon makes the Inkling a formless mass of characters; it is drawn as one, on the magic's particle system (kind 5), through a second pipeline that lays dark ink over the scene rather than adding light. Up to 160 characters each, churning; it swells and rears as it gathers itself, and runs out into a pool when it dies.

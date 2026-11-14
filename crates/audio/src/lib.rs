@@ -6,6 +6,7 @@
 //! are in `third_party/inbox/` (see `third_party/DOWNLOADS.md`).
 
 pub mod ambience;
+pub mod cues;
 pub mod dsp;
 
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -50,6 +51,10 @@ pub struct Controls {
     pub daylight: Param,
     /// How open the place is to birds: 0 indoors or underground.
     pub open: Param,
+    /// One-shot sounds: motifs, blows, and the rest.
+    pub cues: cues::Cues,
+    /// The one-shot sounds' loudness, from the settings.
+    pub effects: Param,
 }
 
 impl Controls {
@@ -57,6 +62,7 @@ impl Controls {
         let c = Arc::new(Self::default());
         c.master.set(1.0);
         c.open.set(1.0);
+        c.effects.set(1.0);
         c
     }
 }
@@ -67,11 +73,12 @@ pub struct Mixer {
     controls: Arc<Controls>,
     ambience: Ambience,
     master: dsp::Smooth,
+    cues: cues::Player,
 }
 
 impl Mixer {
     pub fn new(controls: Arc<Controls>, seed: u32) -> Self {
-        Self { controls, ambience: Ambience::new(seed), master: dsp::Smooth::new(0.0, 0.05) }
+        Self { controls, ambience: Ambience::new(seed), master: dsp::Smooth::new(0.0, 0.05), cues: cues::Player::new() }
     }
 
     /// Fills `out` with interleaved stereo frames. Allocates nothing and takes no lock.
@@ -86,8 +93,12 @@ impl Mixer {
             open: c.open.get(),
         });
         let master_target = c.master.get().clamp(0.0, 1.0);
+        self.cues.take(&c.cues);
+        let effects = c.effects.get().clamp(0.0, 1.0);
         for frame in out.chunks_exact_mut(CHANNELS) {
             let (l, r) = self.ambience.next();
+            let (el, er) = self.cues.next();
+            let (l, r) = (l + el * effects, r + er * effects);
             let m = self.master.next(master_target);
             // A gentle limit, so that no mix of layers ever clips.
             frame[0] = soft_limit(l * m);

@@ -127,6 +127,8 @@ pub struct Snapshot {
     pub landings: Vec<crate::casting::CastEvent>,
     /// The blows that landed this step.
     pub hits: Vec<crate::melee::Hit>,
+    /// What else was heard this step.
+    pub heard: Vec<Heard>,
     /// Arrows in flight and stuck.
     pub arrows: std::sync::Arc<Vec<crate::melee::Arrow>>,
     /// What steel meets, as it stands.
@@ -151,4 +153,24 @@ fn shortest_angle(from: f32, to: f32) -> f32 {
     let tau = std::f32::consts::TAU;
     let d = (to - from).rem_euclid(tau);
     if d > std::f32::consts::PI { d - tau } else { d }
+}
+
+/// Something heard this step, other than a word: the shell gives each its sound.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Heard {
+    /// A swing begins: light, heavy, or a shield's bash.
+    Swing { player: crate::PlayerId, kind: crate::melee::SwingKind },
+    /// A blow lands on a player: how much got through, and whether a guard took it.
+    Struck { player: crate::PlayerId, through: f32, blocked: bool },
+    /// The bow looses an arrow.
+    Loose { player: crate::PlayerId, at: glam::Vec3 },
+    /// An arrow sticks in the ground or a wall.
+    Thunk { at: glam::Vec3 },
+    /// An Inkling begins to gather itself, splits, or dies.
+    Gather { at: glam::Vec3 },
+    Split { at: glam::Vec3 },
+    Spill { at: glam::Vec3 },
+    /// A thing falls to its letters, or stands whole again.
+    Break { at: glam::Vec3 },
+    Mend { at: glam::Vec3 },
 }
