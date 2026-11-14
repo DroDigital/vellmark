@@ -207,6 +207,11 @@ impl Magic {
                 }
             }
         }
+        // A player carrying the Promised Lamp carries its light.
+        for p in snap.players.iter().filter(|p| p.lit) {
+            let at = p.feet + Vec3::new(0.0, 1.2, 0.0);
+            self.lights.push(Light { key: AssetId(0), position: at.into(), colour: [3.2, 2.2, 1.1], radius: 9.0, casts_shadow: false });
+        }
         // Items lying in the world: a glint in the tier's colour, the nearest few.
         let mut lying: Vec<_> = snap.dropped.iter().collect();
         lying.sort_by(|a, b| a.1.distance_squared(eye).total_cmp(&b.1.distance_squared(eye)));

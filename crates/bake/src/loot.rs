@@ -18,7 +18,20 @@ struct Authored {
     clauses: Vec<Modifier>,
     word_clauses: Vec<WordClause>,
     sources: Vec<Source>,
+    canonical: Vec<Canonical>,
 }
+
+#[derive(Deserialize)]
+struct Canonical {
+    key: String,
+    #[serde(rename = "type")]
+    kind: String,
+    material: String,
+    effect: String,
+}
+
+/// The Canonical items' own effects.
+pub const CANONICAL_EFFECTS: &[&str] = &["buries", "lit"];
 
 #[derive(Deserialize)]
 struct Material {
@@ -121,6 +134,16 @@ pub fn bake_loot(file: &Path, strings: &BTreeMap<String, String>, words: &[Strin
         let material_keys: Vec<String> = a.materials.iter().map(|m| m.key.clone()).collect();
         sources.push(LootSource { key: s.key.clone(), tiers, types: index(&s.types, &type_keys, "type")?, materials: index(&s.materials, &material_keys, "material")? });
     }
+    let mut canonical = Vec::new();
+    for c in &a.canonical {
+        need(format!("item.canonical.{}", c.key))?;
+        if !CANONICAL_EFFECTS.contains(&c.effect.as_str()) {
+            return Err(err(format!("{}: no Canonical effect called `{}`", c.key, c.effect)));
+        }
+        let kind = a.types.iter().position(|t| t.key == c.kind).ok_or_else(|| err(format!("{}: no type called `{}`", c.key, c.kind)))?;
+        let material = a.materials.iter().position(|m| m.key == c.material).ok_or_else(|| err(format!("{}: no material called `{}`", c.key, c.material)))?;
+        canonical.push(vellmark_content::LootCanonical { key: c.key.clone(), kind: kind as u32, material: material as u32, effect: c.effect.clone() });
+    }
     need("item.name".into())?;
     for tier in ["plain", "fair", "endorsed", "engrossed", "illuminated", "canonical"] {
         need(format!("item.tier.{tier}"))?;
@@ -132,5 +155,6 @@ pub fn bake_loot(file: &Path, strings: &BTreeMap<String, String>, words: &[Strin
         clauses: a.clauses.into_iter().map(|m| LootModifier { key: m.key, effect: m.effect, amount: m.amount }).collect(),
         word_clauses: a.word_clauses.into_iter().map(|c| LootWordClause { key: c.key, word: c.word, effect: c.effect }).collect(),
         sources,
+        canonical,
     })
 }

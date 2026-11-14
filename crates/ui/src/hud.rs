@@ -60,7 +60,10 @@ impl Hud<'_> {
             use crate::Part;
             let name = item.name(table);
             let part = |key: &Option<String>| key.as_ref().map_or(Part::Nothing, |k| Part::Shown(Shown::from_table(self.strings, StringId::from_key(k))));
-            let full = Shown::filled(
+            let full = if name.material.is_empty() {
+                Shown::from_table(self.strings, StringId::from_key(&name.kind))
+            } else {
+                Shown::filled(
                 self.strings,
                 sid!("item.name"),
                 &[
@@ -70,7 +73,8 @@ impl Hud<'_> {
                     ("clause", part(&name.clause)),
                     ("word_clause", part(&name.word_clause)),
                 ],
-            );
+            )
+            };
             let tier = item.tier.key();
             let mark = || Part::Shown(Shown::from_table(self.strings, StringId::from_key(&format!("item.mark.{tier}"))));
             let label = Shown::filled(self.strings, sid!("item.label"), &[("mark", mark()), ("name", Part::Shown(full))]);
@@ -124,6 +128,11 @@ impl Hud<'_> {
             // Nothing in the gaze: the hands' words wait, faintly.
         }
 
+        // The Promised Lamp warns of Inklings near.
+        if player.warned {
+            let style = TextStyle { face: Face::Small, size: (16.0 * d).round(), colour: [0.62, 0.78, 1.0, 0.85] };
+            self.centred(canvas, cx, 40.0 * d, &style, &Shown::from_table(self.strings, sid!("ui.warn.inkling")));
+        }
         // A word just taken from a Standing Page: its name, and what that means.
         if let Some(word) = &player.learned {
             let key = format!("caption.word.{}", word.to_ascii_lowercase());

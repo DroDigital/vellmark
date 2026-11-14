@@ -41,6 +41,8 @@ fn player() -> PlayerSnap {
         facing: None,
         item_in_gaze: None,
         marks: 0,
+        lit: false,
+        warned: false,
     }
 }
 

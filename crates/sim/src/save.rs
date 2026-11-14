@@ -12,7 +12,7 @@ use glam::{Quat, Vec3};
 
 use crate::items::{Item, Tier};
 
-const MAGIC: &[u8; 8] = b"VLMKSAV1";
+const MAGIC: &[u8; 8] = b"VLMKSAV2";
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SaveGame {
@@ -123,6 +123,7 @@ impl W {
         self.opt_u32(i.word_clause.map(|w| w as u32));
         self.u32(i.look);
         self.u32(i.made);
+        self.opt_u32(i.canonical.map(|c| c as u32));
     }
 }
 
@@ -190,7 +191,7 @@ impl R<'_> {
             clauses.push(self.u32()? as usize);
         }
         let word_clause = self.opt_u32()?.map(|w| w as usize);
-        Ok(Item { id, kind, material, tier, bonuses, clauses, word_clause, look: self.u32()?, made: self.u32()? })
+        Ok(Item { id, kind, material, tier, bonuses, clauses, word_clause, look: self.u32()?, made: self.u32()?, canonical: self.opt_u32()?.map(|c| c as usize) })
     }
 }
 

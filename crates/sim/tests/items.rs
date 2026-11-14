@@ -22,6 +22,7 @@ fn table() -> LootTable {
         clauses: vec![LootModifier { key: "escrow".into(), effect: "ink_per_kill".into(), amount: 15.0 }],
         word_clauses: vec![LootWordClause { key: "without_prejudice".into(), word: "COLD".into(), effect: "word_passes".into() }],
         sources: vec![LootSource { key: "enemy".into(), tiers: [1.0, 0.0, 0.0, 0.0, 0.0], types: vec![(0, 1)], materials: vec![(1, 1)] }],
+        canonical: Vec::new(),
     }
 }
 
@@ -81,7 +82,7 @@ fn better_steel_strikes_harder_and_armour_takes_its_share() {
     let iron = first_blow(&mut plain);
     let mut better = world();
     let me = better.snapshot().players[0].id;
-    let fine = Item { id: 9, kind: 0, material: 1, tier: Tier::Fair, bonuses: vec![0], clauses: vec![], word_clause: None, look: 0, made: 4100 };
+    let fine = Item { id: 9, kind: 0, material: 1, tier: Tier::Fair, bonuses: vec![0], clauses: vec![], word_clause: None, look: 0, made: 4100, canonical: None };
     let i = better.give_item(me, fine).unwrap();
     better.equip(me, i);
     let steel = first_blow(&mut better);

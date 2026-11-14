@@ -41,6 +41,15 @@ pub struct LootWordClause {
     pub effect: String,
 }
 
+/// A Canonical item: its type and material by index, and its own effect.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LootCanonical {
+    pub key: String,
+    pub kind: u32,
+    pub material: u32,
+    pub effect: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct LootSource {
     pub key: String,
@@ -59,6 +68,7 @@ pub struct LootTable {
     pub clauses: Vec<LootModifier>,
     pub word_clauses: Vec<LootWordClause>,
     pub sources: Vec<LootSource>,
+    pub canonical: Vec<LootCanonical>,
 }
 
 struct W(Vec<u8>);
@@ -105,7 +115,7 @@ impl R<'_> {
 }
 
 impl LootTable {
-    const MAGIC: &'static [u8; 8] = b"VLMKLOT1";
+    const MAGIC: &'static [u8; 8] = b"VLMKLOT2";
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut w = W(Self::MAGIC.to_vec());
@@ -154,6 +164,13 @@ impl LootTable {
                 }
             }
         }
+        w.u32(self.canonical.len() as u32);
+        for c in &self.canonical {
+            w.s(&c.key);
+            w.u32(c.kind);
+            w.u32(c.material);
+            w.s(&c.effect);
+        }
         w.0
     }
 
@@ -194,6 +211,9 @@ impl LootTable {
             let [types, materials] = lists;
             t.sources.push(LootSource { key, tiers, types, materials });
         }
+        for _ in 0..r.count()? {
+            t.canonical.push(LootCanonical { key: r.s()?, kind: r.u32()?, material: r.u32()?, effect: r.s()? });
+        }
         if r.1 != bytes.len() {
             return Err("the loot table has trailing bytes".into());
         }
@@ -214,6 +234,7 @@ mod tests {
             clauses: vec![LootModifier { key: "escrow".into(), effect: "ink_per_kill".into(), amount: 15.0 }],
             word_clauses: vec![LootWordClause { key: "without_prejudice".into(), word: "COLD".into(), effect: "word_passes".into() }],
             sources: vec![LootSource { key: "chest".into(), tiers: [0.5, 0.28, 0.14, 0.065, 0.015], types: vec![(0, 3)], materials: vec![(0, 5)] }],
+            canonical: vec![LootCanonical { key: "wicks_spade".into(), kind: 0, material: 0, effect: "buries".into() }],
         };
         assert_eq!(LootTable::from_bytes(&t.to_bytes()).unwrap(), t);
     }

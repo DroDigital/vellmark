@@ -63,6 +63,13 @@
         // A COLD you write passes on to the next foe this weapon strikes.
         (key: "without_prejudice", word: "COLD", effect: "word_passes"),
     ],
+    // The Canonical items of the Showcase, never rolled: each has its one authored source.
+    canonical: [
+        // Slain foes bury themselves; loot is automatic. The Bone Clerk keeps it.
+        (key: "wicks_spade", type: "axe", material: "marcher_steel", effect: "buries"),
+        // Permanently LIT, and warns of Inklings.
+        (key: "promised_lamp", type: "charm", material: "iron", effect: "lit"),
+    ],
     // Where loot comes from: the chance of each tier, Plain to Illuminated, and what it
     // may be, each with a weight.
     sources: [

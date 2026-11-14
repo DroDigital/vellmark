@@ -48,6 +48,12 @@ fn every_tier_turns_up_in_a_run_and_no_tier_inverts_across_materials() {
         assert!(*s >= 0.9, "{tier:?} turns up in too few runs: {report}");
     }
     assert_eq!(share[4], 1.0, "the Bone Clerk's Illuminated item, every run");
+    // Nothing found outclasses the two artefacts of its kind.
+    for c in &t.canonical {
+        let artefact = Item::canonical(&t, &c.key, 1).unwrap();
+        let best = found.iter().filter(|i| i.kind == artefact.kind).map(|i| i.score(&t)).fold(0.0f32, f32::max);
+        assert!(artefact.score(&t) >= best, "{}: {} against the best found, {best}", c.key, artefact.score(&t));
+    }
     // An Illuminated item of a weaker material is never weaker than a Plain one of the next.
     let mut order: Vec<usize> = (0..t.materials.len()).collect();
     order.sort_by(|a, b| t.materials[*a].damage.total_cmp(&t.materials[*b].damage));

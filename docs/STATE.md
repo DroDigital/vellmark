@@ -9,7 +9,7 @@
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
 **S03:** every task done. The gate's cloud parts pass (`docs/evidence/S03/gate.md`); the Play Gate and the fight's frame budget wait on the owner (`docs/PLAYTEST_CHECKLIST.md`, Phase S03).
 **S05 begun beside S04:** the item generator and the loot table (S05-T01, T02) need none of the pending packs.
-**Current task:** S05-T10 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
+**Current task:** S05-T06 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
 
 ## Lane: Render
 
@@ -36,6 +36,9 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S05-T10, the two Canonical items, from the canon: Wick's Spade (an axe of Marcher Steel: what it slays buries itself at once, and its loot goes straight into the pack) and the Promised Lamp (a charm: its wearer carries a light, and the HUD warns of an Inkling within 15 m). Canonical items are never rolled, have their own names, and outclass anything found of their kind; the loot simulation now checks it. The save format is version 2 (items carry their canonical index). Tests: `crates/sim/tests/artefacts.rs`, `crates/harness/tests/loot_run.rs`.
+**Not yet:** where they are found: the Bone Clerk keeps the Spade, and the Lamp waits at its place (S06).
 
 **Done:** S05-T12, the loot simulation (`crates/harness/tests/loot_run.rs`): the Showcase's run as planned (six chests, the mill cellar's chest, six enemies, two annotated ones, the Bone Clerk) played ten thousand times against the baked table; every rolled tier turns up in at least nine runs in ten (Plain 100%, Fair 98.6%, Endorsed 96.0%, Engrossed 91.6%, Illuminated 100%), and no Illuminated item of a weaker material is weaker than a Plain one of the next. Tuned: the cellar's chest is its own source (mostly Engrossed), and annotated enemies drop Engrossed 35% of the time. Evidence: `docs/evidence/S05/loot_run.txt`.
 **Not yet:** "nothing found outclasses the two artefacts" waits on the artefacts themselves (S05-T10).

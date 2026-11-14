@@ -350,10 +350,30 @@ impl World {
     /// with them.
     fn deaths(&mut self) {
         let now = self.seconds;
+        // Who struck the killing blow with a weapon that buries what it slays.
+        let burying: Vec<(u64, u32)> = match &self.loot {
+            Some(table) => self
+                .hits
+                .iter()
+                .filter(|h| h.killed)
+                .filter(|h| {
+                    self.players.iter().any(|p| {
+                        p.id.0 == h.player && p.inventory.main.and_then(|i| p.inventory.items.get(i)).is_some_and(|i| i.canonical_effect(table) == Some("buries"))
+                    })
+                })
+                .map(|h| (h.creature, h.player))
+                .collect(),
+            None => Vec::new(),
+        };
+        let mut buried = Vec::new();
         for c in &mut self.creatures {
             if !c.alive() && c.died_at.is_none() {
                 c.died_at = Some(now);
                 self.heard.push(crate::snapshot::Heard::Spill { at: c.feet });
+                if let Some((_, killer)) = burying.iter().find(|(id, _)| *id == c.id) {
+                    buried.push((c.id, *killer, c.drops, c.elite));
+                    continue;
+                }
                 // It leaves something: once, not from every part it split into.
                 if c.drops {
                     if let Some(table) = &self.loot {
@@ -366,7 +386,18 @@ impl World {
                 }
             }
         }
-        let gone: Vec<u64> = self.creatures.iter().filter(|c| c.died_at.is_some_and(|t| now - t > 25.0)).map(|c| c.id).collect();
+        // Slain by the Spade: it buries itself at once, and its loot is in the pack.
+        for (id, killer, drops, elite) in &buried {
+            if let (true, Some(table)) = (*drops, self.loot.clone()) {
+                let known: Vec<String> = self.players.first().map(|p| p.caster.known.iter().map(|w| self.rules.words[*w].spelling.clone()).collect()).unwrap_or_default();
+                if let Some(item) = crate::items::generate(&table, if *elite { "annotated" } else { "enemy" }, id ^ now.to_bits().rotate_left(13), &known) {
+                    if let Some(p) = self.players.iter_mut().find(|p| p.id.0 == *killer) {
+                        p.inventory.take(item);
+                    }
+                }
+            }
+        }
+        let gone: Vec<u64> = self.creatures.iter().filter(|c| c.died_at.is_some_and(|t| now - t > 25.0) || buried.iter().any(|(id, ..)| *id == c.id)).map(|c| c.id).collect();
         if !gone.is_empty() {
             self.creatures.retain(|c| !gone.contains(&c.id));
             self.minds.retain(|m| !gone.contains(&m.id));
@@ -817,6 +848,11 @@ impl World {
         p.inventory.marks = p.inventory.marks.saturating_add(price);
         m.stock.push(item);
         Ok(())
+    }
+
+    /// Whether a player holds or wears a Canonical item with this effect.
+    fn wears(&self, p: &Player, effect: &str) -> bool {
+        self.loot.as_deref().is_some_and(|t| p.inventory.equipped().any(|(_, i)| i.canonical_effect(t) == Some(effect)))
     }
 
     /// Items lying in the world, and where.
@@ -1839,6 +1875,8 @@ impl World {
                     })
                 },
                 marks: p.inventory.marks,
+                lit: self.wears(p, "lit"),
+                warned: self.wears(p, "lit") && self.creatures.iter().any(|c| c.alive() && c.class == "inkling" && c.feet.distance(p.body.feet) < 15.0),
                 learned: p.learned.filter(|(_, at)| self.seconds - at < 5.0).map(|(w, _)| self.rules.words[w].spelling.clone()),
             })
             .collect();

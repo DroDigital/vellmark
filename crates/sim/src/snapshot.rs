@@ -49,6 +49,10 @@ pub struct PlayerSnap {
     pub item_in_gaze: Option<(crate::items::Item, Option<crate::items::Item>)>,
     /// Money, in Marks.
     pub marks: u32,
+    /// It carries a light: the Promised Lamp.
+    pub lit: bool,
+    /// An Inkling is near, and what it wears warns of it.
+    pub warned: bool,
 }
 
 /// A thing with an Inscription, as drawn.

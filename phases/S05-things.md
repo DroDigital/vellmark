@@ -30,7 +30,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S05-T07** [Shell] Build the inventory with the turning full-body character, lit as the place, with item preview
 - [x] **S05-T08** [Sim] Add pickups, the comparison with what is held, drop sounds and pickup effects for each tier, and the favourites wheel
 - [x] **S05-T09** [Sim] Add the merchant: buying, selling, and restocking each morning
-- [ ] **S05-T10** [Content] Build Wick's Spade and The Promised Lamp, each with its own effect
+- [x] **S05-T10** [Content] Build Wick's Spade and The Promised Lamp, each with its own effect
 - [x] **S05-T11** [Sim] Add save and load with atomic writes, and settings saved apart from the game
 - [x] **S05-T12** [Sim] Build the loot simulation against the Showcase table and tune the rates until every tier appears in a 45 minute run
 - [ ] **S05-T13** [Shell] Run the exit gate and save the evidence

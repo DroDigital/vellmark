@@ -72,6 +72,8 @@ pub struct Item {
     pub look: u32,
     /// The year it was made, for its history.
     pub made: u32,
+    /// A Canonical item, by its index in the table's list: its own name and effect.
+    pub canonical: Option<usize>,
 }
 
 /// An item's name, as string keys: each part, or none.
@@ -162,7 +164,7 @@ pub fn generate(table: &LootTable, source: &str, seed: u64, known: &[String]) ->
     } else {
         None
     };
-    Some(Item { id: seed, kind, material, tier, bonuses, clauses, word_clause, look: (r.next() % 12) as u32, made: 4060 + (r.next() % 52) as u32 })
+    Some(Item { id: seed, kind, material, tier, bonuses, clauses, word_clause, look: (r.next() % 12) as u32, made: 4060 + (r.next() % 52) as u32, canonical: None })
 }
 
 impl Item {
@@ -171,7 +173,19 @@ impl Item {
     pub fn plain(table: &LootTable, kind: &str, material: &str, id: u64) -> Option<Item> {
         let kind = table.types.iter().position(|t| t.key == kind)?;
         let material = table.materials.iter().position(|m| m.key == material)?;
-        Some(Item { id, kind, material, tier: Tier::Plain, bonuses: Vec::new(), clauses: Vec::new(), word_clause: None, look: 0, made: 4100 })
+        Some(Item { id, kind, material, tier: Tier::Plain, bonuses: Vec::new(), clauses: Vec::new(), word_clause: None, look: 0, made: 4100, canonical: None })
+    }
+
+    /// A Canonical item, by its key: it has its one authored source.
+    pub fn canonical(table: &LootTable, key: &str, id: u64) -> Option<Item> {
+        let k = table.canonical.iter().position(|c| c.key == key)?;
+        let c = &table.canonical[k];
+        Some(Item { id, kind: c.kind as usize, material: c.material as usize, tier: Tier::Canonical, bonuses: Vec::new(), clauses: Vec::new(), word_clause: None, look: 0, made: 4071, canonical: Some(k) })
+    }
+
+    /// A Canonical item's own effect, if it is one.
+    pub fn canonical_effect<'a>(&self, table: &'a LootTable) -> Option<&'a str> {
+        self.canonical.and_then(|k| table.canonical.get(k)).map(|c| c.effect.as_str())
     }
 
     /// The sum of one effect over its bonuses and clauses.
@@ -206,6 +220,10 @@ impl Item {
     }
 
     pub fn name(&self, table: &LootTable) -> NameParts {
+        // A Canonical item has its own name, whole.
+        if let Some(c) = self.canonical.and_then(|k| table.canonical.get(k)) {
+            return NameParts { maker: None, material: String::new(), kind: format!("item.canonical.{}", c.key), clause: None, word_clause: None };
+        }
         NameParts {
             maker: self.bonuses.first().map(|i| format!("item.maker.{}", table.bonuses[*i].key)),
             material: format!("item.material.{}", table.materials[self.material].key),
@@ -219,7 +237,7 @@ impl Item {
     /// its damage or armour, raised by what its bonuses and clauses add.
     pub fn score(&self, table: &LootTable) -> f32 {
         let base = self.damage(table) + self.armour(table);
-        let extras = self.bonuses.len() as f32 * 0.08 + self.clauses.len() as f32 * 0.12 + self.word_clause.map_or(0.0, |_| 0.15);
+        let extras = self.bonuses.len() as f32 * 0.08 + self.clauses.len() as f32 * 0.12 + self.word_clause.map_or(0.0, |_| 0.15) + if self.canonical.is_some() { 0.8 } else { 0.0 };
         base * (1.0 + extras)
     }
 }
