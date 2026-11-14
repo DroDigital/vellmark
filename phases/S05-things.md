@@ -26,8 +26,10 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S05-T03** [Content] Assemble weapon looks from the approved parts, with at least twelve looks for each type before material
 - [ ] **S05-T04** [Render] Add the six tiers' ink treatments, trims, tier marks, and the generated text on each blade
 - [ ] **S05-T05** [Content] Build the light and heavy armour sets and village clothes as layers on the character assembler
-- [ ] **S05-T06** [Shell] Build the interface kit in letters: panels, lists, focus, the two-hand HUD, Ink, Health, Stamina, and prompts
+- [x] **S05-T06** [Shell] Build the interface kit in letters: panels, lists, focus, the two-hand HUD, Ink, Health, Stamina, and prompts
 - [ ] **S05-T07** [Shell] Build the inventory with the turning full-body character, lit as the place, with item preview
+  - [x] **S05-T07a** The pack: the list of what is carried, the focused item's page, equipping, the world held still in solo play
+  - [ ] **S05-T07b** The turning full-body character, lit as the place, with item preview (**after** S04-T01, the bodies)
 - [x] **S05-T08** [Sim] Add pickups, the comparison with what is held, drop sounds and pickup effects for each tier, and the favourites wheel
 - [x] **S05-T09** [Sim] Add the merchant: buying, selling, and restocking each morning
 - [x] **S05-T10** [Content] Build Wick's Spade and The Promised Lamp, each with its own effect

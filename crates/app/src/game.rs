@@ -318,6 +318,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut hit_stop = 0.0f32;
     let mut held_view: Option<vellmark_sim::ViewSnap> = None;
     let mut kick = 0.0f32;
+    // The pack, while it is open: its focus, and the repeat of a held direction. In solo
+    // play the world holds still while it is open.
+    let mut pack: Option<vellmark_ui::kit::Focus> = None;
+    let mut pack_nav = vellmark_ui::kit::NavRepeat::default();
 
     'frames: loop {
         let now = Instant::now();
@@ -343,7 +347,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 PlatformEvent::FocusGained => {}
             }
         }
-        if actions.pressed(Action::Pause) {
+        if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
+            pack = None;
+        } else if actions.pressed(Action::Inventory) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None) {
+            pack = Some(Default::default());
+            pack_nav = Default::default();
+        } else if actions.pressed(Action::Pause) {
             // Until the pause menu exists, Pause frees the mouse, and again leaves.
             if mouse_captured {
                 mouse_captured = false;
@@ -526,8 +535,19 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }));
         }
 
-        // Simulation: whole fixed steps, then draw between the last two snapshots.
-        let plan = clock.advance(frame_time.as_nanos() as u64);
+        // The pack: move the focus, and equip what it rests on.
+        if let (Some(focus), Some(me)) = (pack.as_mut(), current.players.first().map(|p| p.id)) {
+            let len = world.inventory(me).map_or(0, |i| i.items.len());
+            let rows = vellmark_ui::inventory_view::rows_shown(&assets.glyphs, screen.size(), window.pixel_density());
+            focus.step(pack_nav.step(actions.movement().1, frame_time.as_secs_f32()), len, rows);
+            if actions.pressed(Action::Interact) && focus.at < len {
+                world.equip(me, focus.at);
+            }
+        }
+
+        // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
+        // play the world holds still while the pack is open.
+        let plan = clock.advance(if pack.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             let take: String = typed.drain(..typed.len().min(4)).collect();
@@ -578,8 +598,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
             vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() }
                 .draw(&mut canvas, player, &actions, &bindings, style);
-            if player.reading == vellmark_sim::reading::ReadingSnap::None {
+            if player.reading == vellmark_sim::reading::ReadingSnap::None && pack.is_none() {
                 vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot: world.loot(), size: screen.size(), density: window.pixel_density() }.draw(&mut canvas, player);
+            }
+            if let (Some(focus), Some(inv), Some(loot)) = (pack, world.inventory(player.id), world.loot()) {
+                let key = |action| vellmark_platform::prompts::prompt_key(action, actions.last_device, style, &bindings);
+                let (equip, close) = (key(Action::Interact), key(Action::Inventory));
+                vellmark_ui::inventory_view::InventoryView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() }
+                    .draw(&mut canvas, inv, focus, (equip.as_deref(), close.as_deref()));
             }
         }
         #[cfg(feature = "dev")]

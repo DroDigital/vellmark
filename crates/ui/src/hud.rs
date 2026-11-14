@@ -58,31 +58,12 @@ impl Hud<'_> {
         // compares with what is held or worn there.
         if let (Some((item, now)), Some(table)) = (&player.item_in_gaze, self.loot) {
             use crate::Part;
-            let name = item.name(table);
-            let part = |key: &Option<String>| key.as_ref().map_or(Part::Nothing, |k| Part::Shown(Shown::from_table(self.strings, StringId::from_key(k))));
-            let full = if name.material.is_empty() {
-                Shown::from_table(self.strings, StringId::from_key(&name.kind))
-            } else {
-                Shown::filled(
-                self.strings,
-                sid!("item.name"),
-                &[
-                    ("maker", part(&name.maker)),
-                    ("material", part(&Some(name.material.clone()))),
-                    ("type", part(&Some(name.kind.clone()))),
-                    ("clause", part(&name.clause)),
-                    ("word_clause", part(&name.word_clause)),
-                ],
-            )
-            };
-            let tier = item.tier.key();
-            let mark = || Part::Shown(Shown::from_table(self.strings, StringId::from_key(&format!("item.mark.{tier}"))));
-            let label = Shown::filled(self.strings, sid!("item.label"), &[("mark", mark()), ("name", Part::Shown(full))]);
+            let label = crate::item_text::label(self.strings, table, item);
             let line_y = cy + 56.0 * d;
             let title = TextStyle { face: Face::Large, size: (20.0 * d).round(), colour: if item.tier as u8 >= 2 { GOLD } else { WHITE } };
             self.centred(canvas, cx, line_y, &title, &label);
             let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: WHITE };
-            self.centred(canvas, cx, line_y + 22.0 * d, &small, &Shown::from_table(self.strings, StringId::from_key(&format!("item.tier.{tier}"))));
+            self.centred(canvas, cx, line_y + 22.0 * d, &small, &crate::item_text::tier(self.strings, item));
             let armour = item.armour(table) > item.damage(table);
             let compare = match now {
                 None => Shown::from_table(self.strings, sid!("item.compare.none")),

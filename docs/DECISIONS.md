@@ -2,6 +2,13 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: the interface kit and the pack (S05-T06, T07a)
+
+- **Plain words on the interface.** The brief's table (5e) is followed: tiers are shown as Common, Uncommon, Rare, Epic, Legendary, Unique, and Ink as magic. The string keys keep the world's names.
+- **A long name shrinks, then clips.** In a list, a row is set smaller down to 13 px and then ended with `...`; the full name is always on the item's page.
+- **The world holds still in solo play** while the pack is open (the brief's rule for photo mode, taken for every menu). In co-op it will keep running, as photo mode does.
+- **Menus move with the movement axis**, so W/S, the arrows, and the stick all work with no new bindings.
+
 ## 2026-11-14: the item generator and the Showcase loot table (S05-T01, T02)
 
 - **Names for the owner's ear.** The full game's makers and clauses are written in its Phase 07; the Showcase's eight makers (Tally, Rook, Pell, Ashby, Marrow, Vellum, Scrope, Ledgard), six clauses (of Prior Claim, in Perpetuity, of Reasonable Doubt, of Due Process, in Escrow, of Fair Copy), and two word clauses (Notwithstanding for `BURNING`, Without Prejudice for `COLD`) are new, after the canon's own examples, and may be renamed freely: they are string keys.

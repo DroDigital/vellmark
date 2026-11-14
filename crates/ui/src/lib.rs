@@ -6,6 +6,9 @@
 
 pub mod reading_view;
 pub mod hud;
+pub mod kit;
+pub mod item_text;
+pub mod inventory_view;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 
@@ -21,6 +24,13 @@ impl<'a> Shown<'a> {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// Its first `chars` characters, followed by `tail` (itself from the table): for a line
+    /// that will not fit its place.
+    pub fn clipped(&self, chars: usize, tail: &Shown<'_>) -> Shown<'static> {
+        let kept: String = self.0.chars().take(chars).collect();
+        Shown(Cow::Owned(format!("{}{}", kept.trim_end(), tail.as_str())))
     }
 
     /// A string from the table with its `{name}` places filled: each with other shown

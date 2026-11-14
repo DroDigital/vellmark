@@ -18,4 +18,20 @@
     "creature.inkling.burning": "Burning Inkling",
     "creature.inkling.cold": "Cold Inkling",
     "ui.learned": "You have learned a word. It is not yours. Nothing here is.",
+    // The interface kit: the rule round a panel, the focus mark, and the held mark.
+    "ui.rule.across": "-",
+    "ui.rule.down": "|",
+    "ui.rule.corner": "+",
+    "ui.focus": ">",
+    "ui.held": "*",
+    "ui.ellipsis": "...",
+    // The inventory.
+    "ui.inventory.title": "Pack",
+    "ui.inventory.marks": "{n} Marks",
+    "ui.inventory.empty": "Nothing carried.",
+    "ui.inventory.equip": "{key} Equip",
+    "ui.inventory.close": "{key} Close",
+    "ui.inventory.held": "Equipped",
+    "ui.inventory.tier_held": "{tier}, {held}",
+    "ui.inventory.weight": "Carrying {n}",
 }
