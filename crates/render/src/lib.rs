@@ -434,6 +434,11 @@ impl Renderer {
         self.magic.observe(snapshot, seconds);
     }
 
+    /// Fewer flashes of light, for players sensitive to them.
+    pub fn set_fewer_flashes(&mut self, on: bool) {
+        self.magic.fewer_flashes = on;
+    }
+
     /// For tests: how many rewrite waves and particle emitters are under way.
     pub fn magic_active(&self) -> (usize, usize) {
         self.magic.active()

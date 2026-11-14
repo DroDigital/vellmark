@@ -40,6 +40,14 @@ impl Sound {
         Self { _out: out, controls, trees, water: 0.0, frame: 0, motifs: Vec::new() }
     }
 
+    /// Loudness from the settings: the whole mix, the one-shot sounds, and the
+    /// surroundings (wind, rain, water, leaves, birds).
+    pub fn set_volumes(&mut self, master: f32, effects: f32, ambience: f32) {
+        self.controls.master.set(master.clamp(0.0, 1.0));
+        self.controls.effects.set(effects.clamp(0.0, 1.0));
+        self.controls.ambience.set(ambience.clamp(0.0, 1.0));
+    }
+
     /// Learns every word's motif from the table of words.
     pub fn set_words(&mut self, table: &vellmark_content::WordTable) {
         self.motifs = table

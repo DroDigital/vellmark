@@ -12,5 +12,5 @@ pub mod prompts;
 
 pub use actions::{Action, ActionState, Bindings, DeviceKind, Key, MouseButton, PadAxis, PadButton, RawInput};
 pub use device::{InputSource, SimulatedDevice};
-pub use settings::InputSettings;
+pub use settings::{InputSettings, Settings};
 pub use sdl::{message_box, AudioOut, Platform, PlatformEvent, Window, WindowOptions};

@@ -103,6 +103,9 @@ pub struct Magic {
     lasting: Vec<(u64, f32)>,
     /// Lamps put out by a word.
     dark: Vec<u64>,
+    /// Fewer flashes, for players sensitive to them: impacts light up dimly and fade
+    /// slowly, and fire's light does not flicker.
+    pub fewer_flashes: bool,
 }
 
 impl Magic {
@@ -250,7 +253,7 @@ impl Magic {
                 [[b.centre.x, b.centre.y, b.centre.z, 2.0], [0.0, 1.0, 0.0, b.began], [b.colour[0], b.colour[1], b.colour[2], 3.0 * b.strength], [120.0 * b.strength.min(1.5), 0.02, b.seed, b.shape]],
                 b.text,
             ));
-            let flash = (1.0 - age / 0.45).max(0.0);
+            let flash = if self.fewer_flashes { (1.0 - age / 1.2).max(0.0) * 0.25 } else { (1.0 - age / 0.45).max(0.0) };
             if flash > 0.0 {
                 self.lights.push(Light { key: AssetId(0), position: b.centre.into(), colour: b.colour.map(|c| c * 10.0 * flash * b.strength), radius: 9.0, casts_shadow: false });
             }
@@ -271,7 +274,7 @@ impl Magic {
         for (i, (_, centre, radius, burning)) in alight.into_iter().take(10).enumerate() {
             if burning {
                 self.emitters.push(([[centre.x, centre.y, centre.z, 3.0], [0.0, 1.0, 0.0, radius], [1.0, 0.45, 0.12, 7.0], [110.0, 0.065, i as f32 * 3.7, 0.0]], pack("^*',`^")));
-                let flicker = 0.75 + 0.25 * (seconds * 11.0 + i as f32).sin() * (seconds * 7.3).cos();
+                let flicker = if self.fewer_flashes { 0.85 } else { 0.75 + 0.25 * (seconds * 11.0 + i as f32).sin() * (seconds * 7.3).cos() };
                 self.lights.push(Light { key: AssetId(0), position: (centre + Vec3::Y * radius * 0.5).into(), colour: [3.2 * flicker, 1.3 * flicker, 0.35 * flicker], radius: 3.0 + radius * 2.5, casts_shadow: false });
             } else {
                 self.emitters.push(([[centre.x, centre.y, centre.z, 4.0], [0.0, 1.0, 0.0, radius], [0.75, 0.9, 1.0, 2.5], [60.0, 0.022, i as f32 * 5.1, 0.0]], pack("*.+")));

@@ -9,6 +9,8 @@ pub mod hud;
 pub mod kit;
 pub mod item_text;
 pub mod inventory_view;
+pub mod menu;
+pub mod pages;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 
@@ -42,6 +44,7 @@ impl<'a> Shown<'a> {
                 Part::Shown(s) => s.as_str().to_owned(),
                 Part::Signed(n) => format!("{n:+}"),
                 Part::Number(n) => format!("{n}"),
+                Part::Repeated(s, n) => s.as_str().repeat(*n),
                 Part::Nothing => String::new(),
             };
             text = text.replace(&format!("{{{name}}}"), &with);
@@ -56,6 +59,8 @@ pub enum Part<'a> {
     /// A whole number shown with its sign: `+3`.
     Signed(i32),
     Number(u32),
+    /// Shown text, so many times over: the strokes of a slider.
+    Repeated(Shown<'a>, usize),
     Nothing,
 }
 

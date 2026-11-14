@@ -20,6 +20,25 @@ impl Preset {
         }
     }
 
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
+
+    /// The preset a first launch picks by itself: Low on a software renderer, High on a
+    /// discrete GPU, and Medium (the Showcase's target, on the M1) on everything else.
+    /// The governor holds the frame time from there.
+    pub fn first_launch(software: bool, discrete: bool) -> Self {
+        match (software, discrete) {
+            (true, _) => Self::Low,
+            (false, true) => Self::High,
+            _ => Self::Medium,
+        }
+    }
+
     /// What the preset asks for.
     pub fn quality(self) -> Quality {
         match self {

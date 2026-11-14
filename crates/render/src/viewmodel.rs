@@ -95,6 +95,8 @@ pub struct ViewModel {
     charged: [f32; 2],
     /// Seconds since each hand let a word go.
     flick: [f32; 2],
+    /// Reduced motion: the hands do not sway with the walk or the breath.
+    pub still: bool,
 }
 
 /// Every part of the kit, and where it goes this frame: `None` hides it.
@@ -120,7 +122,7 @@ impl ViewModel {
         let bob = Vec3::new((self.stride * 0.5).sin() * 0.010, -(self.stride).sin().abs() * 0.014, 0.0) * amount;
         // Breathing, standing still.
         let breath = Vec3::new(0.0, (seconds * 1.6).sin() * 0.003, 0.0);
-        let sway = bob + breath;
+        let sway = if self.still { Vec3::ZERO } else { bob + breath };
 
         // Letting a word go: a flick of the hand that wrote it.
         for h in 0..2 {

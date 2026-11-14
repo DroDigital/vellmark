@@ -169,9 +169,29 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Ok(r) => r,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
-    // Medium is the Showcase's target; Low and High are chosen by hand for now.
-    #[allow(unused_mut)]
-    let mut preset = args.preset.as_deref().and_then(Preset::parse).unwrap_or(Preset::Medium);
+    // The player's settings, if they have saved any.
+    let settings_path = crate::paths::user_data_dir().join("settings.ron");
+    let mut settings = match std::fs::read_to_string(&settings_path) {
+        Ok(text) => vellmark_platform::Settings::parse(&text).unwrap_or_else(|e| {
+            log::line(&format!("the settings could not be read, so the defaults are used: {e}"));
+            Default::default()
+        }),
+        Err(_) => Default::default(),
+    };
+    // The preset: as asked on the command line, else as set, else picked by the first
+    // launch from the graphics hardware and kept.
+    let mut preset = match args.preset.as_deref().and_then(Preset::parse).or_else(|| settings.preset.as_deref().and_then(Preset::parse)) {
+        Some(p) => p,
+        None => {
+            let p = Preset::first_launch(gpu.is_software(), gpu.is_discrete());
+            settings.preset = Some(p.name().into());
+            if let Err(e) = crate::paths::write_atomically(&settings_path, settings.to_text().as_bytes()) {
+                log::line(&format!("the settings could not be saved: {e}"));
+            }
+            log::line(&format!("first launch: the {p:?} preset, from {}", gpu.describe()));
+            p
+        }
+    };
     let scene_key = format!("scene.{}", args.scene.as_deref().unwrap_or(START_SCENE));
     let scene = match vellmark_render::load_scene(&gpu, &base, &scene_key) {
         Ok((scene, on_gpu)) => {
@@ -257,18 +277,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut previous: Arc<Snapshot> = world.snapshot();
     let mut current: Arc<Snapshot> = previous.clone();
 
-    // The player's input settings, if they have saved any.
-    let settings_path = crate::paths::user_data_dir().join("settings.ron");
-    #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
-    let mut input_settings = match std::fs::read_to_string(&settings_path) {
-        Ok(text) => vellmark_platform::InputSettings::parse(&text).unwrap_or_else(|e| {
-            log::line(&format!("the settings could not be read, so the defaults are used: {e}"));
-            Default::default()
-        }),
-        Err(_) => Default::default(),
-    };
-    #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
-    let mut bindings = input_settings.bindings();
+    let mut bindings = settings.input.bindings();
     let mut actions = ActionState::default();
     let mut raw: Vec<RawInput> = Vec::new();
     let mut clock = FixedClock::new();
@@ -322,6 +331,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     // play the world holds still while it is open.
     let mut pack: Option<vellmark_ui::kit::Focus> = None;
     let mut pack_nav = vellmark_ui::kit::NavRepeat::default();
+    // The pause menu and the settings, while open. The world holds still in solo play.
+    let mut menu: Option<vellmark_ui::pages::Menu> = None;
+    renderer.set_fewer_flashes(settings.fewer_flashes);
+    sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume);
 
     'frames: loop {
         let now = Instant::now();
@@ -347,21 +360,61 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 PlatformEvent::FocusGained => {}
             }
         }
-        if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
+        let menu_was_open = menu.is_some();
+        let mut menu_opened = false;
+        // While a menu is open, it has the input.
+        if menu.is_some() {
+        } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
             pack = None;
         } else if actions.pressed(Action::Inventory) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None) {
             pack = Some(Default::default());
             pack_nav = Default::default();
-        } else if actions.pressed(Action::Pause) {
-            // Until the pause menu exists, Pause frees the mouse, and again leaves.
-            if mouse_captured {
-                mouse_captured = false;
-                platform.capture_mouse(&window, false);
+        } else if actions.pressed(Action::Pause) && menu.is_none() {
+            menu = Some(vellmark_ui::pages::Menu::open());
+            menu_opened = true;
+        }
+        let mut settings_changed = false;
+        if let (Some(m), false) = (menu.as_mut(), menu_opened) {
+            use vellmark_ui::pages::Outcome;
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            let outcome = if m.capturing() {
+                m.capture(&raw, &mut settings)
             } else {
-                break 'frames;
+                let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut m.repeat, frame_time.as_secs_f32());
+                let len = m.entries(&settings, &bindings, actions.last_device, style).len();
+                let view = vellmark_ui::menu::MenuView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() };
+                m.update(input, &mut settings, len, view.rows(len, &assets.glyphs))
+            };
+            match outcome {
+                Outcome::None => {}
+                Outcome::Resume => menu = None,
+                Outcome::Changed => settings_changed = true,
+                Outcome::Quit => break 'frames,
+                Outcome::Save => match crate::paths::write_atomically(&save_path, &world.save().to_bytes()) {
+                    Ok(()) => {
+                        log::line("the game is saved");
+                        menu = None;
+                    }
+                    Err(e) => log::line(&format!("the game could not be saved: {e}")),
+                },
+                Outcome::Load => match std::fs::read(&save_path).map_err(|e| e.to_string()).and_then(|b| vellmark_sim::save::SaveGame::from_bytes(&b)) {
+                    Ok(save) => {
+                        world.load(&save);
+                        previous = world.snapshot();
+                        current = previous.clone();
+                        log::line("the saved game is loaded");
+                        menu = None;
+                    }
+                    Err(e) => log::line(&format!("no saved game: {e}")),
+                },
             }
         }
-        if !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0) {
+        // The mouse is free while a menu is open, and taken again when it closes.
+        if menu.is_some() && mouse_captured {
+            mouse_captured = false;
+            platform.capture_mouse(&window, false);
+        }
+        if menu.is_none() && !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0 || menu_was_open) {
             mouse_captured = true;
             platform.capture_mouse(&window, true);
         }
@@ -374,7 +427,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 let open = dev_tools.toggle_console();
                 platform.text_entry(&window, open);
             }
-            let settings_before = input_settings.clone();
+            let settings_before = settings.clone();
             for command in dev_tools.take_commands() {
                 use crate::dev::Command;
                 match command {
@@ -440,19 +493,19 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         }
                         log::line("the scene's creatures stand again");
                     }
-                    Command::Sensitivity(n) => input_settings.mouse_sensitivity = n,
-                    Command::InvertY(on) => input_settings.invert_y = on,
+                    Command::Sensitivity(n) => settings.input.mouse_sensitivity = n,
+                    Command::InvertY(on) => settings.input.invert_y = on,
                     Command::Bind(action, button) => {
                         use vellmark_platform::prompts::{action_named, key_named, mouse_button_named, pad_button_named};
                         match action_named(&action) {
                             None => log::line(&format!("no action called `{action}`")),
                             Some(a) => {
                                 if let Some(k) = key_named(&button) {
-                                    input_settings.remap_key(a, k);
+                                    settings.input.remap_key(a, k);
                                 } else if let Some(m) = mouse_button_named(&button) {
-                                    input_settings.remap_mouse(a, m);
+                                    settings.input.remap_mouse(a, m);
                                 } else if let Some(p) = pad_button_named(&button) {
-                                    input_settings.remap_pad(a, p);
+                                    settings.input.remap_pad(a, p);
                                 } else {
                                     log::line(&format!("no button called `{button}`"));
                                 }
@@ -462,12 +515,22 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     Command::Quit => break 'frames,
                 }
             }
-            if input_settings != settings_before {
-                bindings = input_settings.bindings();
-                match crate::paths::write_atomically(&settings_path, input_settings.to_text().as_bytes()) {
-                    Ok(()) => log::line("settings saved"),
-                    Err(e) => log::line(&format!("the settings could not be saved: {e}")),
-                }
+            if settings != settings_before {
+                settings_changed = true;
+            }
+        }
+        if settings_changed {
+            bindings = settings.input.bindings();
+            if let Some(p) = settings.preset.as_deref().and_then(Preset::parse).filter(|p| *p != preset) {
+                preset = p;
+                renderer.set_quality(p.quality());
+                log::line(&format!("preset {p:?}"));
+            }
+            renderer.set_fewer_flashes(settings.fewer_flashes);
+            sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume);
+            match crate::paths::write_atomically(&settings_path, settings.to_text().as_bytes()) {
+                Ok(()) => log::line("settings saved"),
+                Err(e) => log::line(&format!("the settings could not be saved: {e}")),
             }
         }
 
@@ -538,7 +601,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         // The pack: move the focus, and equip what it rests on.
         if let (Some(focus), Some(me)) = (pack.as_mut(), current.players.first().map(|p| p.id)) {
             let len = world.inventory(me).map_or(0, |i| i.items.len());
-            let rows = vellmark_ui::inventory_view::rows_shown(&assets.glyphs, screen.size(), window.pixel_density());
+            let rows = vellmark_ui::inventory_view::rows_shown(&assets.glyphs, screen.size(), window.pixel_density() * settings.interface_scale());
             focus.step(pack_nav.step(actions.movement().1, frame_time.as_secs_f32()), len, rows);
             if actions.pressed(Action::Interact) && focus.at < len {
                 world.equip(me, focus.at);
@@ -546,8 +609,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
 
         // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
-        // play the world holds still while the pack is open.
-        let plan = clock.advance(if pack.is_some() { 0 } else { frame_time.as_nanos() as u64 });
+        // play the world holds still while the pack or a menu is open.
+        let plan = clock.advance(if pack.is_some() || menu.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             let take: String = typed.drain(..typed.len().min(4)).collect();
@@ -557,8 +620,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             current = world.snapshot();
             sound.heard(&current);
             // Hit stop: a blow that lands holds the striker's view a moment and kicks it.
-            // Only the view: the shared world never pauses.
-            if let Some(me) = current.players.first() {
+            // Only the view: the shared world never pauses. Reduced screen response and
+            // reduced motion leave the view alone.
+            let response = !(settings.reduced_screen_response || settings.reduced_motion);
+            if let (Some(me), true) = (current.players.first(), response) {
                 for hit in current.hits.iter().filter(|h| h.player == me.id.0) {
                     if hit.hit_stop > hit_stop {
                         hit_stop = hit.hit_stop;
@@ -585,6 +650,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             camera.rotation = camera.rotation * glam::Quat::from_euler(glam::EulerRot::YXZ, (t * 91.0).sin() * jolt, (t * 73.0).sin() * jolt - jolt, 0.0);
             kick = (kick - frame_time.as_secs_f32() * 10.0).max(0.0);
         }
+        view_model.still = settings.reduced_motion;
         // The hands and what they hold, placed for this frame from the first player's view.
         if let Some(player) = current.players.first() {
             for (key, place) in view_model.place(player, camera.eye, camera.rotation, &current.arrows, started.elapsed().as_secs_f32(), frame_time.as_secs_f32()) {
@@ -596,16 +662,24 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         canvas.clear();
         if let Some(player) = current.players.first() {
             let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
-            vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() }
+            vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
                 .draw(&mut canvas, player, &actions, &bindings, style);
             if player.reading == vellmark_sim::reading::ReadingSnap::None && pack.is_none() {
-                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot: world.loot(), size: screen.size(), density: window.pixel_density() }.draw(&mut canvas, player);
+                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot: world.loot(), size: screen.size(), density: window.pixel_density() * settings.interface_scale() }.draw(&mut canvas, player);
             }
             if let (Some(focus), Some(inv), Some(loot)) = (pack, world.inventory(player.id), world.loot()) {
                 let key = |action| vellmark_platform::prompts::prompt_key(action, actions.last_device, style, &bindings);
                 let (equip, close) = (key(Action::Interact), key(Action::Inventory));
-                vellmark_ui::inventory_view::InventoryView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() }
+                vellmark_ui::inventory_view::InventoryView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
                     .draw(&mut canvas, inv, focus, (equip.as_deref(), close.as_deref()));
+            }
+            if let Some(m) = &menu {
+                let entries = m.entries(&settings, &bindings, actions.last_device, style);
+                let (confirm, back) = vellmark_ui::pages::Menu::hint_keys(actions.last_device, style);
+                let key = |k: &str| vellmark_ui::Part::Shown(vellmark_ui::Shown::from_table(&strings, vellmark_content::StringId::from_key(k)));
+                let hint = vellmark_ui::Shown::filled(&strings, sid!("ui.menu.hint"), &[("confirm", key(&confirm)), ("back", key(&back))]);
+                vellmark_ui::menu::MenuView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
+                    .draw(&mut canvas, m.title(), &entries, m.focus(), Some(hint));
             }
         }
         #[cfg(feature = "dev")]

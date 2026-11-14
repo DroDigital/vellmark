@@ -2,6 +2,14 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: the pause menu and the settings (S07-T05)
+
+- **Brought forward.** Menus need no assets, and every playtest needs them, so S07-T05 is done now while S04 waits on downloads.
+- **Fixed menu keys besides the bindings.** Arrows, Enter, and Escape, and the D-pad, South, and East always work in menus, so that remapping can never lock a player out of the page that undoes it.
+- **The first launch's preset** comes from the adapter's kind: software Low, discrete High, anything else (the Mac's) Medium. The governor holds the frame time from there; the player can change it.
+- **One settings file.** Input, preset, loudness, interface size, and accessibility are kept together in `settings.ron`; an older file of input settings alone is still read.
+- **Reduced motion includes reduced screen response.** A player who asks for less motion gets neither the hands' sway nor the jolt and hold of a landed blow.
+
 ## 2026-11-14: the interface kit and the pack (S05-T06, T07a)
 
 - **Plain words on the interface.** The brief's table (5e) is followed: tiers are shown as Common, Uncommon, Rare, Epic, Legendary, Unique, and Ink as magic. The string keys keep the world's names.

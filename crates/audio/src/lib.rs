@@ -55,6 +55,8 @@ pub struct Controls {
     pub cues: cues::Cues,
     /// The one-shot sounds' loudness, from the settings.
     pub effects: Param,
+    /// The surroundings' loudness, from the settings.
+    pub ambience: Param,
 }
 
 impl Controls {
@@ -63,6 +65,7 @@ impl Controls {
         c.master.set(1.0);
         c.open.set(1.0);
         c.effects.set(1.0);
+        c.ambience.set(1.0);
         c
     }
 }
@@ -95,8 +98,10 @@ impl Mixer {
         let master_target = c.master.get().clamp(0.0, 1.0);
         self.cues.take(&c.cues);
         let effects = c.effects.get().clamp(0.0, 1.0);
+        let surroundings = c.ambience.get().clamp(0.0, 1.0);
         for frame in out.chunks_exact_mut(CHANNELS) {
             let (l, r) = self.ambience.next();
+            let (l, r) = (l * surroundings, r * surroundings);
             let (el, er) = self.cues.next();
             let (l, r) = (l + el * effects, r + er * effects);
             let m = self.master.next(master_target);

@@ -74,6 +74,64 @@ impl InputSettings {
     }
 }
 
+/// Everything the player sets: input, the quality preset, loudness, the interface's size,
+/// and the accessibility options. Kept in the user's `settings.ron`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub input: InputSettings,
+    /// `low`, `medium`, or `high`; none until the first launch picks one.
+    pub preset: Option<String>,
+    /// Loudness, each 0 to 1.
+    pub master_volume: f32,
+    pub effects_volume: f32,
+    pub ambience_volume: f32,
+    /// 0.75 to 1.5: the size of everything on the interface.
+    pub interface_scale: f32,
+    /// No sway of the hands as you walk, no jolt when a blow lands; dives become fades.
+    pub reduced_motion: bool,
+    /// The view never holds or shakes when a blow lands.
+    pub reduced_screen_response: bool,
+    /// Flashes of light are dimmer and slower, and fire does not flicker.
+    pub fewer_flashes: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            input: InputSettings::default(),
+            preset: None,
+            master_volume: 1.0,
+            effects_volume: 1.0,
+            ambience_volume: 1.0,
+            interface_scale: 1.0,
+            reduced_motion: false,
+            reduced_screen_response: false,
+            fewer_flashes: false,
+        }
+    }
+}
+
+impl Settings {
+    /// Reads the settings. A file from before there were more than input settings is read
+    /// as those.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        if text.contains("input:") {
+            ron::from_str(text).map_err(|e| e.to_string())
+        } else {
+            Ok(Self { input: InputSettings::parse(text)?, ..Default::default() })
+        }
+    }
+
+    pub fn to_text(&self) -> String {
+        ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default()).unwrap_or_default()
+    }
+
+    pub fn interface_scale(&self) -> f32 {
+        self.interface_scale.clamp(0.75, 1.5)
+    }
+}
+
 impl Bindings {
     /// Puts `action` on `key`. Whatever was on that key moves to where `action` was, so
     /// that no action is left without a button.
@@ -130,6 +188,17 @@ impl Bindings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_round_trip_and_old_files_still_load() {
+        let mut s = Settings { preset: Some("high".into()), master_volume: 0.4, reduced_motion: true, ..Default::default() };
+        s.input.invert_y = true;
+        assert_eq!(Settings::parse(&s.to_text()).unwrap(), s);
+        let old = InputSettings { mouse_sensitivity: 2.0, ..Default::default() }.to_text();
+        let read = Settings::parse(&old).unwrap();
+        assert_eq!(read.input.mouse_sensitivity, 2.0);
+        assert_eq!(read.preset, None);
+    }
 
     #[test]
     fn settings_round_trip_and_unknown_fields_fall_back() {
