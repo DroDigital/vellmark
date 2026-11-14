@@ -9,3 +9,4 @@ publish.workspace = true
 [dependencies]
 rapier3d.workspace = true
 glam.workspace = true
+vellmark-content.workspace = true

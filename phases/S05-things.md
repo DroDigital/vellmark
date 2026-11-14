@@ -21,8 +21,8 @@ The item generator and the Showcase loot table, the six tiers with their looks, 
 
 Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes run side by side as `docs/CLOUD.md` sets out. A task marked **after** waits for the task it names.
 
-- [ ] **S05-T01** [Sim] Build the deterministic item generator: type, material, tier, traits, bonuses, clauses, word clauses, name, and history
-- [ ] **S05-T02** [Content] Write the Showcase loot table: seven weapon types, three materials, eight bonuses, six clauses, two word clauses, four trinkets, and the drop rates for each source
+- [x] **S05-T01** [Sim] Build the deterministic item generator: type, material, tier, traits, bonuses, clauses, word clauses, name, and history
+- [x] **S05-T02** [Content] Write the Showcase loot table: seven weapon types, three materials, eight bonuses, six clauses, two word clauses, four trinkets, and the drop rates for each source
 - [ ] **S05-T03** [Content] Assemble weapon looks from the approved parts, with at least twelve looks for each type before material
 - [ ] **S05-T04** [Render] Add the six tiers' ink treatments, trims, tier marks, and the generated text on each blade
 - [ ] **S05-T05** [Content] Build the light and heavy armour sets and village clothes as layers on the character assembler

@@ -2,6 +2,13 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: the item generator and the Showcase loot table (S05-T01, T02)
+
+- **Names for the owner's ear.** The full game's makers and clauses are written in its Phase 07; the Showcase's eight makers (Tally, Rook, Pell, Ashby, Marrow, Vellum, Scrope, Ledgard), six clauses (of Prior Claim, in Perpetuity, of Reasonable Doubt, of Due Process, in Escrow, of Fair Copy), and two word clauses (Notwithstanding for `BURNING`, Without Prejudice for `COLD`) are new, after the canon's own examples, and may be renamed freely: they are string keys.
+- **A third serve blade and word**: Vellum's (more Ink from each hit), Scrope's (cheaper words), and Ledgard's (a word stays longer on the weapon), with in Perpetuity and in Escrow.
+- **Rates** are the brief's starting rates for a chest; common enemies drop Plain and Fair and a little Endorsed; annotated enemies Endorsed or better; the boss source (the Bone Clerk) always Illuminated, as the Showcase guarantees one; merchants never stock Illuminated. The loot simulation (S05-T12) tunes them.
+- **Starting S05 beside S04.** S04's bodies, animation, and creature models wait on packs the owner is to fetch; S05's sim and data tasks do not, so they go on meanwhile.
+
 ## 2026-11-14: one mind for every creature (S04-T07)
 
 - **Species are numbers, the mind is shared.** Speed, reach, the telegraph, the blow, sight and hearing, memory, whether it hunts as a pack, falls back, calls its kin, or fears light. The Inkling's numbers are its own; each new species (S04-T08 to T10) adds a row.

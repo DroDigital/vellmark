@@ -5,6 +5,7 @@
 
 pub mod glyphs;
 pub mod grades;
+pub mod loot;
 pub mod manifest;
 pub mod materials;
 pub mod pages;
@@ -105,6 +106,12 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     report.push(format!("{}: {} words, {} compounds, {} target classes", vellmark_content::WORDS_KEY, words.table.words.len(), words.table.compounds.len(), words.table.classes.len()));
     base.add(AssetKind::Table, AssetId::from_key(vellmark_content::WORDS_KEY), words.table.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
     let docs = vec![("WORDS.md".to_string(), words.page)];
+
+    // The loot table.
+    let word_names: Vec<String> = words.table.words.iter().map(|w| w.word.clone()).collect();
+    let loot = loot::bake_loot(&inputs.assets.join("data/loot.ron"), &table.text, &word_names)?;
+    report.push(format!("{}: {} types, {} materials, {} sources", vellmark_content::LOOT_KEY, loot.types.len(), loot.materials.len(), loot.sources.len()));
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::LOOT_KEY), loot.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
 
     let atlas = glyphs::bake_atlas(&inputs.third_party, inputs.cache.as_deref())?;
     report.push(format!("{GLYPH_ATLAS_KEY}: {} bytes", atlas.len()));
