@@ -2,6 +2,12 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: words on the weapon, combat lines, and the bow (S03-T10)
+
+- **On the weapon.** Both hands together, weapon and word, write the word on the weapon at once, with no flight, for the word's Ink (half again at full charge). It lasts 30 s, 60 s fully charged; a typo typed as it charges does the typo's `weapon` result. What a weapon carries passes to what it strikes: `ignite` for 5 s, `frost` as a 4 s slow. A sharp edge sets armour aside and cuts 15% deeper.
+- **Combat lines as marks.** Each word's effect on a creature is read by steel as a mark: gaping (blows do half again), slowed (a heavy blow shatters it for 60% more and ends it), burning (4 a second at full strength), pacified and dazzled (for the Inkling's mind).
+- **The bow.** Full draw in 0.9 s; an arrow leaves at 18 to 60 m/s with 6 to 32 damage by the draw, under gravity; a held draw drains 7 Stamina a second and looses on its own when Stamina runs out. A quiver holds 20; stuck arrows within 2.2 m of the eye are gathered with Interact.
+
 ## 2026-11-14: steel and Stamina (S03-T09)
 
 - **Numbers.** Health and Stamina 100. Stamina comes back at 28 a second once nothing has spent it for 0.8 s. A sidestep costs 18, a shield bash 16, a sword's heavy attack 24. Close reading drains 9 a second (4.5 in co-op). Sprinting is free: the brief names what Stamina pays for, and running is not among them.

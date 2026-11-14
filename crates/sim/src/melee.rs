@@ -48,6 +48,8 @@ pub enum WeaponKind {
     Dagger,
     Greatsword,
     Staff,
+    /// Drawn, not swung: it takes both hands.
+    Bow,
 }
 
 /// What a type of weapon does in the hand.
@@ -105,6 +107,8 @@ impl WeaponKind {
             Self::Greatsword => WeaponStats { damage: 20.0, heavy_damage: 46.0, reach: 2.7, arc: 2.2, swing: 0.68, heavy_cost: 32.0, stagger: 30.0, heavy_stagger: 80.0, sweeps: true, two_handed: true, ..base },
             // Holds a word and writes it from its own charge; swung, it is a stick.
             Self::Staff => WeaponStats { damage: 9.0, heavy_damage: 20.0, reach: 2.5, swing: 0.55, two_handed: true, ..base },
+            // Its numbers are its arrows'; struck with, it is a stick.
+            Self::Bow => WeaponStats { damage: 4.0, heavy_damage: 30.0, reach: 1.6, swing: 0.5, heavy_cost: 0.0, ink: 3.0, heavy_ink: 6.0, sneak: 3.0, two_handed: true, ..base },
         }
     }
 }
@@ -159,6 +163,14 @@ pub struct Melee {
     pub bashed: bool,
     /// Staggered, for this long yet: a broken guard.
     pub staggered: f32,
+    /// Words written on the held weapon: the effect, how strong, and until when, in the
+    /// rules' seconds.
+    pub on_weapon: Vec<(String, f32, f64)>,
+    /// The bow drawn, since this long.
+    pub draw: Option<f32>,
+    pub arrows: u32,
+    /// An arrow let go this step: the world takes it.
+    pub loosed: Option<Arrow>,
 }
 
 impl Default for Melee {
@@ -176,8 +188,37 @@ impl Default for Melee {
             blocking: false,
             bashed: false,
             staggered: 0.0,
+            on_weapon: Vec::new(),
+            draw: None,
+            arrows: QUIVER,
+            loosed: None,
         }
     }
+}
+
+/// What burning does to a creature, a second, at full strength.
+pub const BURN_DAMAGE: f32 = 4.0;
+/// Arrows in a full quiver.
+pub const QUIVER: u32 = 20;
+/// A bow is fully drawn after this long.
+pub const DRAW_FULL: f32 = 0.9;
+/// A held draw drains Stamina this fast, a second.
+pub const DRAW_DRAIN: f32 = 7.0;
+/// How long a word written on a held weapon lasts, in seconds, uncharged; a full charge
+/// doubles it.
+pub const ON_WEAPON_SECONDS: f64 = 30.0;
+
+/// An arrow, in flight or where it stuck.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Arrow {
+    pub player: u32,
+    pub at: Vec3,
+    pub velocity: Vec3,
+    pub damage: f32,
+    /// Where it stuck, if it has: in the ground or a wall it can be picked up.
+    pub stuck: bool,
+    /// The words on the bow when it was loosed: they go with it.
+    pub carries: Vec<(String, f32)>,
 }
 
 /// A blow landing on a creature, as the rules report it.
@@ -194,6 +235,10 @@ pub struct Hit {
     pub killed: bool,
     /// How long the striker's view holds.
     pub hit_stop: f32,
+    /// A heavy blow shattered the frost on it.
+    pub shattered: bool,
+    /// The words on the weapon that struck, which pass to what it struck.
+    pub carries: Vec<(String, f32)>,
 }
 
 /// A creature as steel meets it.
@@ -214,11 +259,41 @@ pub struct Creature {
     pub aware: bool,
     /// Its blows and their timing are its own (S03-T12); steel needs only this much.
     pub armour: f32,
+    /// What the words on it do to a fight, step by step: see [`marks`].
+    pub marks: u32,
+    /// Its target class's key: `creature`, `inkling`.
+    pub class: String,
+}
+
+/// What words written on a creature mean to steel.
+pub mod marks {
+    /// `OPEN`: its jaw hangs open, and its guard with it. Blows do half again.
+    pub const GAPING: u32 = 1 << 0;
+    /// `COLD`: slowed until brittle. A heavy blow shatters the frost for more.
+    pub const SLOWED: u32 = 1 << 1;
+    /// `BURNING`: it burns.
+    pub const BURNING: u32 = 1 << 2;
+    /// `CALM`: it will not fight, for a while.
+    pub const PACIFIED: u32 = 1 << 3;
+    /// `LIT`: dazzled; and a thing of ink is driven back.
+    pub const DAZZLED: u32 = 1 << 4;
+
+    /// The mark an effect makes, if any.
+    pub fn of(effect: &str) -> u32 {
+        match effect {
+            "gape" => GAPING,
+            "slow" | "rime" => SLOWED,
+            "ignite" | "flare" | "blaze" | "bake" => BURNING,
+            "pacify" | "rapt" => PACIFIED,
+            "glow" | "repel" | "glint" => DAZZLED,
+            _ => 0,
+        }
+    }
 }
 
 impl Creature {
     pub fn new(id: u64, feet: Vec3, radius: f32, height: f32, health: f32, poise: f32) -> Self {
-        Self { id, feet, yaw: 0.0, radius, height, health, max_health: health, poise, max_poise: poise, staggered: 0.0, aware: false, armour: 0.0 }
+        Self { id, feet, yaw: 0.0, radius, height, health, max_health: health, poise, max_poise: poise, staggered: 0.0, aware: false, armour: 0.0, marks: 0, class: "creature".into() }
     }
 
     pub fn alive(&self) -> bool {
@@ -278,6 +353,10 @@ impl Melee {
             return;
         }
         let stats = self.weapon.stats();
+        if self.weapon == WeaponKind::Bow {
+            self.bow(player, events, main_weapon, eye, gaze, dt);
+            return;
+        }
         // The free hand guards while its button is held.
         let blocking = off_held && main_weapon && self.guards(off) && self.drawing.is_none();
         if blocking && !self.blocking {
@@ -329,7 +408,8 @@ impl Melee {
         if let Some(swing) = &mut self.swing {
             swing.t += dt;
             if swing.striking() {
-                strike(player, swing, &stats, eye, gaze, creatures, hits);
+                let carries: Vec<(String, f32)> = self.on_weapon.iter().map(|(e, s, _)| (e.clone(), *s)).collect();
+                strike(player, swing, &stats, &carries, eye, gaze, creatures, hits);
             }
             ended = swing.t >= swing.length;
         }
@@ -343,6 +423,42 @@ impl Melee {
             self.since += dt;
             if self.since > CHAIN_GRACE {
                 self.chain = 0;
+            }
+        }
+    }
+
+    /// The bow: hold to draw, let go to loose; a tap looses a weak shot. A held draw
+    /// drains Stamina, and with none left the arrow goes as it is.
+    fn bow(&mut self, player: u32, events: &[HandEvent], main_weapon: bool, eye: Vec3, gaze: Vec3, dt: f32) {
+        self.blocking = false;
+        if !main_weapon {
+            self.draw = None;
+            return;
+        }
+        let carries: Vec<(String, f32)> = self.on_weapon.iter().map(|(e, s, _)| (e.clone(), *s)).collect();
+        for e in events {
+            match *e {
+                HandEvent::Tap(Hand::Main) if self.arrows > 0 => {
+                    self.arrows -= 1;
+                    self.loosed = Some(loose(player, 0.0, eye, gaze, carries.clone()));
+                }
+                HandEvent::HoldBegin(Hand::Main) if self.arrows > 0 => self.draw = Some(crate::hands::HOLD_SECONDS),
+                HandEvent::HoldEnd(Hand::Main, _) => {
+                    if let Some(drawn) = self.draw.take() {
+                        self.arrows -= 1;
+                        self.loosed = Some(loose(player, drawn, eye, gaze, carries.clone()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(d) = &mut self.draw {
+            *d += dt;
+            self.spend(DRAW_DRAIN * dt);
+            if self.stamina <= 0.0 {
+                let drawn = self.draw.take().unwrap_or(0.0);
+                self.arrows -= 1;
+                self.loosed = Some(loose(player, drawn, eye, gaze, carries));
             }
         }
     }
@@ -385,7 +501,8 @@ impl Melee {
 }
 
 /// A swing in its striking part meets what is before the eye within reach.
-fn strike(player: u32, swing: &mut Swing, stats: &WeaponStats, eye: Vec3, gaze: Vec3, creatures: &mut [Creature], hits: &mut Vec<Hit>) {
+#[allow(clippy::too_many_arguments)]
+fn strike(player: u32, swing: &mut Swing, stats: &WeaponStats, carries: &[(String, f32)], eye: Vec3, gaze: Vec3, creatures: &mut [Creature], hits: &mut Vec<Hit>) {
     let flat = Vec3::new(gaze.x, 0.0, gaze.z).normalize_or(Vec3::NEG_Z);
     let reach = if swing.kind == SwingKind::Bash { 1.7 } else { stats.reach };
     let half_arc = (stats.arc * 0.5).cos();
@@ -417,13 +534,7 @@ fn strike(player: u32, swing: &mut Swing, stats: &WeaponStats, eye: Vec3, gaze: 
             SwingKind::Bash => (2.0, 0.0, false),
         };
         let sneak = !c.aware && swing.kind != SwingKind::Bash;
-        let mut dealt = damage * if sneak { stats.sneak } else { 1.0 };
-        // A staggered creature takes a quarter more.
-        if c.staggered > 0.0 {
-            dealt *= 1.25;
-        }
-        dealt *= 1.0 - c.armour.clamp(0.0, 0.9);
-        c.health = (c.health - dealt).max(0.0);
+        let (dealt, shattered) = wound(c, damage, if sneak { stats.sneak } else { 1.0 }, heavy, carries);
         c.aware = true;
         let mut staggered = false;
         if swing.kind == SwingKind::Bash {
@@ -447,9 +558,118 @@ fn strike(player: u32, swing: &mut Swing, stats: &WeaponStats, eye: Vec3, gaze: 
             sneak,
             staggered,
             killed: !c.alive(),
-            hit_stop: if heavy || sneak { HIT_STOP_HEAVY } else { HIT_STOP },
+            hit_stop: if heavy || sneak || shattered { HIT_STOP_HEAVY } else { HIT_STOP },
+            shattered,
+            carries: if swing.kind == SwingKind::Bash { Vec::new() } else { carries.to_vec() },
         });
     }
+}
+
+/// What a blow of `damage` does to a creature, after its sneak multiplier, the words on
+/// the creature, and the words on the weapon. Returns the damage dealt, and whether a
+/// heavy blow shattered its frost.
+fn wound(c: &mut Creature, damage: f32, multiplier: f32, heavy: bool, carries: &[(String, f32)]) -> (f32, bool) {
+    let mut dealt = damage * multiplier;
+    // A staggered creature takes a quarter more.
+    if c.staggered > 0.0 {
+        dealt *= 1.25;
+    }
+    // Words open, steel finishes.
+    if c.marks & marks::GAPING != 0 {
+        dealt *= 1.5;
+    }
+    let shattered = heavy && c.marks & marks::SLOWED != 0;
+    if shattered {
+        dealt *= 1.6;
+        c.marks &= !marks::SLOWED;
+    }
+    let mut armour = c.armour.clamp(0.0, 0.9);
+    for (effect, strength) in carries {
+        match effect.as_str() {
+            // A sharp edge cuts through armour, and deeper.
+            "sharpen" | "edge" => {
+                armour = 0.0;
+                dealt *= 1.0 + 0.15 * strength;
+            }
+            "bite" => dealt *= 1.0 + 0.2 * strength,
+            "heat" => dealt += 3.0 * strength,
+            "gilt" => dealt *= 1.05,
+            _ => {}
+        }
+    }
+    dealt *= 1.0 - armour;
+    c.health = (c.health - dealt).max(0.0);
+    (dealt, shattered)
+}
+
+/// Looses an arrow drawn for `drawn` seconds from the eye along the gaze.
+pub fn loose(player: u32, drawn: f32, eye: Vec3, gaze: Vec3, carries: Vec<(String, f32)>) -> Arrow {
+    let pull = (drawn / DRAW_FULL).clamp(0.15, 1.0);
+    Arrow { player, at: eye + gaze * 0.6, velocity: gaze * (18.0 + 42.0 * pull), damage: 6.0 + 26.0 * pull, stuck: false, carries }
+}
+
+/// Arrows fly, drop, and strike: a creature takes the blow, still things keep the arrow
+/// where it stuck. `blocked` gives how far along a segment something still is in the way.
+pub fn fly_arrows(arrows: &mut Vec<Arrow>, creatures: &mut [Creature], blocked: &dyn Fn(Vec3, Vec3) -> Option<f32>, dt: f32, hits: &mut Vec<Hit>) {
+    arrows.retain_mut(|a| {
+        if a.stuck {
+            return true;
+        }
+        a.velocity.y -= 9.81 * dt;
+        let from = a.at;
+        let to = from + a.velocity * dt;
+        // The first creature on the segment.
+        let seg = to - from;
+        let mut first: Option<(f32, usize)> = None;
+        for (i, c) in creatures.iter().enumerate().filter(|(_, c)| c.alive()) {
+            // Against its upright axis, as a capsule.
+            let steps = 8;
+            for k in 0..=steps {
+                let t = k as f32 / steps as f32;
+                let p = from + seg * t;
+                let flat = Vec3::new(p.x - c.feet.x, 0.0, p.z - c.feet.z).length();
+                if flat <= c.radius && p.y >= c.feet.y && p.y <= c.feet.y + c.height {
+                    if first.is_none_or(|f| t < f.0) {
+                        first = Some((t, i));
+                    }
+                    break;
+                }
+            }
+        }
+        let wall = blocked(from, to);
+        match (first, wall) {
+            (Some((t, i)), w) if w.is_none_or(|w| t <= w) => {
+                let c = &mut creatures[i];
+                let sneak = !c.aware;
+                let (dealt, shattered) = wound(c, a.damage, if sneak { WeaponKind::Bow.stats().sneak } else { 1.0 }, false, &a.carries);
+                c.aware = true;
+                hits.push(Hit {
+                    player: a.player,
+                    creature: c.id,
+                    at: from + seg * t,
+                    damage: dealt,
+                    kind: SwingKind::Light { from_left: false },
+                    sneak,
+                    staggered: false,
+                    killed: !c.alive(),
+                    hit_stop: 0.0,
+                    shattered,
+                    carries: a.carries.clone(),
+                });
+                false
+            }
+            (_, Some(w)) => {
+                a.at = from + seg * w;
+                a.stuck = true;
+                true
+            }
+            _ => {
+                a.at = to;
+                // An arrow that has fallen far below the world is lost.
+                a.at.y > -200.0
+            }
+        }
+    });
 }
 
 /// Ink a hit returns to the striker.

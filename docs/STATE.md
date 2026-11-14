@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T10, words on the weapon, the bow, and sneak attacks.
+**Current task:** S03-T11, the first-person hands and weapons.
 
 ## Lane: Render
 
@@ -31,6 +31,9 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S03-T10, words and steel together: both hands write the off hand's word on the held weapon for its Ink, as its sheet says (`BURNING` sets what it strikes alight, `COLD` slows it, `LIT` makes the weapon a lamp, `SHARP` cuts through armour; the typos `OVEN`, `SHARK`, `GOLD`, `LIP` do their own small things), or its refusal; it lasts 30 s, twice that fully charged. Creatures carry Inscriptions of their class, and each word's combat line is a mark steel reads: `OPEN` gapes a foe (blows do half again), `COLD` slows it until a heavy blow shatters the frost for more, `BURNING` burns it, `CALM` and `LIT` are kept for the Inkling's mind (S03-T12). The bow: hold to draw (draining Stamina), let go to loose; a tap is a weak shot; arrows fly, drop, strike creatures (sneak attacks too), stick in the ground and walls, carry the bow's words, and are gathered with Interact. Tests: `crates/sim/tests/weapon_words.rs`.
+**Not yet:** sneaking unseen is the Inkling's to notice (S03-T12); the arrow count is not yet shown (S03-T11, with the bow in the hands).
 
 **Done:** S03-T09, steel (`crates/sim/src/melee.rs`): tap for a chain of three alternating swings (a tap during a swing follows it), hold for one heavy attack that costs Stamina and staggers, the free hand blocks (a hand holding a word does not), a shield blocks more and bashes once from a block; blows strike in the middle of a swing, once each, the nearest in reach and arc (a greatsword sweeps); sneak attacks on unaware creatures, highest with a dagger; poise and staggers; hits give Ink, a sword's most. Health and Stamina: the sidestep costs Stamina and needs it, close reading drains it (half in co-op) and ends when it is gone; blows on a player pass through a sidestep's first moments, are blocked when faced, and interrupt the hands. Six weapon types by moveset with their traits. Hit stop and a kick of the view, for the striker's view only. Health and Stamina in the HUD, in strokes, while not full. Tests: `crates/sim/tests/melee.rs`.
 **Not yet:** an axe's bleeding and a mace's crush need armour and creatures that keep them (S03-T12); weapons are drawn in S03-T11.

@@ -128,6 +128,8 @@ pub struct World {
     creatures: Vec<crate::melee::Creature>,
     /// The blows that landed this step.
     hits: Vec<crate::melee::Hit>,
+    /// Arrows in flight, and stuck where they can be picked up.
+    arrows: Vec<crate::melee::Arrow>,
 }
 
 impl World {
@@ -169,6 +171,7 @@ impl World {
             prop_poses: Arc::default(),
             creatures: Vec::new(),
             hits: Vec::new(),
+            arrows: Vec::new(),
         }
     }
 
@@ -251,6 +254,9 @@ impl World {
     /// Gives the world the things that carry Inscriptions.
     pub fn set_targets(&mut self, targets: Vec<crate::emendation::Target>) {
         self.targets = targets;
+        // Creatures keep their own.
+        let own: Vec<_> = self.creatures.iter().filter_map(|c| self.creature_target(c)).collect();
+        self.targets.extend(own);
         self.refresh_targets();
         self.rebuild_statics();
     }
@@ -271,8 +277,27 @@ impl World {
     }
 
     /// Puts a creature in the world for steel to meet.
+    /// It carries an Inscription of its class, as a target words can be written on.
     pub fn add_creature(&mut self, creature: crate::melee::Creature) {
+        let target = self.creature_target(&creature);
         self.creatures.push(creature);
+        if let Some(t) = target {
+            self.targets.push(t);
+            self.refresh_targets();
+        }
+    }
+
+    fn creature_target(&self, c: &crate::melee::Creature) -> Option<crate::emendation::Target> {
+        let class = self.rules.class(&c.class)?;
+        if self.targets.iter().any(|t| t.id == c.id) {
+            return None;
+        }
+        Some(crate::emendation::Target::new(c.id, class, c.centre(), c.radius.max(c.height * 0.5), crate::emendation::Resistance::Plain, &[]))
+    }
+
+    /// Arrows in flight and stuck.
+    pub fn arrows(&self) -> &[crate::melee::Arrow] {
+        &self.arrows
     }
 
     pub fn creatures(&self) -> &[crate::melee::Creature] {
@@ -777,8 +802,28 @@ impl World {
             // Steel: the weapon hand's taps and holds, and the free hand's guard.
             let main_weapon = p.caster.holding[0] == crate::casting::Holding::Weapon && !throwing;
             let off_held = input.held(buttons::ATTACK_OFF) && !reading;
+            // Both hands together, a weapon and a word: the word is written on the weapon.
+            for e in &hand_events {
+                if let (crate::hands::HandEvent::BothEnd(t), crate::casting::Holding::Weapon, crate::casting::Holding::Word(w)) = (*e, p.caster.holding[0], p.caster.holding[1]) {
+                    let typed = std::mem::take(&mut p.caster.typed).to_ascii_uppercase();
+                    let charge = (t / crate::emendation::CHARGE_FULL).min(1.0);
+                    if let Some(event) = write_on_weapon(p.id.0, &mut p.caster, &mut p.melee, &self.rules, w, charge, &typed, eye + gaze * 0.5 - Vec3::Y * 0.3, self.seconds) {
+                        self.landings.push(event);
+                    }
+                }
+            }
             let before = self.hits.len();
             p.melee.step(p.id.0, &hand_events, main_weapon, p.caster.holding[1], off_held, eye, gaze, &mut self.creatures, dt, &mut self.hits);
+            if let Some(arrow) = p.melee.loosed.take() {
+                self.arrows.push(arrow);
+            }
+            // Interact gathers the arrows stuck within reach.
+            if pressed & buttons::INTERACT != 0 && self.carried.iter().all(|(c, _)| *c != p.id) {
+                let before = self.arrows.len();
+                self.arrows.retain(|a| !(a.stuck && a.at.distance(eye) < 2.2));
+                p.melee.arrows = (p.melee.arrows + (before - self.arrows.len()) as u32).min(crate::melee::QUIVER);
+            }
+            p.melee.on_weapon.retain(|(_, _, until)| self.seconds < *until);
             // Hits give Ink.
             for hit in &self.hits[before..] {
                 p.caster.ink = (p.caster.ink + crate::melee::ink_for(hit, p.melee.weapon)).min(crate::emendation::INK_MAX);
@@ -821,6 +866,61 @@ impl World {
                     t.centre = pose.transform_point3(local);
                 }
             }
+        }
+        // Arrows fly and strike.
+        if !self.arrows.is_empty() {
+            let statics = self.statics.clone();
+            let ground = self.ground.clone();
+            let blocked = |a: Vec3, b: Vec3| -> Option<f32> {
+                let d = b - a;
+                let len = d.length().max(1e-6);
+                let wall = statics.as_ref().and_then(|s| s.ray(a, d / len, len)).map(|(t, _)| t / len);
+                let floor = ground.as_ref().and_then(|g| g.height(b.x, b.z)).filter(|h| b.y <= *h).map(|h| ((a.y - h) / (a.y - b.y).max(1e-6)).clamp(0.0, 1.0));
+                match (wall, floor) {
+                    (Some(w), Some(f)) => Some(w.min(f)),
+                    (w, f) => w.or(f),
+                }
+            };
+            let before = self.hits.len();
+            crate::melee::fly_arrows(&mut self.arrows, &mut self.creatures, &blocked, dt, &mut self.hits);
+            for hit in self.hits[before..].iter() {
+                if let Some(p) = self.players.iter_mut().find(|p| p.id.0 == hit.player) {
+                    p.caster.ink = (p.caster.ink + crate::melee::ink_for(hit, crate::melee::WeaponKind::Bow)).min(crate::emendation::INK_MAX);
+                }
+            }
+        }
+        // What a blow carries passes to what it struck; a shattering blow ends the frost.
+        let mut changed = false;
+        for hit in &self.hits {
+            let Some(t) = self.targets.iter_mut().find(|t| t.id == hit.creature) else { continue };
+            if hit.shattered {
+                t.effects.retain(|e| crate::melee::marks::of(&e.effect) & crate::melee::marks::SLOWED == 0);
+                changed = true;
+            }
+            for (effect, strength) in &hit.carries {
+                let (given, seconds) = match effect.as_str() {
+                    "ignite" => ("ignite", 5.0),
+                    "frost" => ("slow", 4.0),
+                    _ => continue,
+                };
+                t.effects.retain(|e| e.effect != given);
+                t.effects.push(crate::emendation::ActiveEffect { effect: given.into(), strength: *strength, by: String::new(), until: Some(self.seconds + seconds) });
+                changed = true;
+            }
+        }
+        // Creatures carry their Inscriptions, and what the words do to a fight.
+        for c in &mut self.creatures {
+            let Some(t) = self.targets.iter_mut().find(|t| t.id == c.id) else { continue };
+            t.centre = c.centre();
+            c.marks = t.effects.iter().fold(0, |m, e| m | crate::melee::marks::of(&e.effect));
+            if c.marks & crate::melee::marks::BURNING != 0 && c.alive() {
+                let strength: f32 = t.effects.iter().filter(|e| crate::melee::marks::of(&e.effect) & crate::melee::marks::BURNING != 0).map(|e| e.strength).sum();
+                c.health = (c.health - crate::melee::BURN_DAMAGE * strength * dt).max(0.0);
+                c.aware = true;
+            }
+        }
+        if changed {
+            self.refresh_targets();
         }
         crate::melee::recover(&mut self.creatures, dt);
         let landed_before = self.landings.len();
@@ -1003,6 +1103,7 @@ impl World {
                 .collect(),
             landings: self.landings.clone(),
             hits: self.hits.clone(),
+            arrows: Arc::new(self.arrows.clone()),
             creatures: Arc::new(self.creatures.clone()),
         })
     }
@@ -1137,4 +1238,40 @@ mod tests {
         assert_eq!(*before, copy);
         assert_ne!(*w.snapshot(), copy);
     }
+}
+
+/// Writes the word in a player's off hand on the weapon in the main hand, both hands
+/// together: what the word's sheet says it does on a held weapon, or its refusal. Its
+/// typo, typed as it charged, does what the typo does on a weapon. Costs the word's Ink.
+#[allow(clippy::too_many_arguments)]
+fn write_on_weapon(
+    player: u32,
+    caster: &mut crate::casting::Caster,
+    melee: &mut crate::melee::Melee,
+    rules: &crate::emendation::WordRules,
+    word: usize,
+    charge: f32,
+    typed: &str,
+    at: Vec3,
+    now: f64,
+) -> Option<crate::casting::CastEvent> {
+    use crate::emendation::{Landing, RuleOutcome};
+    let rule = &rules.words[word];
+    let cost = rule.ink * (1.0 + charge * 0.5);
+    if caster.ink < cost {
+        return None;
+    }
+    let typo = charge > 0.0 && typed == rule.typo;
+    let outcome = if typo { rules.class("weapon").and_then(|c| rule.typo_outcomes.get(c)).unwrap_or(&rule.weapon) } else { &rule.weapon };
+    let landing = match outcome {
+        RuleOutcome::Effect { effect, strength, .. } => {
+            caster.ink -= cost;
+            let bonus = if charge > 0.0 && typed == rule.spelling { crate::emendation::TYPED_BONUS } else { 1.0 };
+            melee.on_weapon.retain(|(e, _, _)| e != effect);
+            melee.on_weapon.push((effect.clone(), strength * bonus, now + crate::melee::ON_WEAPON_SECONDS * (1.0 + charge as f64)));
+            Landing::Took { effect: effect.clone(), strength: *strength }
+        }
+        RuleOutcome::Refusal(line) => Landing::Refused(*line),
+    };
+    Some(crate::casting::CastEvent { player, word: rule.spelling.clone(), target: 0, at, landing, both: true, charge, typo, compound: None, link: 0 })
 }

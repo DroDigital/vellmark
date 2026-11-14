@@ -84,3 +84,5 @@ Added as each system is built.
 | Props with weight | S03-T08 | By the bridge road (about 125, -93), look at a crate and press Interact: it is held before you. Walk, turn, put it down, pick it up, and throw it (main hand) at the bank or the keg. Does it feel heavy enough? Does a hard throw break it into letters? |
 | Physics inside 2 ms | S03-T08 | With the crates thrown and letters falling, read the `sim` line of the report |
 | Swinging that is simple and weighty | S03-T09 | Until the Inkling comes (S03-T12) there is nothing to strike but the air: tap for the chain, hold for the heavy attack, hold the off hand to block with it empty. Does the timing feel right? Is the hit stop felt or missed? |
+| Words on the blade | S03-T10 | Hold `BURNING` in the off hand and press both hands together: the blade carries it. Do the same with `OPEN`: the refusal. Does writing on your own weapon feel like a trick worth doing in a fight? |
+| The bow | S03-T10 | (Once the bow is in the hands, S03-T11.) Draw and loose at a mark across the river: does the arrow's drop read, and does a full draw feel worth its Stamina? |

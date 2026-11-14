@@ -121,6 +121,8 @@ pub struct Snapshot {
     pub landings: Vec<crate::casting::CastEvent>,
     /// The blows that landed this step.
     pub hits: Vec<crate::melee::Hit>,
+    /// Arrows in flight and stuck.
+    pub arrows: std::sync::Arc<Vec<crate::melee::Arrow>>,
     /// What steel meets, as it stands.
     pub creatures: std::sync::Arc<Vec<crate::melee::Creature>>,
 }
