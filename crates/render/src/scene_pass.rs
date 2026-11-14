@@ -76,6 +76,7 @@ struct Pipelines {
     tree_depth: wgpu::RenderPipeline,
     tree: wgpu::RenderPipeline,
     sparks: wgpu::RenderPipeline,
+    ink: wgpu::RenderPipeline,
     water: wgpu::RenderPipeline,
     rain: wgpu::RenderPipeline,
     post: wgpu::RenderPipeline,
@@ -820,6 +821,33 @@ impl ScenePass {
                 cache: None,
             },
         );
+        // Ink particles (an Inkling): dark characters laid over what is drawn.
+        let ink = registry.render_pipeline(
+            device,
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("ink"),
+                layout: Some(&world_layout),
+                vertex: wgpu::VertexState { module: &opaque_module, entry_point: Some("vs_spark"), compilation_options: Default::default(), buffers: &[] },
+                fragment: Some(wgpu::FragmentState {
+                    module: &opaque_module,
+                    entry_point: Some("fs_ink"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: HDR_FORMAT,
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::One, dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha, operation: wgpu::BlendOperation::Add },
+                            alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+                        }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(depth_state(false, wgpu::CompareFunction::GreaterEqual)),
+                multisample,
+                multiview_mask: None,
+                cache: None,
+            },
+        );
         let letter_shadow_layout = layout("letter shadow", &[Some(cascade_layout)]);
         let letter_shadow = registry.render_pipeline(
             device,
@@ -1076,7 +1104,7 @@ impl ScenePass {
         let bloom_first = bloom("bloom first", "fs_first", None);
         let bloom_down = bloom("bloom down", "fs_down", None);
         let bloom_up = bloom("bloom up", "fs_up", Some(add));
-        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, tree_shadow, tree_depth, tree, sparks, water, rain, post, bloom_first, bloom_down, bloom_up })
+        Ok(Pipelines { shadow, depth, opaque, sky, letters, letter_shadow, terrain_shadow, terrain_depth, terrain, grass_depth, grass, tree_shadow, tree_depth, tree, sparks, ink, water, rain, post, bloom_first, bloom_down, bloom_up })
     }
 
     /// Remakes the pipelines from the shaders as they now are. On an error nothing
@@ -1801,6 +1829,8 @@ impl ScenePass {
                 // Magic, over everything drawn, behind whatever is nearer.
                 let emitters = magic.emitter_count() as u32;
                 if emitters > 0 {
+                    pass.set_pipeline(&self.pipelines.ink);
+                    pass.draw(0..6, 0..emitters * PARTICLES_PER_EMITTER);
                     pass.set_pipeline(&self.pipelines.sparks);
                     pass.draw(0..6, 0..emitters * PARTICLES_PER_EMITTER);
                 }

@@ -99,6 +99,8 @@ pub struct LetterSnap {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Snapshot {
     pub step: u64,
+    /// The rules' clock, in seconds, which runs slow while time is slowed.
+    pub seconds: f64,
     /// Hours since midnight, 0 to 24.
     pub time_of_day: f32,
     pub players: Vec<PlayerSnap>,

@@ -25,7 +25,7 @@ pub use readables::{readables_key, targets_key, InscribedThing, InscribedThings,
 pub use words::{Compound, EffectLook, Outcome, Typo, Word, WordTable, WORDS_KEY};
 pub use glyph_atlas::{glyph_index, Face, FaceInfo, GlyphAtlas, GlyphInfo, FACES, GLYPHS_PER_FACE, TONE_STEPS};
 pub use id::{fnv1a64, AssetId, AssetKind, StringId};
-pub use scene::{Breakable, Lexicon, Light, Material, MaterialSet, Mesh, Object, PageEntry, Scene, SolidBox, TextPages, Vertex};
+pub use scene::{Breakable, CreatureSpawn, Lexicon, Light, Material, MaterialSet, Mesh, Object, PageEntry, Scene, SolidBox, TextPages, Vertex};
 pub use pack::{Pack, PackError, PackWriter, PACK_VERSION};
 pub use strings::{StringTable, StringTableBuilder};
 pub use terrain::{Ground, TerrainTile, TERRAIN_LAYER, TILE_SAMPLES};

@@ -30,6 +30,7 @@ mod hash;
 mod input;
 pub mod props;
 pub mod melee;
+pub mod inkling;
 mod snapshot;
 mod world;
 

@@ -133,6 +133,20 @@ struct Authored {
     /// The things that carry Inscriptions.
     #[serde(default)]
     inscribed: Vec<AuthoredInscribed>,
+    /// The creatures that stand in the scene.
+    #[serde(default)]
+    creatures: Vec<AuthoredCreature>,
+}
+
+#[derive(Deserialize)]
+struct AuthoredCreature {
+    key: String,
+    kind: String,
+    position: V3,
+    #[serde(default)]
+    yaw: f32,
+    #[serde(default)]
+    annotation: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -623,7 +637,26 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
                 casts_shadow: l.casts_shadow,
             })
             .collect();
+        const KINDS: &[&str] = &["inkling"];
+        const ANNOTATIONS: &[&str] = &["LOCKED", "BURNING", "COLD"];
+        let mut creatures = Vec::new();
+        for c in &authored.creatures {
+            if !KINDS.contains(&c.kind.as_str()) {
+                return Err(BakeError(format!("{}: creature {}: no kind called `{}`", file.display(), c.key, c.kind)));
+            }
+            if let Some(a) = c.annotation.as_deref().filter(|a| !ANNOTATIONS.contains(a)) {
+                return Err(BakeError(format!("{}: creature {}: `{a}` is not an annotation of the Showcase", file.display(), c.key)));
+            }
+            creatures.push(vellmark_content::CreatureSpawn {
+                key: AssetId::from_key(&format!("scene.{name}.{}", c.key)),
+                kind: c.kind.clone(),
+                position: [c.position.0, c.position.1, c.position.2],
+                yaw: c.yaw.to_radians(),
+                annotation: c.annotation.clone().unwrap_or_default(),
+            });
+        }
         let scene = Scene {
+            creatures,
             static_mesh,
             objects,
             lights,

@@ -393,10 +393,26 @@ pub struct Scene {
     /// The terrain the scene stands on, by its key, or `AssetId(0)` if it has none. Its
     /// tiles are found by where they are, as `TileCoord::asset_id` gives them.
     pub terrain: AssetId,
+    /// The creatures that stand in the scene when it is loaded.
+    pub creatures: Vec<CreatureSpawn>,
+}
+
+/// A creature that stands in a scene when it is loaded.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CreatureSpawn {
+    /// Permanent: the creature's ID.
+    pub key: AssetId,
+    /// Its species' key: `inkling`.
+    pub kind: String,
+    pub position: [f32; 3],
+    /// Radians.
+    pub yaw: f32,
+    /// The extra word it is found with, or empty.
+    pub annotation: String,
 }
 
 impl Scene {
-    const MAGIC: &'static [u8; 8] = b"VLMKSCN5";
+    const MAGIC: &'static [u8; 8] = b"VLMKSCN6";
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -439,6 +455,16 @@ impl Scene {
             for b in &breakable.boxes {
                 put_box(&mut out, b);
             }
+        }
+        out.extend_from_slice(&(self.creatures.len() as u32).to_le_bytes());
+        for c in &self.creatures {
+            out.extend_from_slice(&c.key.0.to_le_bytes());
+            for s in [&c.kind, &c.annotation] {
+                out.extend_from_slice(&(s.len() as u32).to_le_bytes());
+                out.extend_from_slice(s.as_bytes());
+            }
+            put_f32s(&mut out, &c.position);
+            put_f32s(&mut out, &[c.yaw]);
         }
         out
     }
@@ -490,10 +516,23 @@ impl Scene {
                 mass,
             });
         }
+        let mut creatures = Vec::new();
+        for _ in 0..r.u32()? {
+            let key = AssetId(r.u64()?);
+            let mut text = || -> Result<String, &'static str> {
+                let n = r.u32()? as usize;
+                String::from_utf8(r.take(n)?.to_vec()).map_err(|_| "a creature's name is not text")
+            };
+            let kind = text()?;
+            let annotation = text()?;
+            let position = r.f32s()?;
+            let yaw = r.f32()?;
+            creatures.push(CreatureSpawn { key, kind, position, yaw, annotation });
+        }
         if r.1 != bytes.len() {
             return Err("scene has trailing bytes");
         }
-        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn, terrain })
+        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn, terrain, creatures })
     }
 }
 
@@ -572,6 +611,7 @@ mod tests {
             }],
             spawn: [0.0, 1.7, 5.0, 0.0, 0.0],
             terrain: AssetId::from_key("terrain.valley"),
+            creatures: vec![CreatureSpawn { key: AssetId(8), kind: "inkling".into(), position: [1.0, 2.0, 3.0], yaw: 0.5, annotation: "LOCKED".into() }],
         };
         assert_eq!(Scene::from_bytes(&scene.to_bytes()).unwrap(), scene);
     }

@@ -130,6 +130,8 @@ pub struct World {
     hits: Vec<crate::melee::Hit>,
     /// Arrows in flight, and stuck where they can be picked up.
     arrows: Vec<crate::melee::Arrow>,
+    /// The minds of the Inklings.
+    minds: Vec<crate::inkling::Mind>,
 }
 
 impl World {
@@ -172,6 +174,7 @@ impl World {
             creatures: Vec::new(),
             hits: Vec::new(),
             arrows: Vec::new(),
+            minds: Vec::new(),
         }
     }
 
@@ -194,6 +197,89 @@ impl World {
     }
 
     /// The loose things become rigid bodies on the still things, where they stand now.
+    /// The Inklings think and move, bite, split when struck, and die.
+    fn inklings(&mut self, dt: f32) {
+        if self.minds.is_empty() {
+            return;
+        }
+        let quarry: Vec<crate::inkling::Quarry> = self
+            .players
+            .iter()
+            .filter(|p| p.melee.health > 0.0)
+            .map(|p| crate::inkling::Quarry { id: p.id.0, feet: p.body.feet, sneaking: p.body.crouching, untouchable: p.body.untouchable() })
+            .collect();
+        let ground = self.ground.clone();
+        let statics = self.statics.clone();
+        let height = |x: f32, z: f32| ground.as_ref().and_then(|g| g.height(x, z));
+        let open = |a: Vec3, b: Vec3| {
+            let d = b - a;
+            let len = d.length();
+            len < 1e-4 || statics.as_ref().is_none_or(|s| s.ray(a, d / len, len).is_none())
+        };
+        let mut rng = self.rng;
+        let mut roll = || {
+            rng = rng.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            let mut z = rng;
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+            ((z ^ (z >> 31)) >> 40) as f32 / (1u64 << 24) as f32
+        };
+        let mut bites = Vec::new();
+        for mind in &mut self.minds {
+            if let Some(c) = self.creatures.iter_mut().find(|c| c.id == mind.id) {
+                crate::inkling::think(c, mind, &quarry, &height, &open, &mut roll, dt, &mut bites);
+            }
+        }
+        // Its blows land, and its annotation's power goes with them.
+        for b in bites {
+            let id = PlayerId(b.player);
+            let through = self.hurt_player(id, b.damage, b.from);
+            if through > 0.0 {
+                if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+                    match b.annotation.as_deref() {
+                        Some("BURNING") => p.melee.burning = 3.0,
+                        Some("COLD") => p.melee.chilled = 3.0,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        // A struck Inkling splits.
+        // A blow that barely got through (on a locked front) does not split it.
+        let struck: Vec<(u64, Vec3)> = self.hits.iter().filter(|h| !h.killed && h.damage >= crate::inkling::SPLITTING_BLOW).map(|h| (h.creature, h.at)).collect();
+        for (id, at) in struck {
+            let standing = self.creatures.iter().filter(|c| c.class == "inkling" && c.alive()).count();
+            let child_id = (id ^ self.step.wrapping_mul(0x9e37_79b9_7f4a_7c15)).rotate_left(17) | 1;
+            let Some(c) = self.creatures.iter_mut().find(|c| c.id == id && c.class == "inkling") else { continue };
+            let away = Vec3::new(c.feet.x - at.x, 0.0, c.feet.z - at.z);
+            let side = Vec3::new(-away.z, 0.0, away.x).normalize_or(Vec3::X) * if roll() < 0.5 { 1.0 } else { -1.0 };
+            if let Some(part) = crate::inkling::split(c, child_id, standing, side) {
+                // The swing that split it does not strike the part it split off.
+                for p in &mut self.players {
+                    if let Some(s) = &mut p.melee.swing {
+                        s.struck.push(part.id);
+                    }
+                }
+                self.add_creature(part);
+            }
+        }
+        self.rng = rng;
+        // The dead spill and are gone after a while; their Inscriptions with them.
+        let now = self.seconds;
+        for c in &mut self.creatures {
+            if !c.alive() && c.died_at.is_none() {
+                c.died_at = Some(now);
+            }
+        }
+        let gone: Vec<u64> = self.creatures.iter().filter(|c| c.died_at.is_some_and(|t| now - t > 25.0)).map(|c| c.id).collect();
+        if !gone.is_empty() {
+            self.creatures.retain(|c| !gone.contains(&c.id));
+            self.minds.retain(|m| !gone.contains(&m.id));
+            self.targets.retain(|t| !gone.contains(&t.id));
+            self.refresh_targets();
+        }
+    }
+
     fn rebuild_props(&mut self) {
         let mut loose: Vec<crate::props::LooseThing> = self
             .breakables
@@ -279,6 +365,9 @@ impl World {
     /// Puts a creature in the world for steel to meet.
     /// It carries an Inscription of its class, as a target words can be written on.
     pub fn add_creature(&mut self, creature: crate::melee::Creature) {
+        if creature.class == "inkling" {
+            self.minds.push(crate::inkling::Mind::new(creature.id, creature.feet));
+        }
         let target = self.creature_target(&creature);
         self.creatures.push(creature);
         if let Some(t) = target {
@@ -292,7 +381,14 @@ impl World {
         if self.targets.iter().any(|t| t.id == c.id) {
             return None;
         }
-        Some(crate::emendation::Target::new(c.id, class, c.centre(), c.radius.max(c.height * 0.5), crate::emendation::Resistance::Plain, &[]))
+        // An annotation stands in its Inscription, and takes a charged word to replace.
+        let words: Vec<(String, String)> = c
+            .annotation
+            .iter()
+            .map(|a| (a.clone(), crate::inkling::ANNOTATIONS.iter().find(|(w, _)| w == a).map_or("Mind", |(_, class)| class).to_string()))
+            .collect();
+        let resistance = if words.is_empty() { crate::emendation::Resistance::Plain } else { crate::emendation::Resistance::Tough };
+        Some(crate::emendation::Target::new(c.id, class, c.centre(), c.radius.max(c.height * 0.5), resistance, &words))
     }
 
     /// Arrows in flight and stuck.
@@ -708,8 +804,22 @@ impl World {
             let input = inputs.get(i).copied().unwrap_or_default();
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
-            // A sidestep costs Stamina, and needs it.
+            // A sidestep costs Stamina, and needs it. A chilled body is slow; a fallen one
+            // does nothing.
             let mut input = input;
+            if p.melee.health <= 0.0 {
+                input = PlayerInput { look_yaw: 0.0, look_pitch: 0.0, ..Default::default() };
+            }
+            if p.melee.chilled > 0.0 {
+                p.melee.chilled = (p.melee.chilled - dt).max(0.0);
+                input.move_x *= 0.55;
+                input.move_y *= 0.55;
+                input.buttons &= !buttons::SPRINT;
+            }
+            if p.melee.burning > 0.0 {
+                p.melee.burning = (p.melee.burning - dt).max(0.0);
+                p.melee.health = (p.melee.health - crate::melee::BURN_DAMAGE * 0.75 * dt).max(0.0);
+            }
             if !p.melee.can_spend(crate::melee::SIDESTEP_COST) {
                 input.buttons &= !buttons::SIDESTEP;
             }
@@ -725,6 +835,19 @@ impl World {
             }
         }
         // Casting: the hands' taps and charges become words in flight, which land.
+        // A creature annotated LOCKED is armoured shut toward the player it faces.
+        for c in &mut self.creatures {
+            if c.annotation.as_deref() == Some("LOCKED") {
+                c.armour = 0.0;
+                if let Some(p) = self.players.iter().min_by(|a, b| a.body.feet.distance_squared(c.feet).total_cmp(&b.body.feet.distance_squared(c.feet))) {
+                    let to = Vec3::new(p.body.feet.x - c.feet.x, 0.0, p.body.feet.z - c.feet.z).normalize_or_zero();
+                    let facing = Vec3::new(c.yaw.sin(), 0.0, -c.yaw.cos());
+                    if to.dot(facing) > 0.2 {
+                        c.armour = 0.8;
+                    }
+                }
+            }
+        }
         self.landings.clear();
         self.hits.clear();
         let mut hand_events = Vec::new();
@@ -922,6 +1045,7 @@ impl World {
         if changed {
             self.refresh_targets();
         }
+        self.inklings(dt);
         crate::melee::recover(&mut self.creatures, dt);
         let landed_before = self.landings.len();
         crate::casting::fly(&mut self.flights, &mut self.targets, &self.rules, dt, self.seconds, &mut self.landings);
@@ -937,6 +1061,24 @@ impl World {
             };
             crate::casting::spread(&mut self.targets, &self.rules, self.seconds, 0.35 * self.pace, &mut roll, &mut self.landings);
             self.rng = rng;
+        }
+        // A charged word of the same class replacing a creature's annotation strips its
+        // power and staggers it.
+        for l in &self.landings[landed_before..] {
+            if !matches!(l.landing, crate::emendation::Landing::Took { .. }) {
+                continue;
+            }
+            let Some(t) = self.targets.iter().find(|t| t.id == l.target) else { continue };
+            if let Some(c) = self.creatures.iter_mut().find(|c| c.id == l.target) {
+                if c.annotation.as_ref().is_some_and(|a| !t.words.iter().any(|w| &w.spelling == a)) {
+                    if c.annotation.as_deref() == Some("LOCKED") {
+                        c.armour = 0.0;
+                    }
+                    c.annotation = None;
+                    c.staggered = c.staggered.max(crate::melee::STAGGER);
+                    c.aware = true;
+                }
+            }
         }
         // A word that mends landing on a broken thing calls its letters home.
         let mending: Vec<(u64, Vec3)> = self.landings[landed_before..]
@@ -1081,6 +1223,7 @@ impl World {
             .collect();
         Arc::new(Snapshot {
             step: self.step,
+            seconds: self.seconds,
             time_of_day: self.time_of_day,
             players,
             views,

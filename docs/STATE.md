@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T12, the grey-box Inkling.
+**Current task:** S03-T13, motifs and sounds.
 
 ## Lane: Render
 
@@ -34,6 +34,9 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S03-T12, the grey-box Inkling (`crates/sim/src/inkling.rs`): a mass of `.,;:` drawn as ink on the particle system (a pipeline that lays dark characters over the scene); it notices a player it sees within 14 m in its cone or hears within 4 m (1.4 m crouched), closes weaving, gathers itself for 0.6 s where it can be seen (swelling and rearing back), lunges, and is open for 0.75 s; a sidestep's first moments let the lunge pass; it never passes into a body. A blow of 6 or more splits it, down to a smallest part and at most seven at once; `COLD` stops the splitting and slows it, `LIT` drives it back, `CALM` keeps it from fighting, `BURNING` burns it, `OPEN` gapes it. Three annotations: `LOCKED` (blows from the front turned), `BURNING` (its bite sets you alight), `COLD` (its bite chills you); a charged word of the same class strips one and staggers it. Dead, it spills into a pool and is gone after 25 s. Two fenced yards off the bridge road's west end hold a plain one and a `LOCKED` one, and a `BURNING` and a `COLD` one (scene format 6 carries creatures). Evidence: `docs/evidence/S03/inklings.jpg`. Tests: `crates/sim/tests/inkling.rs` (steel alone finishes every part), `crates/harness/tests/inklings.rs`.
+**Not yet:** a cry, a sound for each act (S03-T13); it does not climb fences, and its look is grey-box until the ink-creature work of the full game.
 
 **Done:** S03-T10, words and steel together: both hands write the off hand's word on the held weapon for its Ink, as its sheet says (`BURNING` sets what it strikes alight, `COLD` slows it, `LIT` makes the weapon a lamp, `SHARP` cuts through armour; the typos `OVEN`, `SHARK`, `GOLD`, `LIP` do their own small things), or its refusal; it lasts 30 s, twice that fully charged. Creatures carry Inscriptions of their class, and each word's combat line is a mark steel reads: `OPEN` gapes a foe (blows do half again), `COLD` slows it until a heavy blow shatters the frost for more, `BURNING` burns it, `CALM` and `LIT` are kept for the Inkling's mind (S03-T12). The bow: hold to draw (draining Stamina), let go to loose; a tap is a weak shot; arrows fly, drop, strike creatures (sneak attacks too), stick in the ground and walls, carry the bow's words, and are gathered with Interact. Tests: `crates/sim/tests/weapon_words.rs`.
 **Not yet:** sneaking unseen is the Inkling's to notice (S03-T12); the arrow count is not yet shown (S03-T11, with the bow in the hands).

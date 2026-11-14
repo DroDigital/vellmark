@@ -231,6 +231,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     if let Some(t) = &terrain {
         world.set_ground(t.clone());
     }
+    for c in vellmark_render::scene_creatures(&scene) {
+        world.add_creature(c);
+    }
     let mut previous: Arc<Snapshot> = world.snapshot();
     let mut current: Arc<Snapshot> = previous.clone();
 

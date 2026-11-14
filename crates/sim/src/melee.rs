@@ -171,6 +171,10 @@ pub struct Melee {
     pub arrows: u32,
     /// An arrow let go this step: the world takes it.
     pub loosed: Option<Arrow>,
+    /// Alight, for this long yet: it burns.
+    pub burning: f32,
+    /// Chilled, for this long yet: slowed.
+    pub chilled: f32,
 }
 
 impl Default for Melee {
@@ -192,6 +196,8 @@ impl Default for Melee {
             draw: None,
             arrows: QUIVER,
             loosed: None,
+            burning: 0.0,
+            chilled: 0.0,
         }
     }
 }
@@ -263,6 +269,14 @@ pub struct Creature {
     pub marks: u32,
     /// Its target class's key: `creature`, `inkling`.
     pub class: String,
+    /// How big it is against its kind's usual size: an Inkling that has split is smaller.
+    pub size: f32,
+    /// The extra word it was found with, while it stands: `LOCKED`.
+    pub annotation: Option<String>,
+    /// Gathering itself to strike, 0 to 1, so that the blow can be seen coming.
+    pub telegraph: f32,
+    /// When it died, in the rules' seconds.
+    pub died_at: Option<f64>,
 }
 
 /// What words written on a creature mean to steel.
@@ -293,7 +307,26 @@ pub mod marks {
 
 impl Creature {
     pub fn new(id: u64, feet: Vec3, radius: f32, height: f32, health: f32, poise: f32) -> Self {
-        Self { id, feet, yaw: 0.0, radius, height, health, max_health: health, poise, max_poise: poise, staggered: 0.0, aware: false, armour: 0.0, marks: 0, class: "creature".into() }
+        Self {
+            id,
+            feet,
+            yaw: 0.0,
+            radius,
+            height,
+            health,
+            max_health: health,
+            poise,
+            max_poise: poise,
+            staggered: 0.0,
+            aware: false,
+            armour: 0.0,
+            marks: 0,
+            class: "creature".into(),
+            size: 1.0,
+            annotation: None,
+            telegraph: 0.0,
+            died_at: None,
+        }
     }
 
     pub fn alive(&self) -> bool {

@@ -2,6 +2,13 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: the grey-box Inkling (S03-T12)
+
+- **Drawn as what it is.** The canon makes the Inkling a formless mass of characters; it is drawn as one, on the magic's particle system (kind 5), through a second pipeline that lays dark ink over the scene rather than adding light. Up to 160 characters each, churning; it swells and rears as it gathers itself, and runs out into a pool when it dies.
+- **Annotations chosen** are the three the Showcase's words answer: `LOCKED` (answered by `OPEN`), `BURNING` (by `COLD`), `COLD` (by `BURNING`). An annotation stands in its Inscription at Tough resistance, so only a charged word replaces it, which strips it and staggers the creature, as `5c-enemies-and-bosses.md` says.
+- **Splitting** is on a blow of at least 6 (so a turned blow on a locked front does not split it): the part takes 40% of the health at 0.62 the size; the whole keeps 60% at 0.8. Parts smaller than 0.42 do not split; at most seven stand at once. The swing that split it does not strike the part.
+- **Its yards** are off the bridge road's west end, 20 m apart, on flat ground away from the hedges: the brief's "yard beside the road".
+
 ## 2026-11-14: the first-person hands (S03-T11)
 
 - **A kit, not a model.** Until approved arm and weapon models exist, the hands and what they hold are boxes in `assets/kit/hands.ron`, written in letters like every surface, in three new materials: `steel` (`= + T Y`, as metal), and `leather` and `skin` (`o e c a s`, as skin; leather is hide and is not in the art direction's table).

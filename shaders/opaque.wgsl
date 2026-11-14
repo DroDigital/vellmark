@@ -1864,6 +1864,8 @@ struct SparkVaryings {
     @location(2) @interpolate(flat) colour: vec4<f32>,
     // How many pixels tall its cell is.
     @location(3) @interpolate(flat) pixels: f32,
+    // 1 for ink, drawn over what is behind it; 0 for light, added to it.
+    @location(4) @interpolate(flat) ink: u32,
 }
 
 fn spark_hash(a: u32, b: u32) -> u32 {
@@ -1907,6 +1909,7 @@ fn vs_spark(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     out.character = 32u;
     out.colour = vec4<f32>(0.0);
     out.pixels = 0.0;
+    out.ink = 0u;
     let emitter = index / PARTICLES_PER_EMITTER;
     let k = index % PARTICLES_PER_EMITTER;
     if emitter >= min(view.magic_counts.y, MAX_EMITTERS) {
@@ -1965,6 +1968,29 @@ fn vs_spark(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
         place = start + vec3<f32>(0.0, phase * radius * 1.6, 0.0) + sway;
         amount = sin(phase * 3.14159265) * (0.7 + 0.3 * sin(t * 13.0 + unit(h) * 40.0));
         size *= 0.6 + 0.8 * unit(h >> 9u);
+    } else if kind == 5u {
+        // An Inkling: a churning mass of ink characters, swelling and rearing as it
+        // gathers itself to strike, and running out into a flat pool as it dies.
+        let telegraph = e[1].y;
+        let facing = normalize(vec3<f32>(e[1].x, 0.0, e[1].z) + vec3<f32>(1.0e-4, 0.0, 0.0));
+        let radius = e[1].w;
+        let height = e[2].w;
+        let dying = e[3].w;
+        var d = spark_direction(h);
+        let depth = pow(unit(h >> 18u), 0.5);
+        // Churning: each character runs round the body on its own circle.
+        let a = t * (0.6 + 1.4 * unit(h >> 5u)) + unit(h >> 9u) * 6.2831853;
+        d = normalize(d + vec3<f32>(cos(a), sin(a * 0.7) * 0.6, sin(a)) * 0.5);
+        let swell = 1.0 + 0.35 * telegraph;
+        var p = vec3<f32>(d.x * radius * swell, d.y * height * 0.5 * (1.0 + 0.4 * telegraph), d.z * radius * swell) * depth;
+        // Rearing back from the way it faces, then thrown forward.
+        p += facing * (-0.25 * telegraph * radius) * (d.y * 0.5 + 0.5);
+        // Dying, it spreads into a pool on the ground.
+        let pool = vec3<f32>(d.x, 0.0, d.z) * radius * (1.0 + 1.6 * dying) * depth;
+        place = centre + mix(p, pool, dying);
+        amount = 1.0 - 0.4 * dying;
+        size *= 0.7 + 0.6 * unit(h >> 11u);
+        out.ink = 1u;
     } else if kind == 4u {
         // Frost: glitter over the thing, each point catching the light now and then.
         let radius = e[1].w;
@@ -2016,14 +2042,42 @@ fn vs_spark(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
     out.position = view.view_proj * vec4<f32>(world, 1.0);
     out.uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
     out.character = spark_character(emitter, k);
-    out.colour = vec4<f32>(e[2].rgb * e[2].w, amount * min(size * 0.5 / max(half, 1.0e-5), 1.0));
+    let strength = select(e[2].w, 1.0, kind == 5u);
+    out.colour = vec4<f32>(e[2].rgb * strength, amount * min(size * 0.5 / max(half, 1.0e-5), 1.0));
     out.pixels = half * 2.0 / pixel;
     return out;
 }
 
+// A particle's character, as its share of the cell: its designed weight while it has
+// room, a soft point while it is too small to read.
+fn spark_cover(in: SparkVaryings) -> f32 {
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    let h = in.pixels;
+    let k = ATLAS_RANGE * h / ATLAS_CELL;
+    let large = smoothstep(9.0, 12.5, h);
+    let small_d = textureSampleGrad(glyph_atlas, glyph_sampler, in.uv, in.character - 32u, du, dv).a;
+    let big = textureSampleGrad(glyph_atlas, glyph_sampler, in.uv, in.character - 32u + GLYPHS_PER_FACE, du, dv);
+    let median = max(min(big.r, big.g), min(max(big.r, big.g), big.b));
+    let d = mix(small_d, mix(big.a, median, smoothstep(24.0, 48.0, h)), large);
+    let letter = clamp((d - 0.5) * max(k, 1.0) + 0.5, 0.0, 1.0);
+    let point = smoothstep(0.5, 0.0, length(in.uv - vec2<f32>(0.5)));
+    return mix(point * 0.6, letter, smoothstep(3.0, 6.0, in.pixels));
+}
+
+// Ink: dark characters laid over what is behind them, premultiplied.
+@fragment
+fn fs_ink(in: SparkVaryings) -> @location(0) vec4<f32> {
+    if view.viewport.w > 0.5 || in.ink == 0u || in.colour.a <= 0.0 {
+        discard;
+    }
+    let cover = spark_cover(in) * in.colour.a;
+    return vec4<f32>(in.colour.rgb * cover / view.viewport.z, cover);
+}
+
 @fragment
 fn fs_spark(in: SparkVaryings) -> @location(0) vec4<f32> {
-    if view.viewport.w > 0.5 || in.colour.a <= 0.0 {
+    if view.viewport.w > 0.5 || in.colour.a <= 0.0 || in.ink != 0u {
         discard;
     }
     let du = dpdx(in.uv);

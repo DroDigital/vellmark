@@ -176,6 +176,31 @@ impl Magic {
                 self.lights.push(Light { key: AssetId(0), position: at.into(), colour: look.colour.map(|c| c * (0.6 + 2.4 * charge)), radius: 2.5 + 2.0 * charge, casts_shadow: false });
             }
         }
+        // Inklings: each a mass of ink characters, gathering itself to strike, and spilt
+        // into a pool when it dies. Its annotation shows in its colour and what rises off it.
+        for c in snap.creatures.iter().filter(|c| c.class == "inkling") {
+            let dying = c.died_at.map_or(0.0, |t| ((snap.seconds - t) as f32 / 0.8).min(1.0));
+            let colour = match c.annotation.as_deref() {
+                Some("LOCKED") => [0.07, 0.07, 0.08],
+                Some("BURNING") => [0.06, 0.012, 0.004],
+                Some("COLD") => [0.02, 0.035, 0.06],
+                _ => [0.012, 0.011, 0.018],
+            };
+            let centre = c.feet + Vec3::Y * (c.height * 0.5 * (1.0 - 0.85 * dying));
+            let facing = Vec3::new(c.yaw.sin(), 0.0, -c.yaw.cos());
+            let count = (110.0 + 60.0 * c.size).min(160.0);
+            self.emitters.push((
+                [[centre.x, centre.y, centre.z, 5.0], [facing.x, c.telegraph, facing.z, c.radius], [colour[0], colour[1], colour[2], c.height], [count, 0.085 * c.size.max(0.5), (c.id % 997) as f32, dying]],
+                pack(".,;:"),
+            ));
+            if c.alive() {
+                match c.annotation.as_deref() {
+                    Some("BURNING") => self.emitters.push(([[centre.x, centre.y, centre.z, 3.0], [0.0, 1.0, 0.0, c.radius], [1.0, 0.45, 0.12, 6.0], [60.0, 0.05, (c.id % 89) as f32, 0.0]], pack("^*',`^"))),
+                    Some("COLD") => self.emitters.push(([[centre.x, centre.y, centre.z, 4.0], [0.0, 1.0, 0.0, c.radius], [0.75, 0.9, 1.0, 2.5], [50.0, 0.02, (c.id % 83) as f32, 0.0]], pack("*.+"))),
+                    _ => {}
+                }
+            }
+        }
         // Words in flight: a head and a trail, and a light that goes with them.
         for (i, f) in snap.flights.iter().enumerate() {
             let Some(look) = self.look(&f.word).cloned() else { continue };

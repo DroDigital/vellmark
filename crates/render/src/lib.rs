@@ -181,6 +181,21 @@ pub fn load_scene(gpu: &Gpu, pack: &vellmark_content::Pack, key: &str) -> Result
     Ok((scene, on_gpu))
 }
 
+/// The creatures that stand in a scene when it is loaded, as the rules keep them.
+pub fn scene_creatures(scene: &vellmark_content::Scene) -> Vec<vellmark_sim::melee::Creature> {
+    scene
+        .creatures
+        .iter()
+        .filter(|c| c.kind == "inkling")
+        .map(|c| {
+            let annotation = (!c.annotation.is_empty()).then_some(c.annotation.as_str());
+            let mut creature = vellmark_sim::inkling::inkling(c.key.0, glam::Vec3::from(c.position), annotation);
+            creature.yaw = c.yaw;
+            creature
+        })
+        .collect()
+}
+
 /// What the rules need of a scene: the boxes loose letters land on and bounce from,
 /// and the things in it that can be broken.
 pub fn scene_rules(scene: &vellmark_content::Scene) -> (Vec<vellmark_sim::debris::Solid>, Vec<vellmark_sim::BreakableThing>) {
