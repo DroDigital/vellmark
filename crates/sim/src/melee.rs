@@ -175,6 +175,8 @@ pub struct Melee {
     pub burning: f32,
     /// Chilled, for this long yet: slowed.
     pub chilled: f32,
+    /// What the equipment held and worn adds up to.
+    pub gear: crate::inventory::Gear,
 }
 
 impl Default for Melee {
@@ -198,6 +200,7 @@ impl Default for Melee {
             loosed: None,
             burning: 0.0,
             chilled: 0.0,
+            gear: Default::default(),
         }
     }
 }
@@ -277,6 +280,10 @@ pub struct Creature {
     pub telegraph: f32,
     /// When it died, in the rules' seconds.
     pub died_at: Option<f64>,
+    /// It leaves loot when it dies (a part an Inkling split into does not).
+    pub drops: bool,
+    /// It was found annotated: it drops from the annotated list, even once stripped.
+    pub elite: bool,
 }
 
 /// What words written on a creature mean to steel.
@@ -326,6 +333,8 @@ impl Creature {
             annotation: None,
             telegraph: 0.0,
             died_at: None,
+            drops: true,
+            elite: false,
         }
     }
 
@@ -339,13 +348,28 @@ impl Creature {
 }
 
 impl Melee {
+    /// The weapon's numbers, as what is held and worn changes them.
+    pub fn stats(&self) -> WeaponStats {
+        let g = &self.gear;
+        let mut s = self.weapon.stats();
+        s.damage *= g.damage;
+        s.heavy_damage *= g.damage;
+        s.swing /= 1.0 + g.speed.max(-0.5);
+        s.reach += g.reach;
+        s.stagger *= g.stagger;
+        s.heavy_stagger *= g.stagger * g.heavy_stagger;
+        s.ink *= g.ink_per_hit;
+        s.heavy_ink *= g.ink_per_hit;
+        s
+    }
+
     pub fn can_spend(&self, cost: f32) -> bool {
         self.stamina >= cost.min(STAMINA_MAX * 0.25) && self.staggered <= 0.0
     }
 
     /// Spends Stamina; it may go no lower than nothing.
     pub fn spend(&mut self, cost: f32) {
-        self.stamina = (self.stamina - cost).max(0.0);
+        self.stamina = (self.stamina - cost * self.gear.stamina).max(0.0);
         self.rested = 0.0;
     }
 
@@ -385,7 +409,7 @@ impl Melee {
             self.queued = false;
             return;
         }
-        let stats = self.weapon.stats();
+        let stats = self.stats();
         if self.weapon == WeaponKind::Bow {
             self.bow(player, events, main_weapon, eye, gaze, dt);
             return;
@@ -442,7 +466,7 @@ impl Melee {
             swing.t += dt;
             if swing.striking() {
                 let carries: Vec<(String, f32)> = self.on_weapon.iter().map(|(e, s, _)| (e.clone(), *s)).collect();
-                strike(player, swing, &stats, &carries, eye, gaze, creatures, hits);
+                strike(player, swing, &stats, &self.gear, &carries, eye, gaze, creatures, hits);
             }
             ended = swing.t >= swing.length;
         }
@@ -515,7 +539,7 @@ impl Melee {
             let facing = Vec3::new(yaw.sin(), 0.0, -yaw.cos());
             if to.dot(facing) > 0.35 {
                 let kept = if shield { 0.85 } else { 0.6 };
-                let cost = damage * kept * 0.9;
+                let cost = damage * kept * 0.9 * self.gear.block_cost;
                 if self.stamina >= cost {
                     self.spend(cost);
                     through = damage * (1.0 - kept);
@@ -528,6 +552,8 @@ impl Melee {
                 }
             }
         }
+        // Armour worn takes its share of what gets through.
+        through *= 100.0 / (100.0 + self.gear.armour.max(0.0));
         self.health = (self.health - through).max(0.0);
         through
     }
@@ -535,7 +561,7 @@ impl Melee {
 
 /// A swing in its striking part meets what is before the eye within reach.
 #[allow(clippy::too_many_arguments)]
-fn strike(player: u32, swing: &mut Swing, stats: &WeaponStats, carries: &[(String, f32)], eye: Vec3, gaze: Vec3, creatures: &mut [Creature], hits: &mut Vec<Hit>) {
+fn strike(player: u32, swing: &mut Swing, stats: &WeaponStats, gear: &crate::inventory::Gear, carries: &[(String, f32)], eye: Vec3, gaze: Vec3, creatures: &mut [Creature], hits: &mut Vec<Hit>) {
     let flat = Vec3::new(gaze.x, 0.0, gaze.z).normalize_or(Vec3::NEG_Z);
     let reach = if swing.kind == SwingKind::Bash { 1.7 } else { stats.reach };
     let half_arc = (stats.arc * 0.5).cos();
@@ -567,7 +593,18 @@ fn strike(player: u32, swing: &mut Swing, stats: &WeaponStats, carries: &[(Strin
             SwingKind::Bash => (2.0, 0.0, false),
         };
         let sneak = !c.aware && swing.kind != SwingKind::Bash;
-        let (dealt, shattered) = wound(c, damage, if sneak { stats.sneak } else { 1.0 }, heavy, carries);
+        // What the weapon brings: more against the unaware, the staggered, and the unhurt.
+        let mut more = 1.0;
+        if sneak {
+            more *= stats.sneak * (1.0 + gear.unaware_damage);
+        }
+        if c.staggered > 0.0 {
+            more *= 1.0 + gear.staggered_damage;
+        }
+        if c.health >= c.max_health {
+            more *= 1.0 + gear.first_blow;
+        }
+        let (dealt, shattered) = wound(c, damage, more, heavy, carries);
         c.aware = true;
         let mut staggered = false;
         if swing.kind == SwingKind::Bash {

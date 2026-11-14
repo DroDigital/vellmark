@@ -20,6 +20,8 @@ pub struct Hud<'a> {
     pub atlas: &'a GlyphAtlas,
     pub strings: &'a StringTable,
     pub rules: &'a WordRules,
+    /// The loot table, to name and weigh items.
+    pub loot: Option<&'a vellmark_content::LootTable>,
     pub size: (u32, u32),
     pub density: f32,
 }
@@ -52,6 +54,39 @@ impl Hud<'_> {
         let dot = TextStyle { size: (14.0 * d).round(), ..small };
         self.centred(canvas, cx, cy + dot.size * 0.35, &dot, &Shown::from_table(self.strings, sid!("ui.crosshair")));
 
+        // An item lying in the gaze: its name between its tier's marks, its tier, and how it
+        // compares with what is held or worn there.
+        if let (Some((item, now)), Some(table)) = (&player.item_in_gaze, self.loot) {
+            use crate::Part;
+            let name = item.name(table);
+            let part = |key: &Option<String>| key.as_ref().map_or(Part::Nothing, |k| Part::Shown(Shown::from_table(self.strings, StringId::from_key(k))));
+            let full = Shown::filled(
+                self.strings,
+                sid!("item.name"),
+                &[
+                    ("maker", part(&name.maker)),
+                    ("material", part(&Some(name.material.clone()))),
+                    ("type", part(&Some(name.kind.clone()))),
+                    ("clause", part(&name.clause)),
+                    ("word_clause", part(&name.word_clause)),
+                ],
+            );
+            let tier = item.tier.key();
+            let mark = || Part::Shown(Shown::from_table(self.strings, StringId::from_key(&format!("item.mark.{tier}"))));
+            let label = Shown::filled(self.strings, sid!("item.label"), &[("mark", mark()), ("name", Part::Shown(full))]);
+            let line_y = cy + 56.0 * d;
+            let title = TextStyle { face: Face::Large, size: (20.0 * d).round(), colour: if item.tier as u8 >= 2 { GOLD } else { WHITE } };
+            self.centred(canvas, cx, line_y, &title, &label);
+            let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: WHITE };
+            self.centred(canvas, cx, line_y + 22.0 * d, &small, &Shown::from_table(self.strings, StringId::from_key(&format!("item.tier.{tier}"))));
+            let armour = item.armour(table) > item.damage(table);
+            let compare = match now {
+                None => Shown::from_table(self.strings, sid!("item.compare.none")),
+                Some(held) if armour => Shown::filled(self.strings, sid!("item.compare.armour"), &[("delta", Part::Signed((item.armour(table) - held.armour(table)).round() as i32))]),
+                Some(held) => Shown::filled(self.strings, sid!("item.compare.damage"), &[("delta", Part::Signed((item.damage(table) - held.damage(table)).round() as i32))]),
+            };
+            self.centred(canvas, cx, line_y + 40.0 * d, &small, &compare);
+        }
         // The creature in the gaze, by name; an annotated one is named for its word, in gold.
         if let Some((species, annotation)) = &player.facing {
             let key = match annotation {

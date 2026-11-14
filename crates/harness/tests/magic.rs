@@ -56,7 +56,7 @@ fn a_words_magic_is_drawn_in_its_five_parts() {
         Err(e) if e.contains("no usable graphics adapter") && std::env::var_os("VELLMARK_ALLOW_NO_GPU").is_some() => return eprintln!("skipped: {e}"),
         Err(e) => panic!("{e}"),
     };
-    let hud = Hud { atlas: &assets.glyphs, strings: &strings, rules: &rules, size: (640, 360), density: 1.0 };
+    let hud = Hud { atlas: &assets.glyphs, strings: &strings, rules: &rules, loot: None, size: (640, 360), density: 1.0 };
     let dt = 1.0 / 60.0;
     let mut seconds = 0.0f32;
     let step = |world: &mut World, buttons: u32, seconds: &mut f32| {

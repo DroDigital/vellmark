@@ -45,7 +45,7 @@ fn open_is_written_on_the_yards_door_and_it_swings_open() {
     let shoot = |offscreen: &mut Offscreen, world: &World, name: &str| {
         let s = world.snapshot();
         let mut canvas = Canvas::new();
-        Hud { atlas: &assets.glyphs, strings: &strings, rules: &rules, size: (960, 540), density: 1.0 }.draw(&mut canvas, &s.players[0]);
+        Hud { atlas: &assets.glyphs, strings: &strings, rules: &rules, loot: None, size: (960, 540), density: 1.0 }.draw(&mut canvas, &s.players[0]);
         let views = [View::full(Camera::looking(s.views[0].eye, s.views[0].yaw, s.views[0].pitch))];
         let input = FrameInput {
             views: &views,

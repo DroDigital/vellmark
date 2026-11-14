@@ -37,6 +37,8 @@ fn player(reading: ReadingSnap, in_focus: Option<u64>) -> PlayerSnap {
         staggered: false,
         learned: None,
         facing: None,
+        item_in_gaze: None,
+        marks: 0,
     }
 }
 

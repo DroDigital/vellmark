@@ -66,6 +66,11 @@ struct Player {
     read_for: f32,
     /// The word last learned from a Standing Page, and when.
     learned: Option<(usize, f64)>,
+    /// What it carries and wears.
+    inventory: crate::inventory::Inventory,
+    /// A word it wrote on a creature that its weapon will pass to the next it strikes,
+    /// by a word clause: the effect, and until when.
+    passing: Option<(String, f64, u64)>,
 }
 
 /// The ground as the body asks about it.
@@ -140,6 +145,10 @@ pub struct World {
     minds: Vec<crate::ai::Mind>,
     /// What was heard this step.
     heard: Vec<crate::snapshot::Heard>,
+    /// The loot table, if the world has one.
+    loot: Option<Arc<vellmark_content::LootTable>>,
+    /// Items lying in the world: each with where it lies.
+    dropped: Vec<(crate::items::Item, Vec3)>,
 }
 
 impl World {
@@ -184,6 +193,8 @@ impl World {
             arrows: Vec::new(),
             minds: Vec::new(),
             heard: Vec::new(),
+            loot: None,
+            dropped: Vec::new(),
         }
     }
 
@@ -192,7 +203,7 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default(), read_for: 0.0, learned: None });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default(), read_for: 0.0, learned: None, inventory: Default::default(), passing: None });
         id
     }
 
@@ -325,12 +336,26 @@ impl World {
             }
         }
         self.rng = rng;
-        // The dead spill and are gone after a while; their Inscriptions with them.
+    }
+
+    /// The dead spill, leave their loot, and are gone after a while, their Inscriptions
+    /// with them.
+    fn deaths(&mut self) {
         let now = self.seconds;
         for c in &mut self.creatures {
             if !c.alive() && c.died_at.is_none() {
                 c.died_at = Some(now);
                 self.heard.push(crate::snapshot::Heard::Spill { at: c.feet });
+                // It leaves something: once, not from every part it split into.
+                if c.drops {
+                    if let Some(table) = &self.loot {
+                        let source = if c.elite { "annotated" } else { "enemy" };
+                        let known: Vec<String> = self.players.first().map(|p| p.caster.known.iter().map(|w| self.rules.words[*w].spelling.clone()).collect()).unwrap_or_default();
+                        if let Some(item) = crate::items::generate(table, source, c.id ^ (now.to_bits()).rotate_left(13), &known) {
+                            self.dropped.push((item, c.feet + Vec3::Y * 0.1));
+                        }
+                    }
+                }
             }
         }
         let gone: Vec<u64> = self.creatures.iter().filter(|c| c.died_at.is_some_and(|t| now - t > 25.0)).map(|c| c.id).collect();
@@ -340,7 +365,7 @@ impl World {
             self.targets.retain(|t| !gone.contains(&t.id));
             self.refresh_targets();
         }
-    }
+        }
 
     fn rebuild_props(&mut self) {
         let mut loose: Vec<crate::props::LooseThing> = self
@@ -435,6 +460,117 @@ impl World {
             p.yaw = yaw;
             p.pitch = 0.0;
         }
+    }
+
+    /// Gives the world its loot table: creatures drop from it when they die.
+    pub fn set_loot(&mut self, table: vellmark_content::LootTable) {
+        self.loot = Some(Arc::new(table));
+    }
+
+    pub fn loot(&self) -> Option<&vellmark_content::LootTable> {
+        self.loot.as_deref()
+    }
+
+    /// Puts an item in a player's pack. Returns its index there.
+    pub fn give_item(&mut self, id: PlayerId, item: crate::items::Item) -> Option<usize> {
+        let p = self.players.iter_mut().find(|p| p.id == id)?;
+        Some(p.inventory.take(item))
+    }
+
+    /// Holds or puts on an item from a player's pack, and takes up what it does.
+    pub fn equip(&mut self, id: PlayerId, index: usize) -> bool {
+        let Some(table) = self.loot.clone() else { return false };
+        let Some(p) = self.players.iter_mut().find(|p| p.id == id) else { return false };
+        if p.inventory.equip(&table, index).is_none() {
+            return false;
+        }
+        Self::take_up_gear(p, &table);
+        true
+    }
+
+    /// Keeps a pairing in a player's favourites: an item for the main hand, and an item
+    /// or a word for the other. At most eight; a ninth replaces the oldest.
+    pub fn add_favourite(&mut self, id: PlayerId, main: Option<usize>, off: crate::inventory::Favourite) {
+        if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+            let f = &mut p.inventory.favourites;
+            if !f.contains(&(main, off)) {
+                if f.len() >= 8 {
+                    f.remove(0);
+                }
+                f.push((main, off));
+            }
+        }
+    }
+
+    /// Takes up a favourite pairing, by its place in the list.
+    fn take_favourite(p: &mut Player, table: &vellmark_content::LootTable, k: usize) {
+        let Some((main, off)) = p.inventory.favourites.get(k).copied() else { return };
+        if let Some(i) = main {
+            p.inventory.equip(table, i);
+        }
+        match off {
+            crate::inventory::Favourite::Item(i) => {
+                p.inventory.equip(table, i);
+            }
+            crate::inventory::Favourite::Word(w) => {
+                p.inventory.off = None;
+                if p.caster.known.contains(&w) {
+                    p.caster.holding[1] = crate::casting::Holding::Word(w);
+                }
+            }
+            crate::inventory::Favourite::Empty => {
+                p.inventory.off = None;
+                p.caster.holding[1] = crate::casting::Holding::Empty;
+            }
+        }
+        Self::take_up_gear(p, table);
+        if let crate::inventory::Favourite::Word(w) = off {
+            if p.caster.known.contains(&w) {
+                p.caster.holding[1] = crate::casting::Holding::Word(w);
+            }
+        }
+    }
+
+    /// What a player carries and wears.
+    pub fn inventory(&self, id: PlayerId) -> Option<&crate::inventory::Inventory> {
+        self.players.iter().find(|p| p.id == id).map(|p| &p.inventory)
+    }
+
+    /// The hands take up what is equipped: the weapon kind and a shield, and the gear.
+    fn take_up_gear(p: &mut Player, table: &vellmark_content::LootTable) {
+        let inv = &p.inventory;
+        let main = inv.main.and_then(|i| inv.items.get(i));
+        if let Some(kind) = main.and_then(|m| crate::inventory::weapon_kind(table, m)) {
+            p.melee.weapon = kind;
+            p.caster.holding[0] = crate::casting::Holding::Weapon;
+        }
+        let shield = inv.off.and_then(|i| inv.items.get(i)).is_some_and(|o| table.types[o.kind].key == "shield");
+        if shield {
+            p.caster.holding[1] = crate::casting::Holding::Shield;
+        } else if p.caster.holding[1] == crate::casting::Holding::Shield {
+            p.caster.holding[1] = crate::casting::Holding::Empty;
+        }
+        if p.melee.weapon.stats().two_handed && main.is_some() {
+            p.caster.holding[1] = crate::casting::Holding::Empty;
+        }
+        // A word kept on the weapon by its clause goes when the weapon does.
+        let had = p.melee.gear.word_clause.clone();
+        p.melee.gear = inv.gear(table);
+        if had != p.melee.gear.word_clause {
+            p.melee.on_weapon.retain(|(_, _, until)| until.is_finite());
+        }
+        p.caster.cost_scale = p.melee.gear.word_cost;
+        p.caster.refill_scale = p.melee.gear.ink_refill;
+    }
+
+    /// Items lying in the world, and where.
+    pub fn dropped(&self) -> &[(crate::items::Item, Vec3)] {
+        &self.dropped
+    }
+
+    /// Lays an item in the world, as a chest or a tool would.
+    pub fn drop_item(&mut self, item: crate::items::Item, at: Vec3) {
+        self.dropped.push((item, at));
     }
 
     /// Sets a player's Ink, as a save or a tool would.
@@ -989,6 +1125,22 @@ impl World {
             let (sp, cp) = p.pitch.sin_cos();
             let gaze = Vec3::new(sy * cp, sp, -cy * cp);
             let right = Vec3::new(cy, 0.0, sy);
+            // A pairing from the favourites wheel, taken up at once.
+            if input.favourite > 0 {
+                if let Some(table) = self.loot.clone() {
+                    Self::take_favourite(p, &table, input.favourite as usize - 1);
+                }
+            }
+            // An item lying in the gaze: Interact takes it into the pack.
+            let mut took_item = false;
+            if pressed & buttons::INTERACT != 0 {
+                if let Some(k) = item_in_gaze(&self.dropped, eye, gaze) {
+                    let (item, at) = self.dropped.remove(k);
+                    self.heard.push(crate::snapshot::Heard::Pickup { at, tier: item.tier });
+                    p.inventory.take(item);
+                    took_item = true;
+                }
+            }
             // Loose things: Interact picks one up or puts it down, and the main hand
             // throws what is carried.
             let mut throwing = false;
@@ -1004,7 +1156,7 @@ impl World {
                         self.carried.swap_remove(k);
                     }
                     Some(_) => throwing = true,
-                    None if pressed & buttons::INTERACT != 0 => {
+                    None if pressed & buttons::INTERACT != 0 && !took_item => {
                         if let Some(t) = props
                             .pick(eye, gaze)
                             .filter(|t| !self.carried.iter().any(|(_, c)| c == t))
@@ -1071,7 +1223,7 @@ impl World {
                 self.arrows.push(arrow);
             }
             // Interact gathers the arrows stuck within reach.
-            if pressed & buttons::INTERACT != 0 && self.carried.iter().all(|(c, _)| *c != p.id) {
+            if pressed & buttons::INTERACT != 0 && !took_item && self.carried.iter().all(|(c, _)| *c != p.id) {
                 let before = self.arrows.len();
                 self.arrows.retain(|a| !(a.stuck && a.at.distance(eye) < 2.2));
                 p.melee.arrows = (p.melee.arrows + (before - self.arrows.len()) as u32).min(crate::melee::QUIVER);
@@ -1079,7 +1231,8 @@ impl World {
             p.melee.on_weapon.retain(|(_, _, until)| self.seconds < *until);
             // Hits give Ink.
             for hit in &self.hits[before..] {
-                p.caster.ink = (p.caster.ink + crate::melee::ink_for(hit, p.melee.weapon)).min(crate::emendation::INK_MAX);
+                let kill = if hit.killed { p.melee.gear.ink_per_kill } else { 0.0 };
+                p.caster.ink = (p.caster.ink + crate::melee::ink_for(hit, p.melee.weapon) * p.melee.gear.ink_per_hit + kill).min(crate::emendation::INK_MAX);
             }
             crate::casting::refill(&mut p.caster, dt);
         }
@@ -1151,6 +1304,20 @@ impl World {
         // What a blow carries passes to what it struck; a shattering blow ends the frost.
         let mut changed = false;
         for hit in &self.hits {
+            // A word passed on by a word clause goes to the next creature struck.
+            let passed = self.players.iter_mut().find(|p| p.id.0 == hit.player).and_then(|p| {
+                let (effect, until, from) = p.passing.clone()?;
+                if self.seconds > until || from == hit.creature {
+                    return None;
+                }
+                p.passing = None;
+                Some(effect)
+            });
+            if let (Some(effect), Some(t)) = (passed, self.targets.iter_mut().find(|t| t.id == hit.creature)) {
+                t.effects.retain(|e| e.effect != effect);
+                t.effects.push(crate::emendation::ActiveEffect { effect, strength: 1.0, by: String::new(), until: Some(self.seconds + 8.0) });
+                changed = true;
+            }
             let Some(t) = self.targets.iter_mut().find(|t| t.id == hit.creature) else { continue };
             if hit.shattered {
                 t.effects.retain(|e| crate::melee::marks::of(&e.effect) & crate::melee::marks::SLOWED == 0);
@@ -1186,6 +1353,7 @@ impl World {
             self.refresh_targets();
         }
         self.inklings(dt);
+        self.deaths();
         crate::melee::recover(&mut self.creatures, dt);
         let landed_before = self.landings.len();
         crate::casting::fly(&mut self.flights, &mut self.targets, &self.rules, dt, self.seconds, &mut self.landings);
@@ -1201,6 +1369,19 @@ impl World {
             };
             crate::casting::spread(&mut self.targets, &self.rules, self.seconds, 0.35 * self.pace, &mut roll, &mut self.landings);
             self.rng = rng;
+        }
+        // A word clause that passes a word on: what a player wrote on a creature goes,
+        // with the weapon, to the next one it strikes.
+        for l in &self.landings[landed_before..] {
+            let crate::emendation::Landing::Took { effect, .. } = &l.landing else { continue };
+            if !self.creatures.iter().any(|c| c.id == l.target) {
+                continue;
+            }
+            if let Some(p) = self.players.iter_mut().find(|p| p.id.0 == l.player) {
+                if p.melee.gear.word_clause.as_ref().is_some_and(|(w, e)| *w == l.word && e == "word_passes") {
+                    p.passing = Some((effect.clone(), self.seconds + 20.0, l.target));
+                }
+            }
         }
         // A charged word of the same class replacing a creature's annotation strips its
         // power and staggers it.
@@ -1365,6 +1546,27 @@ impl World {
                     .and_then(|i| self.targets.get(i))
                     .and_then(|t| self.creatures.iter().find(|c| c.id == t.id && c.alive()))
                     .map(|c| (c.class.clone(), c.annotation.clone())),
+                item_in_gaze: {
+                    let eye = p.body.feet + Vec3::Y * p.body.eye;
+                    let (sy, cy) = p.yaw.sin_cos();
+                    let (sp, cp) = p.pitch.sin_cos();
+                    item_in_gaze(&self.dropped, eye, Vec3::new(sy * cp, sp, -cy * cp)).map(|k| {
+                        let item = self.dropped[k].0.clone();
+                        let now = self.loot.as_deref().and_then(|t| {
+                            let inv = &p.inventory;
+                            let slot = match item.slot(t) {
+                                "main" | "both" => inv.main,
+                                "off" => inv.off,
+                                "body" => inv.body,
+                                "head" => inv.head,
+                                _ => inv.trinkets[0],
+                            };
+                            slot.and_then(|i| inv.items.get(i)).cloned()
+                        });
+                        (item, now)
+                    })
+                },
+                marks: p.inventory.marks,
                 learned: p.learned.filter(|(_, at)| self.seconds - at < 5.0).map(|(w, _)| self.rules.words[w].spelling.clone()),
             })
             .collect();
@@ -1406,6 +1608,7 @@ impl World {
             landings: self.landings.clone(),
             hits: self.hits.clone(),
             heard: self.heard.clone(),
+            dropped: Arc::new(self.dropped.clone()),
             arrows: Arc::new(self.arrows.clone()),
             creatures: Arc::new(self.creatures.clone()),
         })
@@ -1473,6 +1676,7 @@ mod tests {
             look_pitch: (((r >> 8) & 0xff) as f32 / 255.0 - 0.5) * 0.02,
             buttons: if step % 90 < 30 { buttons::SPRINT } else { 0 },
             typed: 0,
+            favourite: 0,
         }
     }
 
@@ -1571,10 +1775,27 @@ fn write_on_weapon(
             caster.ink -= cost;
             let bonus = if charge > 0.0 && typed == rule.spelling { crate::emendation::TYPED_BONUS } else { 1.0 };
             melee.on_weapon.retain(|(e, _, _)| e != effect);
-            melee.on_weapon.push((effect.clone(), strength * bonus, now + crate::melee::ON_WEAPON_SECONDS * (1.0 + charge as f64)));
+            // A word clause may keep it there until the weapon is put away.
+            let stays = melee.gear.word_clause.as_ref().is_some_and(|(w, e)| *w == rule.spelling && e == "word_stays");
+            let lasts = crate::melee::ON_WEAPON_SECONDS * (1.0 + charge as f64) * (1.0 + melee.gear.word_on_weapon as f64);
+            melee.on_weapon.push((effect.clone(), strength * bonus, if stays { f64::INFINITY } else { now + lasts }));
             Landing::Took { effect: effect.clone(), strength: *strength }
         }
         RuleOutcome::Refusal(line) => Landing::Refused(*line),
     };
     Some(crate::casting::CastEvent { player, word: rule.spelling.clone(), target: 0, at, landing, both: true, charge, typo, compound: None, link: 0 })
+}
+
+/// The item lying nearest the gaze within reach, if one is looked at.
+fn item_in_gaze(items: &[(crate::items::Item, Vec3)], eye: Vec3, gaze: Vec3) -> Option<usize> {
+    items
+        .iter()
+        .enumerate()
+        .filter_map(|(k, (_, at))| {
+            let to = *at + Vec3::Y * 0.1 - eye;
+            let d = to.length();
+            (d < 2.6 && to.dot(gaze) / d.max(1e-3) > 0.93).then_some((d, k))
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, k)| k)
 }

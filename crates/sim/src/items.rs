@@ -166,6 +166,14 @@ pub fn generate(table: &LootTable, source: &str, seed: u64, known: &[String]) ->
 }
 
 impl Item {
+    /// A Plain item of a type and material, by their keys: what a player starts with,
+    /// or what an authored place holds.
+    pub fn plain(table: &LootTable, kind: &str, material: &str, id: u64) -> Option<Item> {
+        let kind = table.types.iter().position(|t| t.key == kind)?;
+        let material = table.materials.iter().position(|m| m.key == material)?;
+        Some(Item { id, kind, material, tier: Tier::Plain, bonuses: Vec::new(), clauses: Vec::new(), word_clause: None, look: 0, made: 4100 })
+    }
+
     /// The sum of one effect over its bonuses and clauses.
     pub fn effect(&self, table: &LootTable, effect: &str) -> f32 {
         let b = self.bonuses.iter().filter_map(|i| table.bonuses.get(*i)).filter(|m| m.effect == effect).map(|m| m.amount);

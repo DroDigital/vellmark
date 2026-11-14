@@ -39,6 +39,8 @@ fn player() -> PlayerSnap {
         staggered: false,
         learned: None,
         facing: None,
+        item_in_gaze: None,
+        marks: 0,
     }
 }
 

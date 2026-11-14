@@ -44,6 +44,11 @@ pub struct PlayerSnap {
     pub learned: Option<String>,
     /// The creature in the gaze, if any: its species and its annotation.
     pub facing: Option<(String, Option<String>)>,
+    /// The item lying in the gaze, if any, and what the hand or slot it would go in holds
+    /// now, for the comparison.
+    pub item_in_gaze: Option<(crate::items::Item, Option<crate::items::Item>)>,
+    /// Money, in Marks.
+    pub marks: u32,
 }
 
 /// A thing with an Inscription, as drawn.
@@ -133,6 +138,8 @@ pub struct Snapshot {
     pub hits: Vec<crate::melee::Hit>,
     /// What else was heard this step.
     pub heard: Vec<Heard>,
+    /// Items lying in the world, and where.
+    pub dropped: std::sync::Arc<Vec<(crate::items::Item, glam::Vec3)>>,
     /// Arrows in flight and stuck.
     pub arrows: std::sync::Arc<Vec<crate::melee::Arrow>>,
     /// What steel meets, as it stands.
@@ -181,4 +188,6 @@ pub enum Heard {
     Mend { at: glam::Vec3 },
     /// A player took a word from a Standing Page, by its index in the rules.
     Learned { player: crate::PlayerId, word: usize },
+    /// An item taken up, by its tier.
+    Pickup { at: glam::Vec3, tier: crate::items::Tier },
 }

@@ -112,6 +112,12 @@ impl Sound {
                 Heard::Spill { at } => push(CueKind::Spill, at, 0.9),
                 Heard::Break { at } => push(CueKind::Break, at, 1.0),
                 Heard::Mend { at } => push(CueKind::Mend, at, 1.0),
+                // Taking something up: a chime that rises with its tier.
+                Heard::Pickup { at, tier } => {
+                    let (pan, gain) = place(at);
+                    let base = 72 + 2 * tier as u8;
+                    cues.push(Cue { kind: CueKind::Motif, pan, gain: gain * 0.6, notes: [base, base + 4, if tier as u8 >= 2 { base + 7 } else { 0 }, if tier as u8 >= 4 { base + 12 } else { 0 }, 0, 0], timbre: Timbre::Celesta, charge: 0.3, ..Default::default() });
+                }
                 Heard::Learned { word, .. } => {
                     // The word settles into the hand: a shimmer, then its motif.
                     push(CueKind::Mend, eye, 0.6);

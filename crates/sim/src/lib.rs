@@ -33,6 +33,7 @@ pub mod melee;
 pub mod inkling;
 pub mod ai;
 pub mod items;
+pub mod inventory;
 mod snapshot;
 mod world;
 

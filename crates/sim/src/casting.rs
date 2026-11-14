@@ -33,11 +33,15 @@ pub struct Caster {
     pub last_buttons: u32,
     /// What has been typed while a word charges.
     pub typed: String,
+    /// What words cost and how fast Ink comes back, against the usual: from what is held
+    /// and worn.
+    pub cost_scale: f32,
+    pub refill_scale: f32,
 }
 
 impl Default for Caster {
     fn default() -> Self {
-        Self { hands: Hands::default(), holding: [Holding::Weapon, Holding::Empty], known: Vec::new(), ink: INK_MAX, aimed: None, last_buttons: 0, typed: String::new() }
+        Self { hands: Hands::default(), holding: [Holding::Weapon, Holding::Empty], known: Vec::new(), ink: INK_MAX, aimed: None, last_buttons: 0, typed: String::new(), cost_scale: 1.0, refill_scale: 1.0 }
     }
 }
 
@@ -175,7 +179,7 @@ pub fn send(
     let target = &targets[t];
     let rule = &rules.words[word];
     // A typo costs the Ink of the word it came from.
-    let cost = ink_cost(rule, target, stroke.charge, stroke.both);
+    let cost = ink_cost(rule, target, stroke.charge, stroke.both) * caster.cost_scale;
     if cost > caster.ink + 1.0e-3 {
         return Release::NoInk;
     }
@@ -274,7 +278,7 @@ pub fn spread(targets: &mut [Target], rules: &WordRules, now: f64, chance: f32, 
 /// Ink comes back while the hands are not charging.
 pub fn refill(caster: &mut Caster, dt: f32) {
     if caster.hands.charging(Hand::Main).is_none() && caster.hands.charging(Hand::Off).is_none() && caster.hands.both().is_none() {
-        caster.ink = (caster.ink + INK_REFILL * dt).min(INK_MAX);
+        caster.ink = (caster.ink + INK_REFILL * caster.refill_scale * dt).min(INK_MAX);
     }
 }
 

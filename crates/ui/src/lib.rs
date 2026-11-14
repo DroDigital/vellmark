@@ -22,6 +22,31 @@ impl<'a> Shown<'a> {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// A string from the table with its `{name}` places filled: each with other shown
+    /// text, or with a number. Neither can carry words written in code.
+    pub fn filled(strings: &'a StringTable, id: StringId, parts: &[(&str, Part<'_>)]) -> Self {
+        let mut text = strings.text(id).into_owned();
+        for (name, part) in parts {
+            let with = match part {
+                Part::Shown(s) => s.as_str().to_owned(),
+                Part::Signed(n) => format!("{n:+}"),
+                Part::Number(n) => format!("{n}"),
+                Part::Nothing => String::new(),
+            };
+            text = text.replace(&format!("{{{name}}}"), &with);
+        }
+        Self(Cow::Owned(text))
+    }
+}
+
+/// What fills a place in a shown string.
+pub enum Part<'a> {
+    Shown(Shown<'a>),
+    /// A whole number shown with its sign: `+3`.
+    Signed(i32),
+    Number(u32),
+    Nothing,
 }
 
 /// Text for a development tool. Used only in modules named `dev`; the harness fails

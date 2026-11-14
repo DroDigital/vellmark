@@ -97,7 +97,7 @@ fn player_input(actions: &ActionState, bindings: &Bindings, dt: f32, first_step:
             held |= bit;
         }
     }
-    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held, typed: 0 }
+    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held, typed: 0, favourite: 0 }
 }
 
 // `strings` is reloaded here and read once the interface shows text (Phase S03).
@@ -233,6 +233,15 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     }
     for c in vellmark_render::scene_creatures(&scene) {
         world.add_creature(c);
+    }
+    // The loot table, and the plain iron sword a player starts with.
+    if let Some(loot) = base.get(vellmark_content::AssetKind::Table, vellmark_content::AssetId::from_key(vellmark_content::LOOT_KEY)).and_then(|b| vellmark_content::LootTable::from_bytes(b).ok()) {
+        let sword = vellmark_sim::items::Item::plain(&loot, "sword", "iron", 1);
+        world.set_loot(loot);
+        let me = world.snapshot().players[0].id;
+        if let Some(index) = sword.and_then(|s| world.give_item(me, s)) {
+            world.equip(me, index);
+        }
     }
     let mut previous: Arc<Snapshot> = world.snapshot();
     let mut current: Arc<Snapshot> = previous.clone();
@@ -546,7 +555,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() }
                 .draw(&mut canvas, player, &actions, &bindings, style);
             if player.reading == vellmark_sim::reading::ReadingSnap::None {
-                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), size: screen.size(), density: window.pixel_density() }.draw(&mut canvas, player);
+                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot: world.loot(), size: screen.size(), density: window.pixel_density() }.draw(&mut canvas, player);
             }
         }
         #[cfg(feature = "dev")]

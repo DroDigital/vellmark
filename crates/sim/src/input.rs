@@ -15,6 +15,8 @@ pub struct PlayerInput {
     /// Letters typed this step, up to four, one byte each, the first in the low byte;
     /// 0 for none. While a word charges, typing it, or its typo, matters.
     pub typed: u32,
+    /// A pairing chosen from the favourites wheel this step, counted from 1; 0 for none.
+    pub favourite: u8,
 }
 
 impl PlayerInput {

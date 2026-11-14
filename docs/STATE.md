@@ -9,7 +9,7 @@
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
 **S03:** every task done. The gate's cloud parts pass (`docs/evidence/S03/gate.md`); the Play Gate and the fight's frame budget wait on the owner (`docs/PLAYTEST_CHECKLIST.md`, Phase S03).
 **S05 begun beside S04:** the item generator and the loot table (S05-T01, T02) need none of the pending packs.
-**Current task:** S05-T08 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
+**Current task:** S05-T09 (S04-T01 to T06 and T08 to T10 wait on the bodies and animation packs the owner is to fetch, `third_party/DOWNLOADS.md`).
 
 ## Lane: Render
 
@@ -36,6 +36,9 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S05-T08, pickups (`crates/sim/src/inventory.rs`): each player has a pack and what it holds and wears; equipping sets the weapon in hand and the gear steel and words read (damage, speed, reach, stagger, armour, Stamina and block costs, more against staggered, unaware, and unhurt foes, Ink from hits and kills, cheaper words, faster Ink, longer words on the weapon, the materials' traits). A creature leaves an item when it falls (from the annotated list if it was found annotated; once, not from every part an Inkling split into); an item in the gaze is named between its tier's marks, with its tier and how its damage or armour compares with what is held or worn there; Interact takes it, with a chime that rises with the tier; items lie glinting in their tier's colour. The word clauses work: `BURNING` kept on the weapon until it is put away, and a `COLD` written on a foe passed to the next one struck. Favourites: up to eight pairings (an item, and an item or a word), taken up at once by `PlayerInput::favourite`. The game starts the player with a plain Iron Sword. Tests: `crates/sim/tests/items.rs`.
+**Not yet:** the favourites wheel's own screen, with the interface kit (S05-T06).
 
 **Done:** S05-T01 and S05-T02, the item generator (`crates/sim/src/items.rs`) and the Showcase loot table (`assets/data/loot.ron`, baked to `loot.table`, names in `assets/text/en/items.ron`): seven weapon types, three materials with their traits, the light and heavy sets and village clothes, four trinkets, eight bonuses (makers), six clauses, two word clauses (`BURNING`, `COLD`), and five sources (chest, enemy, annotated, boss, merchant) with each tier's chance. The same seed gives the same item; a Fair item carries a bonus, Endorsed a clause, Engrossed both, Illuminated a clause, a word clause, and two bonuses; a word clause is for a word the finder owns two times in three; a name is its parts as string keys. The bake checks every name has its string and every source adds to one. Tests: `crates/harness/tests/loot.rs`.
 

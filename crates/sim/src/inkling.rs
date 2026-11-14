@@ -67,6 +67,7 @@ pub fn inkling(id: u64, feet: Vec3, annotation: Option<&str>) -> Creature {
     let mut c = Creature::new(id, feet, RADIUS, HEIGHT, HEALTH, POISE);
     c.class = "inkling".into();
     c.annotation = annotation.map(str::to_owned);
+    c.elite = annotation.is_some();
     c
 }
 
@@ -83,6 +84,7 @@ pub fn split(c: &mut Creature, id: u64, standing: usize, side: Vec3) -> Option<C
     part.health = c.health * 0.4;
     part.max_health = part.health;
     part.aware = true;
+    part.drops = false;
     c.health *= 0.6;
     c.size *= 0.8;
     c.radius = RADIUS * c.size;

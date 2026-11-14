@@ -207,6 +207,20 @@ impl Magic {
                 }
             }
         }
+        // Items lying in the world: a glint in the tier's colour, the nearest few.
+        let mut lying: Vec<_> = snap.dropped.iter().collect();
+        lying.sort_by(|a, b| a.1.distance_squared(eye).total_cmp(&b.1.distance_squared(eye)));
+        for (k, (item, at)) in lying.into_iter().take(6).enumerate() {
+            let colour = match item.tier as u8 {
+                0 => [0.85, 0.85, 0.8],
+                1 => [0.6, 0.95, 0.65],
+                2 => [0.5, 0.75, 1.0],
+                3 => [0.8, 0.55, 1.0],
+                _ => [1.0, 0.8, 0.35],
+            };
+            let at = *at + Vec3::Y * 0.15;
+            self.emitters.push(([[at.x, at.y, at.z, 4.0], [0.0, 1.0, 0.0, 0.25], [colour[0], colour[1], colour[2], 1.5 + item.tier as u8 as f32], [24.0, 0.018, k as f32 * 3.3, 0.0]], pack("*+.")));
+        }
         // Words in flight: a head and a trail, and a light that goes with them.
         for (i, f) in snap.flights.iter().enumerate() {
             let Some(look) = self.look(&f.word).cloned() else { continue };
