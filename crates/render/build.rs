@@ -41,7 +41,8 @@ fn main() {
                     Ok(module) => {
                         let mut validator = naga::valid::Validator::new(
                             naga::valid::ValidationFlags::all(),
-                            naga::valid::Capabilities::empty(),
+                            // Cube arrays are core WebGPU; every backend the game ships on has them.
+                            naga::valid::Capabilities::CUBE_ARRAY_TEXTURES,
                         );
                         if let Err(e) = validator.validate(&module) {
                             for line in e.emit_to_string(&full).lines() {

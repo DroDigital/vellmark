@@ -188,14 +188,18 @@ impl FogVolume {
         Self { inject_groups, integrate_groups, integrated_views, sampler, inject, integrate, empty }
     }
 
-    /// Gathers and sums the fog of view `v`, whose uniform is at `offset`.
-    pub fn dispatch(&self, pass: &mut wgpu::ComputePass<'_>, v: usize, offset: u32) {
+    /// Gathers and sums the fog of view `v`, whose uniform is at `offset`, over the share
+    /// `grid` of the full grid along each side that the governor allows.
+    pub fn dispatch(&self, pass: &mut wgpu::ComputePass<'_>, v: usize, offset: u32, grid: f32) {
+        // A little more than the shader's own rounding: it skips what is beyond its grid.
+        let used = |n: u32| ((n as f32 * grid).ceil() as u32).clamp(1, n);
+        let (x, y, z) = (used(SIZE.0), used(SIZE.1), used(SIZE.2));
         pass.set_pipeline(&self.inject);
         pass.set_bind_group(0, &self.inject_groups[v], &[offset]);
-        pass.dispatch_workgroups(SIZE.0.div_ceil(8), SIZE.1.div_ceil(8), SIZE.2);
+        pass.dispatch_workgroups(x.div_ceil(8), y.div_ceil(8), z);
         pass.set_pipeline(&self.integrate);
         pass.set_bind_group(0, &self.empty, &[offset]);
         pass.set_bind_group(1, &self.integrate_groups[v], &[]);
-        pass.dispatch_workgroups(SIZE.0.div_ceil(8), SIZE.1.div_ceil(8), 1);
+        pass.dispatch_workgroups(x.div_ceil(8), y.div_ceil(8), 1);
     }
 }

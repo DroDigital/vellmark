@@ -24,6 +24,25 @@ pub enum Command {
     Break(String, f32),
     /// Heat or cool a thing, by its name: -1 frozen to 1 as hot as it gets.
     Heat(String, f32),
+    /// Ask for rain, 0 to 1.
+    Rain(f32),
+    /// Ask for fog, 0 to 1.
+    Fog(f32),
+    /// A gust that writes one of the wind's sentences, by number.
+    Wind(u32),
+    /// Choose a preset: low, medium, or high.
+    Preset(vellmark_render::Preset),
+    /// Mouse sensitivity, as a multiple of the default.
+    Sensitivity(f32),
+    InvertY(bool),
+    /// Learn a word, by its spelling, or `all` of them.
+    Learn(String),
+    /// Go to a place on the ground, by its x and z.
+    Goto(f32, f32),
+    /// Put the scene's creatures back as they were at load.
+    Respawn,
+    /// Move an action to a button: a key, `mouse_left`, or a pad button such as `south`.
+    Bind(String, String),
     Quit,
 }
 
@@ -171,6 +190,38 @@ impl Overlay {
                 Some(Ok(h)) if (-1.0..=1.0).contains(&h) => self.commands.push(Command::Heat(name.to_string(), h)),
                 _ => self.say("heat takes a name, then a number from -1 to 1"),
             },
+            (Some("rain"), Some(v)) => match v.parse::<f32>() {
+                Ok(r) if (0.0..=1.0).contains(&r) => self.commands.push(Command::Rain(r)),
+                _ => self.say("rain takes a number from 0 (dry) to 1 (a downpour)"),
+            },
+            (Some("fog"), Some(v)) => match v.parse::<f32>() {
+                Ok(f) if (0.0..=1.0).contains(&f) => self.commands.push(Command::Fog(f)),
+                _ => self.say("fog takes a number from 0 (clear) to 1 (thick)"),
+            },
+            (Some("wind"), Some(v)) => match v.parse::<u32>() {
+                Ok(n) => self.commands.push(Command::Wind(n)),
+                _ => self.say("wind takes the number of a sentence, from 0"),
+            },
+            (Some("preset"), Some(v)) => match vellmark_render::Preset::parse(v) {
+                Some(p) => self.commands.push(Command::Preset(p)),
+                None => self.say("preset takes low, medium, or high"),
+            },
+            (Some("sensitivity"), Some(v)) => match v.parse::<f32>() {
+                Ok(n) if (0.2..=4.0).contains(&n) => self.commands.push(Command::Sensitivity(n)),
+                _ => self.say("sensitivity takes a multiple of the default, from 0.2 to 4"),
+            },
+            (Some("invert"), Some("on")) => self.commands.push(Command::InvertY(true)),
+            (Some("invert"), Some("off")) => self.commands.push(Command::InvertY(false)),
+            (Some("bind"), Some(action)) => match words.next() {
+                Some(button) => self.commands.push(Command::Bind(action.to_string(), button.to_string())),
+                None => self.say("bind takes an action, then a key, `mouse_left`, or a pad button such as `south`"),
+            },
+            (Some("learn"), Some(word)) => self.commands.push(Command::Learn(word.to_ascii_uppercase())),
+            (Some("goto"), Some(x)) => match (x.parse::<f32>(), words.next().map(str::parse::<f32>)) {
+                (Ok(x), Some(Ok(z))) => self.commands.push(Command::Goto(x, z)),
+                _ => self.say("goto takes an x and a z, in metres"),
+            },
+            (Some("respawn"), _) => self.commands.push(Command::Respawn),
             (Some("quit"), _) => self.commands.push(Command::Quit),
             (Some(other), _) => self.say(format!("unknown command `{other}`")),
         }

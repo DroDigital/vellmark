@@ -8,7 +8,9 @@ struct PostUniform {
     // The colour grade of the place and the hour. rgb: lift, the shadows' tint.
     // w: saturation.
     lift_saturation: vec4<f32>,
+    // rgb: the grade's gamma. w: the scene's share of the target across.
     gamma: vec4<f32>,
+    // rgb: the grade's gain. w: the scene's share of the target down.
     gain: vec4<f32>,
 }
 
@@ -67,8 +69,20 @@ fn luma(c: vec3<f32>) -> f32 {
 @fragment
 fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let texel = 1.0 / vec2<f32>(textureDimensions(scene));
-    let glow = textureSampleLevel(bloom, scene_sampler, in.uv, 0.0).rgb * post.settings.y;
-    let centre = textureSampleLevel(scene, scene_sampler, in.uv, 0.0);
+    // The scene may have been drawn smaller than the target, in its top left corner; it
+    // is stretched to fill the screen and sharpened by as much as it was shrunk.
+    let share = vec2<f32>(post.gamma.w, post.gain.w);
+    let uv = in.uv * share;
+    let glow = textureSampleLevel(bloom, scene_sampler, uv, 0.0).rgb * post.settings.y;
+    var centre = textureSampleLevel(scene, scene_sampler, uv, 0.0);
+    let sharpen = (1.0 - min(share.x, share.y)) * 2.5;
+    if sharpen > 0.0 {
+        let around = 0.25 * (textureSampleLevel(scene, scene_sampler, uv + vec2<f32>(texel.x, 0.0), 0.0).rgb
+            + textureSampleLevel(scene, scene_sampler, uv - vec2<f32>(texel.x, 0.0), 0.0).rgb
+            + textureSampleLevel(scene, scene_sampler, uv + vec2<f32>(0.0, texel.y), 0.0).rgb
+            + textureSampleLevel(scene, scene_sampler, uv - vec2<f32>(0.0, texel.y), 0.0).rgb);
+        centre = vec4<f32>(max(centre.rgb + (centre.rgb - around) * sharpen, vec3<f32>(0.0)), centre.a);
+    }
     let middle = grade(filmic((centre.rgb + glow) * post.settings.x));
 
     // The edge filter: where the picture steps sharply, blend a little along the edge.
@@ -79,10 +93,10 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     if strength <= 0.0 {
         return vec4<f32>(middle, 1.0);
     }
-    let nw = luma(shown(in.uv + texel * vec2<f32>(-0.5, -0.5), glow));
-    let ne = luma(shown(in.uv + texel * vec2<f32>(0.5, -0.5), glow));
-    let sw = luma(shown(in.uv + texel * vec2<f32>(-0.5, 0.5), glow));
-    let se = luma(shown(in.uv + texel * vec2<f32>(0.5, 0.5), glow));
+    let nw = luma(shown(uv + texel * vec2<f32>(-0.5, -0.5), glow));
+    let ne = luma(shown(uv + texel * vec2<f32>(0.5, -0.5), glow));
+    let sw = luma(shown(uv + texel * vec2<f32>(-0.5, 0.5), glow));
+    let se = luma(shown(uv + texel * vec2<f32>(0.5, 0.5), glow));
     let m = luma(middle);
     let low = min(m, min(min(nw, ne), min(sw, se)));
     let high = max(m, max(max(nw, ne), max(sw, se)));
@@ -93,8 +107,8 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     let reduce = max((nw + ne + sw + se) * 0.03125, 1.0 / 128.0);
     let scale = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
     dir = clamp(dir * scale, vec2<f32>(-6.0), vec2<f32>(6.0)) * texel;
-    let near = 0.5 * (shown(in.uv + dir * (1.0 / 3.0 - 0.5), glow) + shown(in.uv + dir * (2.0 / 3.0 - 0.5), glow));
-    let wide = near * 0.5 + 0.25 * (shown(in.uv - dir * 0.5, glow) + shown(in.uv + dir * 0.5, glow));
+    let near = 0.5 * (shown(uv + dir * (1.0 / 3.0 - 0.5), glow) + shown(uv + dir * (2.0 / 3.0 - 0.5), glow));
+    let wide = near * 0.5 + 0.25 * (shown(uv - dir * 0.5, glow) + shown(uv + dir * 0.5, glow));
     let wide_luma = luma(wide);
     var filtered = wide;
     if wide_luma < low || wide_luma > high {

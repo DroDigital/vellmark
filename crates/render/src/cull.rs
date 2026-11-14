@@ -6,7 +6,7 @@ use glam::{Mat4, Vec3};
 use vellmark_gpu::{wgpu, Gpu, PipelineRegistry};
 
 use crate::frame::MAX_VIEWS;
-use crate::world_gpu::{SceneGpu, MAX_GROUPS, MAX_INSTANCES};
+use crate::world_gpu::{MAX_GROUPS, MAX_INSTANCES};
 
 /// Matches `Cull` in `shaders/cull.wgsl`.
 #[repr(C)]
@@ -17,6 +17,8 @@ struct CullUniform {
     viewport: [f32; 4],
     pyramid: [f32; 4],
     counts: [u32; 4],
+    /// The eye, for choosing levels of detail.
+    eye: [f32; 4],
 }
 
 /// The size of one indirect indexed draw, in bytes.
@@ -240,15 +242,13 @@ impl Culling {
 
     /// This frame's draws, all empty, and each view's culling. A view whose camera has cut
     /// since the last frame, or that has none, culls by the frustum alone.
-    pub fn prepare(&mut self, gpu: &Gpu, scene: &SceneGpu, views: &[CullView], instance_count: usize, pyramid: &PyramidTargets) {
+    /// `headers` holds each batch's draw: its index count, first index, and base vertex.
+    pub fn prepare(&mut self, gpu: &Gpu, headers: &[[u32; 3]], views: &[CullView], instance_count: usize, pyramid: &PyramidTargets) {
         let mut draws: Vec<u32> = Vec::with_capacity(views.len() * MAX_GROUPS * 5);
         for _ in views {
             for g in 0..MAX_GROUPS {
-                match scene.groups.get(g) {
-                    Some(group) => {
-                        let mesh = &scene.meshes[group.mesh];
-                        draws.extend_from_slice(&[mesh.index_count, 0, mesh.first_index, mesh.base_vertex as u32, 0]);
-                    }
+                match headers.get(g) {
+                    Some(h) => draws.extend_from_slice(&[h[0], 0, h[1], h[2], 0]),
                     None => draws.extend_from_slice(&[0; 5]),
                 }
             }
@@ -267,6 +267,7 @@ impl Culling {
                 viewport: [view.viewport.0, view.viewport.1, view.viewport.2, view.viewport.3],
                 pyramid: [pyramid.size.0 as f32, pyramid.size.1 as f32, pyramid.levels as f32, if occlusion { 1.0 } else { 0.0 }],
                 counts: [instance_count as u32, ((1 + v) * MAX_INSTANCES) as u32, (v * MAX_GROUPS * 5) as u32, 0],
+                eye: [view.eye.x, view.eye.y, view.eye.z, 0.0],
             };
             gpu.queue.write_buffer(&self.uniforms, v as u64 * self.stride, bytemuck::bytes_of(&uniform));
             self.previous[v] = Some(Seen { view_proj: view.view_proj, eye: view.eye, forward: view.forward });

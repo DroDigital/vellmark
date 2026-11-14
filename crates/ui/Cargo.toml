@@ -12,3 +12,5 @@ dev = []
 
 [dependencies]
 vellmark-content.workspace = true
+vellmark-sim.workspace = true
+vellmark-platform.workspace = true

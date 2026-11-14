@@ -1,0 +1,14 @@
+// Phase S02, the wind that reads: a gust writing one of the Vale's sentences across the
+// grass, held at its fullest. Over the pasture by the green in the morning, and down Tithe
+// Hill's west slope in the late afternoon.
+#![enable(implicit_some)]
+(
+    name: "s02_wind",
+    scene: "scene.valley",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "pasture", from: (eye: (20.0, 1.7, -40.0), yaw: 300.0, pitch: -10.0), hour: 10.0, above_ground: true, wind_sentence: 1, pair: true),
+        (name: "hill", from: (eye: (-104.0, 1.7, 112.0), yaw: 270.0, pitch: -18.0), hour: 17.0, above_ground: true, wind_sentence: 0, pair: true),
+    ],
+)

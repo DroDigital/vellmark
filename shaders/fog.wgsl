@@ -1,5 +1,5 @@
-// The fog: a coarse grid of cells in front of each view, 160 across, 90 down, and 64
-// deep, spaced ever further apart from half a metre to four hundred. The first pass
+// The fog: a coarse grid of cells in front of each view, up to 160 across, 90 down, and
+// 64 deep (the governor may use less of it), spaced ever further apart from half a metre to four hundred. The first pass
 // finds how much light each cell's mist scatters towards the eye, with the sun's light
 // shut out where the shadow maps say it is shadowed: that is what makes god rays. The
 // second walks each column of cells from the eye outwards and adds them up, so that
@@ -15,20 +15,19 @@
 @group(1) @binding(0) var injected_in: texture_3d<f32>;
 @group(1) @binding(1) var integrated: texture_storage_3d<rgba16float, write>;
 
-const FOG_SIZE: vec3<u32> = vec3<u32>(160u, 90u, 64u);
 const FOG_NEAR: f32 = 0.5;
 const FOG_FAR: f32 = 400.0;
 const PI: f32 = 3.14159265;
 
 // The distance in front of the eye of the near edge of a slice.
 fn slice_depth(slice: f32) -> f32 {
-    return FOG_NEAR * pow(FOG_FAR / FOG_NEAR, slice / f32(FOG_SIZE.z));
+    return FOG_NEAR * pow(FOG_FAR / FOG_NEAR, slice / f32(fog_grid(view.quality.z).z));
 }
 
 // The direction from the eye through the middle of a column of cells, and how far along
 // it one metre in front of the eye is.
 fn column_ray(xy: vec2<u32>) -> vec4<f32> {
-    let uv = (vec2<f32>(xy) + 0.5) / vec2<f32>(FOG_SIZE.xy);
+    let uv = (vec2<f32>(xy) + 0.5) / vec2<f32>(fog_grid(view.quality.z).xy);
     let ndc = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
     let a = view.inv_view_proj * vec4<f32>(ndc, 1.0, 1.0);
     let b = view.inv_view_proj * vec4<f32>(ndc, 0.5, 1.0);
@@ -69,7 +68,7 @@ fn mist(world: vec3<f32>) -> f32 {
 
 @compute @workgroup_size(8, 8, 1)
 fn inject(@builtin(global_invocation_id) id: vec3<u32>) {
-    if any(id >= FOG_SIZE) {
+    if any(id >= fog_grid(view.quality.z)) {
         return;
     }
     let ray = column_ray(id.xy);
@@ -88,14 +87,14 @@ fn inject(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute @workgroup_size(8, 8, 1)
 fn integrate(@builtin(global_invocation_id) id: vec3<u32>) {
-    if any(id.xy >= FOG_SIZE.xy) {
+    if any(id.xy >= fog_grid(view.quality.z).xy) {
         return;
     }
     let ray = column_ray(id.xy);
     var light = vec3<f32>(0.0);
     var through = 1.0;
     var near = 0.0;
-    for (var s = 0u; s < FOG_SIZE.z; s++) {
+    for (var s = 0u; s < fog_grid(view.quality.z).z; s++) {
         let far = slice_depth(f32(s) + 1.0);
         let span = (far - near) * ray.w;
         let cell = textureLoad(injected_in, vec3<u32>(id.xy, s), 0);

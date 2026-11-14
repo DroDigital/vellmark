@@ -13,6 +13,8 @@ pub mod scene;
 pub mod sha256;
 pub mod strings;
 pub mod terrain;
+pub mod trees;
+pub mod words;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -51,6 +53,8 @@ pub struct BakeOutput {
     pub packs: Vec<(String, Vec<u8>)>,
     /// One line for each thing baked, for the log.
     pub report: Vec<String>,
+    /// Pages the bake writes for the owner to read, by their path under `docs/`.
+    pub docs: Vec<(String, String)>,
 }
 
 /// The language the Showcase ships in. Translation is left for the full game, but the
@@ -96,13 +100,81 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     base.add(AssetKind::StringTable, string_table_id(BASE_LANGUAGE), table.bytes)
         .map_err(|e| BakeError(e.to_string()))?;
 
+    // The words, from their sheets.
+    let words = words::bake_words(&inputs.assets.join("data/words"), &table.text)?;
+    report.push(format!("{}: {} words, {} compounds, {} target classes", vellmark_content::WORDS_KEY, words.table.words.len(), words.table.compounds.len(), words.table.classes.len()));
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::WORDS_KEY), words.table.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+    let docs = vec![("WORDS.md".to_string(), words.page)];
+
     let atlas = glyphs::bake_atlas(&inputs.third_party, inputs.cache.as_deref())?;
     report.push(format!("{GLYPH_ATLAS_KEY}: {} bytes", atlas.len()));
     base.add(AssetKind::GlyphAtlas, AssetId::from_key(GLYPH_ATLAS_KEY), atlas).map_err(|e| BakeError(e.to_string()))?;
 
     let set = materials::bake_set(&inputs.assets.join("materials/materials.ron"))?;
     report.push(format!("{}: {} materials at {} px", materials::MATERIAL_SET_KEY, set.materials.len(), set.size));
-    for baked in scene::bake_all(&inputs.assets.join("scenes"), &set, &table.text)? {
+    // The trees: every level of every kind.
+    let kinds = trees::read_kinds(&inputs.assets.join("trees/kinds.ron"))?;
+    let index = |key: &str| set.index_of(materials::material_id(key)).ok_or_else(|| BakeError(format!("the trees need the material `{key}`")));
+    let mut chains = vellmark_content::MeshLevels::default();
+    for kind in &kinds {
+        chains.chains.push(trees::LEVELS.iter().map(|l| trees::mesh_id(&kind.key, l)).collect());
+        let levels = trees::meshes(kind, index("bark")?, index("leaves")?, index(&trees::impostor_key(&kind.key))?);
+        let triangles: Vec<usize> = levels.iter().map(|(_, m)| m.indices.len() / 3).collect();
+        report.push(format!("tree.{}: {triangles:?} triangles by level", kind.key));
+        for (id, mesh) in levels {
+            base.add(AssetKind::Mesh, id, mesh.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+        }
+    }
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::MESH_LEVELS_KEY), chains.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+    let tiles = terrain::bake_tiles(&inputs.assets.join("terrain/valley.ron"), inputs.cache.as_deref())?;
+    report.push(format!("terrain.valley: {} tiles", tiles.len()));
+    // The ground's height anywhere, from the finest tile that holds the place, for
+    // standing the trees on it.
+    let mut decoded: Vec<vellmark_content::TerrainTile> =
+        tiles.iter().map(|(_, bytes)| vellmark_content::TerrainTile::from_bytes(bytes)).collect::<Result<_, _>>().map_err(|e| BakeError(e.to_string()))?;
+    decoded.sort_by_key(|t| t.coord.level);
+    let ground = |x: f32, z: f32| -> Option<f32> {
+        decoded.iter().find(|t| {
+            let (x0, z0) = t.coord.origin();
+            x >= x0 && z >= z0 && x < x0 + t.coord.side() && z < z0 + t.coord.side()
+        }).map(|t| t.height_at(x, z))
+    };
+    let tree_places = terrain::tree_places(&inputs.assets.join("terrain/valley.ron"))?;
+    for (id, bytes) in tiles {
+        base.add(AssetKind::Tile, id, bytes).map_err(|e| BakeError(e.to_string()))?;
+    }
+
+    let mut records = vellmark_content::TreeRecords::default();
+    for mut baked in scene::bake_all(&inputs.assets.join("scenes"), &set, &table.text)? {
+        // The valley's trees, each with an ID from where it stands, which never changes.
+        if baked.scene.terrain == AssetId::from_key("terrain.valley") {
+            for p in &tree_places {
+                let Some(y) = ground(p.x, p.z) else { continue };
+                let (s, c) = p.yaw.sin_cos();
+                let k = p.scale;
+                let key = AssetId::from_key(&format!("{}.tree.{}.{}.{}", baked.key, p.kind, p.x.round() as i32, p.z.round() as i32));
+                // What its bark records.
+                let kind = kinds.iter().find(|k| k.key == p.kind).ok_or_else(|| BakeError(format!("no tree kind `{}`", p.kind)))?;
+                records.trees.push(vellmark_content::TreeRecord { tree: key, kind: kind.key.clone(), years: trees::years(kind, k, p.x, p.z), girth: trees::girth(kind) });
+                // A tree is a plant to write on: its sphere about its crown.
+                baked.inscribed.items.push(vellmark_content::InscribedThing {
+                    id: key,
+                    class: "plant".into(),
+                    centre: [p.x, y + kind.height * k * 0.55, p.z],
+                    radius: kind.height * k * 0.45,
+                    resistance: 0,
+                    words: Vec::new(),
+                });
+                baked.scene.objects.push(vellmark_content::Object {
+                    key,
+                    mesh: trees::mesh_id(p.kind, trees::LEVELS[0]),
+                    transform: [c * k, 0.0, s * k, p.x, 0.0, k, 0.0, y - 0.1, -s * k, 0.0, c * k, p.z],
+                    parent: AssetId(0),
+                    piece: 0,
+                });
+            }
+            report.push(format!("{}: {} trees", baked.key, tree_places.len()));
+        }
         for (id, mesh) in &baked.meshes {
             base.add(AssetKind::Mesh, *id, mesh.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
         }
@@ -112,16 +184,30 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
             report.push(format!("{}.pages: {} pages", baked.key, pages.entries.len()));
             base.add(AssetKind::TextPage, baked.scene.pages, pages.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
         }
+        // Every inscribed thing's class must be a target class the words know.
+        for t in &baked.inscribed.items {
+            if !words.table.classes.contains(&t.class) {
+                return Err(BakeError(format!("{}: no target class `{}`", baked.key, t.class)));
+            }
+        }
+        if !baked.inscribed.items.is_empty() {
+            report.push(format!("{}: {} things inscribed", baked.key, baked.inscribed.items.len()));
+            base.add(AssetKind::Table, AssetId::from_key(&vellmark_content::targets_key(&baked.key)), baked.inscribed.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+        }
+        if let Some(stray) = baked.readables.items.iter().find(|r| !r.teaches.is_empty() && !words.table.words.iter().any(|w| w.word == r.teaches)) {
+            return Err(BakeError(format!("{}: a Standing Page gives `{}`, which has no word sheet", baked.key, stray.teaches)));
+        }
+        if !baked.readables.items.is_empty() {
+            report.push(format!("{}: {} texts to read", baked.key, baked.readables.items.len()));
+            base.add(AssetKind::Table, AssetId::from_key(&vellmark_content::readables_key(&baked.key)), baked.readables.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+        }
         base.add(AssetKind::Scene, AssetId::from_key(&baked.key), baked.scene.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
     }
+    report.push(format!("{}: {} trees", vellmark_content::TREE_RECORDS_KEY, records.trees.len()));
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::TREE_RECORDS_KEY), records.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
     base.add(AssetKind::MaterialSet, AssetId::from_key(materials::MATERIAL_SET_KEY), set.to_bytes())
         .map_err(|e| BakeError(e.to_string()))?;
 
-    let tiles = terrain::bake_tiles(&inputs.assets.join("terrain/valley.ron"), inputs.cache.as_deref())?;
-    report.push(format!("terrain.valley: {} tiles", tiles.len()));
-    for (id, bytes) in tiles {
-        base.add(AssetKind::Tile, id, bytes).map_err(|e| BakeError(e.to_string()))?;
-    }
 
     for (key, bytes) in grades::bake_all(&inputs.assets.join("grades"))? {
         report.push(format!("{key}: {} bytes", bytes.len()));
@@ -133,13 +219,22 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
         base.add(AssetKind::CameraPath, AssetId::from_key(&key), bytes).map_err(|e| BakeError(e.to_string()))?;
     }
 
-    Ok(BakeOutput { packs: vec![("base.vpk".to_owned(), base.finish())], report })
+    Ok(BakeOutput { packs: vec![("base.vpk".to_owned(), base.finish())], report, docs })
 }
 
 /// Bakes and writes the packs into `out`.
 pub fn bake_to_dir(inputs: &BakeInputs, out: &Path) -> Result<BakeOutput, BakeError> {
     let output = bake(inputs)?;
     std::fs::create_dir_all(out).map_err(|e| BakeError(format!("cannot create {}: {e}", out.display())))?;
+    // The owner's pages, beside the assets they are written from.
+    if let Some(docs) = inputs.assets.parent().map(|p| p.join("docs")).filter(|d| d.is_dir()) {
+        for (name, text) in &output.docs {
+            let path = docs.join(name);
+            if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+                std::fs::write(&path, text).map_err(|e| BakeError(format!("cannot write {}: {e}", path.display())))?;
+            }
+        }
+    }
     for (name, bytes) in &output.packs {
         let path = out.join(name);
         // Leave an unchanged pack untouched so that nothing downstream is rebuilt.

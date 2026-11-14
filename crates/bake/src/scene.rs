@@ -69,6 +69,13 @@ struct AuthoredText {
     /// Rows from one line to the next. 2 leaves a blank row between lines.
     #[serde(default = "one_row")]
     leading: u32,
+    /// Lines only a sharp enough reader sees, shown when the text is read: each a string
+    /// key and the Perception it takes.
+    #[serde(default)]
+    hidden: Vec<(String, u32)>,
+    /// A Standing Page: the word it gives whoever reads it.
+    #[serde(default)]
+    teaches: Option<String>,
 }
 
 fn one_row() -> u32 {
@@ -84,6 +91,14 @@ struct AuthoredObject {
     yaw: f32,
     /// In the object's own space.
     boxes: Vec<AuthoredBox>,
+    /// In kilograms, for a loose prop that falls and can be carried. Left out, the
+    /// object is fixed in place.
+    #[serde(default)]
+    mass: f32,
+    /// A marked structure drawn piece by piece, one piece to a box, so that it can be
+    /// mended a piece at a time.
+    #[serde(default)]
+    pieces: bool,
 }
 
 #[derive(Deserialize)]
@@ -118,6 +133,37 @@ struct Authored {
     lights: Vec<AuthoredLight>,
     #[serde(default)]
     texts: Vec<AuthoredText>,
+    /// The things that carry Inscriptions.
+    #[serde(default)]
+    inscribed: Vec<AuthoredInscribed>,
+    /// The creatures that stand in the scene.
+    #[serde(default)]
+    creatures: Vec<AuthoredCreature>,
+}
+
+#[derive(Deserialize)]
+struct AuthoredCreature {
+    key: String,
+    kind: String,
+    position: V3,
+    #[serde(default)]
+    yaw: f32,
+    #[serde(default)]
+    annotation: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AuthoredInscribed {
+    /// An object's or light's key.
+    thing: String,
+    /// Its target class, as in `assets/data/words/targets.ron`.
+    class: String,
+    /// Its words, each with its class.
+    #[serde(default)]
+    words: Vec<(String, String)>,
+    /// 0 Plain, 1 Tough, 2 Hard, 3 Sealed.
+    #[serde(default)]
+    resistance: u8,
 }
 
 /// The six faces of a box: normal, the direction the page's first coordinate grows
@@ -281,6 +327,115 @@ pub struct BakedScene {
     pub scene: Scene,
     pub meshes: Vec<(AssetId, Mesh)>,
     pub pages: Option<TextPages>,
+    /// The texts that can be read with the Read action.
+    pub readables: vellmark_content::Readables,
+    /// The things that carry Inscriptions.
+    pub inscribed: vellmark_content::InscribedThings,
+}
+
+/// The scene's things that carry Inscriptions: each object's sphere from its boxes, or a
+/// light's from where it hangs.
+fn inscribed_of(authored: &Authored, name: &str, file: &Path) -> Result<vellmark_content::InscribedThings, BakeError> {
+    let mut items = Vec::new();
+    for i in &authored.inscribed {
+        let (centre, radius) = if let Some(o) = authored.objects.iter().find(|o| o.key == i.thing) {
+            let (s, c) = o.yaw.to_radians().sin_cos();
+            let mut lo = [f32::MAX; 3];
+            let mut hi = [f32::MIN; 3];
+            for b in &o.boxes {
+                for corner in 0..8 {
+                    let p = [if corner & 1 == 0 { b.min.0 } else { b.max.0 }, if corner & 2 == 0 { b.min.1 } else { b.max.1 }, if corner & 4 == 0 { b.min.2 } else { b.max.2 }];
+                    let w = [c * p[0] + s * p[2] + o.position.0, p[1] + o.position.1, -s * p[0] + c * p[2] + o.position.2];
+                    for k in 0..3 {
+                        lo[k] = lo[k].min(w[k]);
+                        hi[k] = hi[k].max(w[k]);
+                    }
+                }
+            }
+            let centre = [(lo[0] + hi[0]) * 0.5, (lo[1] + hi[1]) * 0.5, (lo[2] + hi[2]) * 0.5];
+            let half = [(hi[0] - lo[0]) * 0.5, (hi[1] - lo[1]) * 0.5, (hi[2] - lo[2]) * 0.5];
+            (centre, (half[0] * half[0] + half[1] * half[1] + half[2] * half[2]).sqrt() * 0.75)
+        } else if let Some(l) = authored.lights.iter().find(|l| l.key == i.thing) {
+            ([l.position.0, l.position.1, l.position.2], 0.35)
+        } else {
+            return Err(BakeError(format!("{}: nothing called `{}` to inscribe", file.display(), i.thing)));
+        };
+        if i.words.len() > 3 {
+            return Err(BakeError(format!("{}: `{}` has more than three words", file.display(), i.thing)));
+        }
+        items.push(vellmark_content::InscribedThing {
+            id: AssetId::from_key(&format!("scene.{name}.{}", i.thing)),
+            class: i.class.clone(),
+            centre,
+            radius,
+            resistance: i.resistance.min(3),
+            words: i.words.clone(),
+        });
+    }
+    Ok(vellmark_content::InscribedThings { items })
+}
+
+/// Every authored text of a scene as a thing to be read: the box round the boxes its
+/// runs are set on, in the world.
+fn readables_of(authored: &Authored, name: &str, strings: &BTreeMap<String, String>, file: &Path) -> Result<vellmark_content::Readables, BakeError> {
+    use vellmark_content::{Readable, StringId};
+    let mut items = Vec::new();
+    for text in &authored.texts {
+        let mut lo = [f32::MAX; 3];
+        let mut hi = [f32::MIN; 3];
+        let mut grow = |p: [f32; 3]| {
+            for i in 0..3 {
+                lo[i] = lo[i].min(p[i]);
+                hi[i] = hi[i].max(p[i]);
+            }
+        };
+        for run in &text.runs {
+            for b in authored.boxes.iter().filter(|b| b.tag.as_deref() == Some(run.tag.as_str())) {
+                // A turned box, as the rules see it: the box that bounds it.
+                let (s, c) = b.yaw.to_radians().sin_cos();
+                let centre = [(b.min.0 + b.max.0) * 0.5, (b.min.2 + b.max.2) * 0.5];
+                for corner in 0..8 {
+                    let p = [
+                        if corner & 1 == 0 { b.min.0 } else { b.max.0 },
+                        if corner & 2 == 0 { b.min.1 } else { b.max.1 },
+                        if corner & 4 == 0 { b.min.2 } else { b.max.2 },
+                    ];
+                    let (x, z) = (p[0] - centre[0], p[2] - centre[1]);
+                    grow([centre[0] + c * x + s * z, p[1], centre[1] - s * x + c * z]);
+                }
+            }
+            for o in &authored.objects {
+                let (s, c) = o.yaw.to_radians().sin_cos();
+                for b in o.boxes.iter().filter(|b| b.tag.as_deref() == Some(run.tag.as_str())) {
+                    for corner in 0..8 {
+                        let p = [
+                            if corner & 1 == 0 { b.min.0 } else { b.max.0 },
+                            if corner & 2 == 0 { b.min.1 } else { b.max.1 },
+                            if corner & 4 == 0 { b.min.2 } else { b.max.2 },
+                        ];
+                        grow([c * p[0] + s * p[2] + o.position.0, p[1] + o.position.1, -s * p[0] + c * p[2] + o.position.2]);
+                    }
+                }
+            }
+        }
+        if lo[0] > hi[0] {
+            continue;
+        }
+        for (key, _) in &text.hidden {
+            if !strings.contains_key(key) {
+                return Err(BakeError(format!("{}: no string `{key}` in assets/text", file.display())));
+            }
+        }
+        items.push(Readable {
+            id: AssetId::from_key(&format!("scene.{name}.text.{}", text.string)),
+            text: StringId::from_key(&text.string),
+            min: lo,
+            max: hi,
+            hidden: text.hidden.iter().map(|(k, p)| (StringId::from_key(k), *p)).collect(),
+            teaches: text.teaches.clone().unwrap_or_default(),
+        });
+    }
+    Ok(vellmark_content::Readables { items })
 }
 
 /// The rectangle a box's face covers on its page, in metres: left, bottom, right, top.
@@ -335,7 +490,7 @@ fn lay_out_texts(
                 shelf_y += shelf_h;
                 shelf_h = 0;
             }
-            if layout.width > SHEET || shelf_y + layout.height > SHEET {
+            if layout.width > SHEET || shelf_y + layout.height > SHEET - TextPages::GENERATED_ROWS {
                 return Err(BakeError(format!("{}: the text `{}` needs a page larger than the sheet", file.display(), text.string)));
             }
             for row in 0..layout.height {
@@ -368,14 +523,32 @@ fn lay_out_texts(
             )));
         }
     }
-    if pages.entries.len() > TextPages::MAX_PAGES {
-        return Err(BakeError(format!("{}: more than {} text pages", file.display(), TextPages::MAX_PAGES)));
+    if pages.entries.len() > TextPages::MAX_PAGES - TextPages::GENERATED_PAGES {
+        return Err(BakeError(format!("{}: more than {} text pages", file.display(), TextPages::MAX_PAGES - TextPages::GENERATED_PAGES)));
     }
     Ok((pages, page_of))
 }
 
+/// The first-person kit: parts built of boxes, and the things placed from each.
+#[derive(Deserialize)]
+struct Kit {
+    parts: BTreeMap<String, Vec<AuthoredBox>>,
+    placed: BTreeMap<String, Vec<String>>,
+}
+
+/// The key of a thing placed from the first-person kit: `kit.sword.main`.
+pub fn kit_key(part: &str, which: &str) -> AssetId {
+    AssetId::from_key(&format!("kit.{part}.{which}"))
+}
+
 pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String>) -> Result<Vec<BakedScene>, BakeError> {
     let mut out = Vec::new();
+    let kit_file = dir.parent().unwrap_or(dir).join("kit/hands.ron");
+    let kit: Kit = ron::from_str(&std::fs::read_to_string(&kit_file).map_err(|e| BakeError(format!("{}: {e}", kit_file.display())))?)
+        .map_err(|e| BakeError(format!("{}: {e}", kit_file.display())))?;
+    if let Some(stray) = kit.placed.keys().find(|k| !kit.parts.contains_key(*k)) {
+        return Err(BakeError(format!("{}: nothing called `{stray}` to place", kit_file.display())));
+    }
     for file in sorted_files(dir, "ron")? {
         let name = file.file_stem().and_then(|s| s.to_str()).unwrap_or_default().to_owned();
         let text = std::fs::read_to_string(&file).map_err(|e| BakeError(format!("{}: {e}", file.display())))?;
@@ -394,12 +567,36 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
         let mut objects = Vec::new();
         for o in &authored.objects {
             let mesh = AssetId::from_key(&format!("scene.{name}.{}.mesh", o.key));
-            meshes.push((mesh, build(&o.boxes, set, &file, &page_of)?));
+            if !o.pieces {
+                meshes.push((mesh, build(&o.boxes, set, &file, &page_of)?));
+            }
             let (s, c) = o.yaw.to_radians().sin_cos();
             let transform = [c, 0.0, s, o.position.0, 0.0, 1.0, 0.0, o.position.1, -s, 0.0, c, o.position.2];
             let key = AssetId::from_key(&format!("scene.{name}.{}", o.key));
-            breakables.push(Breakable { key, transform, boxes: o.boxes.iter().map(|b| solid(b, set)).collect() });
-            objects.push(Object { key, mesh, transform });
+            if !(o.mass >= 0.0 && o.mass < 2000.0) {
+                return Err(BakeError(format!(
+                    "{}: object {} weighs {} kg; a loose prop weighs between 0 and 2000",
+                    file.display(),
+                    o.key,
+                    o.mass
+                )));
+            }
+            breakables.push(Breakable {
+                key,
+                transform,
+                boxes: o.boxes.iter().map(|b| solid(b, set)).collect(),
+                mass: o.mass,
+            });
+            if o.pieces {
+                for (k, b) in o.boxes.iter().enumerate() {
+                    let piece_mesh = AssetId::from_key(&format!("scene.{name}.{}.piece.{k}.mesh", o.key));
+                    meshes.push((piece_mesh, build(std::slice::from_ref(b), set, &file, &page_of)?));
+                    let piece_key = AssetId::from_key(&format!("scene.{name}.{}.piece.{k}", o.key));
+                    objects.push(Object { key: piece_key, mesh: piece_mesh, transform, parent: key, piece: k as u32 });
+                }
+            } else {
+                objects.push(Object { key, mesh, transform, parent: AssetId(0), piece: 0 });
+            }
         }
         // The sky each vertex sees, against every box of the scene: the still boxes, and
         // the objects' boxes where they stand.
@@ -434,6 +631,15 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
             };
             bake_sky(&mut meshes[i + 1].1, &place, &occluders);
         }
+        // The first-person kit, in every scene: placed and shown by the view model alone.
+        for (part, boxes) in &kit.parts {
+            let mesh = AssetId::from_key(&format!("scene.{name}.kit.{part}.mesh"));
+            meshes.push((mesh, build(boxes, set, &kit_file, &|_, _| 0)?));
+            for which in kit.placed.get(part).into_iter().flatten() {
+                let identity = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+                objects.push(Object { key: kit_key(part, which), mesh, transform: identity, parent: AssetId(0), piece: 0 });
+            }
+        }
         let lights = authored
             .lights
             .iter()
@@ -445,7 +651,26 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
                 casts_shadow: l.casts_shadow,
             })
             .collect();
+        const KINDS: &[&str] = &["inkling"];
+        const ANNOTATIONS: &[&str] = &["LOCKED", "BURNING", "COLD"];
+        let mut creatures = Vec::new();
+        for c in &authored.creatures {
+            if !KINDS.contains(&c.kind.as_str()) {
+                return Err(BakeError(format!("{}: creature {}: no kind called `{}`", file.display(), c.key, c.kind)));
+            }
+            if let Some(a) = c.annotation.as_deref().filter(|a| !ANNOTATIONS.contains(a)) {
+                return Err(BakeError(format!("{}: creature {}: `{a}` is not an annotation of the Showcase", file.display(), c.key)));
+            }
+            creatures.push(vellmark_content::CreatureSpawn {
+                key: AssetId::from_key(&format!("scene.{name}.{}", c.key)),
+                kind: c.kind.clone(),
+                position: [c.position.0, c.position.1, c.position.2],
+                yaw: c.yaw.to_radians(),
+                annotation: c.annotation.clone().unwrap_or_default(),
+            });
+        }
         let scene = Scene {
+            creatures,
             static_mesh,
             objects,
             lights,
@@ -462,7 +687,9 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
             ],
         };
         let pages = (!pages.entries.is_empty()).then_some(pages);
-        out.push(BakedScene { key: format!("scene.{name}"), scene, meshes, pages });
+        let readables = readables_of(&authored, &name, strings, &file)?;
+        let inscribed = inscribed_of(&authored, &name, &file)?;
+        out.push(BakedScene { key: format!("scene.{name}"), scene, meshes, pages, readables, inscribed });
     }
     Ok(out)
 }

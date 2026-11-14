@@ -280,6 +280,11 @@ pub struct TextPages {
 impl TextPages {
     const MAGIC: &'static [u8; 8] = b"VLMKTXT1";
     pub const MAX_PAGES: usize = 64;
+    /// Of the table's pages, how many at its end are kept for generated truth, written
+    /// by the renderer for the things nearest the eye, and how many rows at the bottom
+    /// of the sheet they take. Authored text uses the rest.
+    pub const GENERATED_PAGES: usize = 8;
+    pub const GENERATED_ROWS: u32 = 128;
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -335,6 +340,10 @@ pub struct Object {
     pub mesh: AssetId,
     /// Rows of a 3 by 4 matrix: rotation and scale, then translation in the last column.
     pub transform: [f32; 12],
+    /// For one piece of a marked structure drawn piece by piece: the structure's key,
+    /// and which of its boxes this is. `AssetId(0)` for a thing drawn whole.
+    pub parent: AssetId,
+    pub piece: u32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -364,6 +373,8 @@ pub struct Breakable {
     pub key: AssetId,
     pub transform: [f32; 12],
     pub boxes: Vec<SolidBox>,
+    /// In kilograms if it is a loose prop; 0 if it is fixed in place.
+    pub mass: f32,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -382,10 +393,26 @@ pub struct Scene {
     /// The terrain the scene stands on, by its key, or `AssetId(0)` if it has none. Its
     /// tiles are found by where they are, as `TileCoord::asset_id` gives them.
     pub terrain: AssetId,
+    /// The creatures that stand in the scene when it is loaded.
+    pub creatures: Vec<CreatureSpawn>,
+}
+
+/// A creature that stands in a scene when it is loaded.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CreatureSpawn {
+    /// Permanent: the creature's ID.
+    pub key: AssetId,
+    /// Its species' key: `inkling`.
+    pub kind: String,
+    pub position: [f32; 3],
+    /// Radians.
+    pub yaw: f32,
+    /// The extra word it is found with, or empty.
+    pub annotation: String,
 }
 
 impl Scene {
-    const MAGIC: &'static [u8; 8] = b"VLMKSCN3";
+    const MAGIC: &'static [u8; 8] = b"VLMKSCN6";
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -400,6 +427,8 @@ impl Scene {
             out.extend_from_slice(&o.key.0.to_le_bytes());
             out.extend_from_slice(&o.mesh.0.to_le_bytes());
             put_f32s(&mut out, &o.transform);
+            out.extend_from_slice(&o.parent.0.to_le_bytes());
+            out.extend_from_slice(&o.piece.to_le_bytes());
         }
         for l in &self.lights {
             out.extend_from_slice(&l.key.0.to_le_bytes());
@@ -421,10 +450,21 @@ impl Scene {
         for breakable in &self.breakables {
             out.extend_from_slice(&breakable.key.0.to_le_bytes());
             put_f32s(&mut out, &breakable.transform);
+            put_f32s(&mut out, &[breakable.mass]);
             out.extend_from_slice(&(breakable.boxes.len() as u32).to_le_bytes());
             for b in &breakable.boxes {
                 put_box(&mut out, b);
             }
+        }
+        out.extend_from_slice(&(self.creatures.len() as u32).to_le_bytes());
+        for c in &self.creatures {
+            out.extend_from_slice(&c.key.0.to_le_bytes());
+            for s in [&c.kind, &c.annotation] {
+                out.extend_from_slice(&(s.len() as u32).to_le_bytes());
+                out.extend_from_slice(s.as_bytes());
+            }
+            put_f32s(&mut out, &c.position);
+            put_f32s(&mut out, &[c.yaw]);
         }
         out
     }
@@ -441,7 +481,7 @@ impl Scene {
         let spawn = r.f32s()?;
         let mut objects = Vec::with_capacity(object_count);
         for _ in 0..object_count {
-            objects.push(Object { key: AssetId(r.u64()?), mesh: AssetId(r.u64()?), transform: r.f32s()? });
+            objects.push(Object { key: AssetId(r.u64()?), mesh: AssetId(r.u64()?), transform: r.f32s()?, parent: AssetId(r.u64()?), piece: r.u32()? });
         }
         let mut lights = Vec::with_capacity(light_count);
         for _ in 0..light_count {
@@ -464,16 +504,35 @@ impl Scene {
         for _ in 0..r.u32()? {
             let key = AssetId(r.u64()?);
             let transform = r.f32s()?;
+            let mass = r.f32()?;
             let mut boxes = Vec::new();
             for _ in 0..r.u32()? {
                 boxes.push(solid(&mut r)?);
             }
-            breakables.push(Breakable { key, transform, boxes });
+            breakables.push(Breakable {
+                key,
+                transform,
+                boxes,
+                mass,
+            });
+        }
+        let mut creatures = Vec::new();
+        for _ in 0..r.u32()? {
+            let key = AssetId(r.u64()?);
+            let mut text = || -> Result<String, &'static str> {
+                let n = r.u32()? as usize;
+                String::from_utf8(r.take(n)?.to_vec()).map_err(|_| "a creature's name is not text")
+            };
+            let kind = text()?;
+            let annotation = text()?;
+            let position = r.f32s()?;
+            let yaw = r.f32()?;
+            creatures.push(CreatureSpawn { key, kind, position, yaw, annotation });
         }
         if r.1 != bytes.len() {
             return Err("scene has trailing bytes");
         }
-        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn, terrain })
+        Ok(Self { static_mesh, objects, lights, pages, colliders, breakables, spawn, terrain, creatures })
     }
 }
 
@@ -532,13 +591,27 @@ mod tests {
     fn scene_round_trip() {
         let scene = Scene {
             static_mesh: AssetId(9),
-            objects: vec![Object { key: AssetId(1), mesh: AssetId(2), transform: [1.0; 12] }],
+            objects: vec![Object { key: AssetId(1), mesh: AssetId(2), transform: [1.0; 12], parent: AssetId(3), piece: 2 }],
             lights: vec![Light { key: AssetId(3), position: [1.0, 2.0, 3.0], colour: [4.0, 3.0, 2.0], radius: 9.0, casts_shadow: true }],
             pages: AssetId(77),
-            colliders: vec![SolidBox { min: [0.0; 3], max: [1.0; 3], material: 2 }],
-            breakables: vec![Breakable { key: AssetId(5), transform: [0.5; 12], boxes: vec![SolidBox { min: [0.0; 3], max: [2.0; 3], material: 1 }] }],
+            colliders: vec![SolidBox {
+                min: [0.0; 3],
+                max: [1.0; 3],
+                material: 2,
+            }],
+            breakables: vec![Breakable {
+                key: AssetId(5),
+                transform: [0.5; 12],
+                boxes: vec![SolidBox {
+                    min: [0.0; 3],
+                    max: [2.0; 3],
+                    material: 1,
+                }],
+                mass: 4.0,
+            }],
             spawn: [0.0, 1.7, 5.0, 0.0, 0.0],
             terrain: AssetId::from_key("terrain.valley"),
+            creatures: vec![CreatureSpawn { key: AssetId(8), kind: "inkling".into(), position: [1.0, 2.0, 3.0], yaw: 0.5, annotation: "LOCKED".into() }],
         };
         assert_eq!(Scene::from_bytes(&scene.to_bytes()).unwrap(), scene);
     }

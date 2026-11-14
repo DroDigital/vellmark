@@ -4,6 +4,8 @@
 //! The interface draws nothing itself. It fills a [`Canvas`] with glyphs and plain
 //! rectangles, in pixels, and the renderer draws the canvas.
 
+pub mod reading_view;
+pub mod hud;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 
@@ -96,6 +98,36 @@ impl Canvas {
             pen += glyph.advance * style.size;
         }
         pen - x
+    }
+
+    /// Sets text as a paragraph, wrapped at word breaks to `width`, its first baseline
+    /// at `top` plus one line. Returns the height it took.
+    pub fn paragraph(&mut self, atlas: &GlyphAtlas, x: f32, top: f32, width: f32, style: &TextStyle, text: &Shown<'_>) -> f32 {
+        let line = Self::line_height(atlas, style);
+        let space = atlas.glyph(style.face, ' ').advance * style.size;
+        let mut pen = 0.0f32;
+        let mut baseline = top + line * 0.85;
+        for word in text.as_str().split_whitespace() {
+            let w: f32 = word.chars().map(|c| atlas.glyph(style.face, c).advance * style.size).sum();
+            if pen > 0.0 && pen + w > width {
+                pen = 0.0;
+                baseline += line;
+            }
+            let mut at = x + pen;
+            for c in word.chars() {
+                let glyph = atlas.glyph(style.face, c);
+                let face = atlas.face(style.face);
+                let cell = style.size * face.cell_ems;
+                self.quads.push(Quad {
+                    rect: [at + glyph.centre * style.size - cell * 0.5, baseline - cell * face.baseline, cell, cell],
+                    colour: style.colour,
+                    layer: GlyphAtlas::layer(style.face, c),
+                });
+                at += glyph.advance * style.size;
+            }
+            pen += w + space;
+        }
+        baseline - top + line * 0.3
     }
 
     /// The width a line of text would take, without drawing it.

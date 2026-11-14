@@ -1,0 +1,15 @@
+// Words of the interface: prompts' verbs and the like. Keys are permanent: add, never
+// rename.
+{
+    "ui.read": "Read",
+    "ui.crosshair": "+",
+    "ui.sealed": "It is sealed.",
+    "ui.ring.full": "o",
+    "ui.ring.empty": ".",
+    "ui.ink.stroke": "|",
+    "ui.health.stroke": "|",
+    "ui.stamina.stroke": "|",
+    "ui.arrow.stroke": "^",
+    // From the prologue's script, when the Tithe Hill Stone gives up its word.
+    "ui.learned": "You have learned a word. It is not yours. Nothing here is.",
+}

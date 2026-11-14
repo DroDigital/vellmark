@@ -3,10 +3,13 @@
 #import frame
 #import shading
 #import glyph
+#import lod
+#import leaves
 
 struct Instance {
     model: mat4x4<f32>,
     // x: heat, -1 (frozen) to 1 (as hot as it gets). y: 1 if it is not drawn (broken).
+    // w: the generated page its surface reads, counted from 1; 0 for none.
     state: vec4<f32>,
     // The sphere that holds it, in the world.
     bounds: vec4<f32>,
@@ -15,7 +18,8 @@ struct Instance {
 }
 
 struct Batch {
-    // x: where this batch starts in the list being drawn.
+    // x: where this batch starts in the list being drawn. y: its level of detail. z: the
+    // leaf cards' material, from 1; 0 if there is none. w: how many levels its mesh has.
     base: vec4<u32>,
 }
 
@@ -25,7 +29,7 @@ struct Batch {
 @group(0) @binding(2) var shadow_sampler: sampler_comparison;
 @group(0) @binding(3) var<uniform> lights: Lights;
 @group(0) @binding(4) var light_clusters: texture_2d_array<u32>;
-@group(0) @binding(5) var light_shadow: texture_depth_cube;
+@group(0) @binding(5) var light_shadow: texture_depth_cube_array;
 @group(0) @binding(6) var fog_volume: texture_3d<f32>;
 @group(0) @binding(7) var fog_sampler: sampler;
 @group(0) @binding(8) var contact_occlusion: texture_2d<f32>;
@@ -39,7 +43,12 @@ const FOG_FAR: f32 = 400.0;
 fn mist_between(depth_in_view: f32, pixel: vec2<f32>) -> vec4<f32> {
     let uv = clamp(pixel / view.viewport.xy, vec2<f32>(0.0), vec2<f32>(1.0));
     let slice = log(max(depth_in_view, FOG_NEAR) / FOG_NEAR) / log(FOG_FAR / FOG_NEAR);
-    return textureSampleLevel(fog_volume, fog_sampler, vec3<f32>(uv, clamp(slice - 0.5 / 64.0, 0.0, 1.0)), 0.0);
+    // Only part of the grid may be in use, when the governor has made it coarser.
+    let used = vec3<f32>(fog_grid(view.quality.z));
+    let full = vec3<f32>(FOG_GRID_MAX);
+    let xy = clamp(uv * used.xy / full.xy, vec2<f32>(0.5) / full.xy, (used.xy - 0.5) / full.xy);
+    let z = clamp((slice * used.z - 0.5) / full.z, 0.0, (used.z - 0.5) / full.z);
+    return textureSampleLevel(fog_volume, fog_sampler, vec3<f32>(xy, z), 0.0);
 }
 
 // A surface's light as it reaches the eye: through the mist, then through the air, which
@@ -97,6 +106,17 @@ fn instance_of(index: u32) -> u32 {
 // A position that every clip test throws away: the triangle is not drawn.
 const NOWHERE: vec4<f32> = vec4<f32>(2.0, 2.0, 2.0, 1.0);
 
+// A thing drawn in first person (the hands and what they hold, state.y near -1) is drawn
+// nearer than anything in the world, so that a blade never passes into a wall: its depth,
+// reversed, is folded into the nearest half of the range.
+fn placed_clip(object: Instance, world: vec4<f32>) -> vec4<f32> {
+    var clip = view.view_proj * world;
+    if object.state.y < -0.5 && object.state.y > -1.5 {
+        clip.z = clip.w * (0.5 + 0.5 * clamp(clip.z / clip.w, 0.0, 1.0));
+    }
+    return clip;
+}
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -129,7 +149,7 @@ fn vs_depth(in: VertexInput) -> @builtin(position) @invariant vec4<f32> {
         return NOWHERE;
     }
     let world = object.model * vec4<f32>(in.position, 1.0);
-    return view.view_proj * world;
+    return placed_clip(object, world);
 }
 
 @vertex
@@ -138,7 +158,7 @@ fn vs(in: VertexInput) -> Varyings {
     let object = instances[id];
     let world = object.model * vec4<f32>(in.position, 1.0);
     var out: Varyings;
-    out.position = view.view_proj * world;
+    out.position = placed_clip(object, world);
     if object.state.y > 0.5 {
         out.position = NOWHERE;
     }
@@ -149,6 +169,11 @@ fn vs(in: VertexInput) -> Varyings {
     out.anchor = in.anchor;
     out.material = in.material;
     out.page = in.page;
+    // Generated truth: a surface with no authored page reads the one written for this
+    // thing, as a tree's bark reads its record. Never its leaves.
+    if in.page == 0u && object.state.w > 0.5 && in.material + 1u != batch.base.z {
+        out.page = u32(object.state.w + 0.5);
+    }
     out.thickness = in.thickness;
     out.sky = in.sky;
     return out;
@@ -185,8 +210,9 @@ fn sun_shadow(world: vec3<f32>, normal: vec3<f32>, depth_in_view: f32) -> f32 {
     return lit / 9.0;
 }
 
-// How much of a point light reaches a point, through its shadow cube.
-fn light_shadow_at(from_light: vec3<f32>, radius: f32, normal: vec3<f32>) -> f32 {
+// How much of a point light reaches a point, through its shadow cube, `cube` of the
+// array.
+fn light_shadow_at(from_light: vec3<f32>, radius: f32, normal: vec3<f32>, cube: i32) -> f32 {
     // Step off the surface, then compare depths along the cube face's own axis.
     let d = from_light + normal * 0.02;
     let a = abs(d);
@@ -196,10 +222,10 @@ fn light_shadow_at(from_light: vec3<f32>, radius: f32, normal: vec3<f32>) -> f32
     let side = normalize(cross(d, vec3<f32>(0.3, 1.0, 0.2))) * length(d) * 0.006;
     let up = normalize(cross(d, side)) * length(d) * 0.006;
     var lit = 0.0;
-    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side + up, depth);
-    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side + up, depth);
-    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side - up, depth);
-    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side - up, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side + up, cube, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side + up, cube, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d + side - up, cube, depth);
+    lit += textureSampleCompareLevel(light_shadow, shadow_sampler, d - side - up, cube, depth);
     return lit * 0.25;
 }
 
@@ -226,7 +252,7 @@ fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>
             let window = pow(clamp(1.0 - pow(distance / radius, 4.0), 0.0, 1.0), 2.0);
             var radiance = light.colour_shadow.rgb * view.effects.y * window / (distance * distance + 0.02);
             if light.colour_shadow.w > 0.5 {
-                radiance *= light_shadow_at(-offset, radius, flat_normal);
+                radiance *= light_shadow_at(-offset, radius, flat_normal, i32(light.colour_shadow.w + 0.5) - 1);
             }
             total += shade_light(surface, to_eye, offset / distance, radiance);
         }
@@ -238,12 +264,19 @@ fn shade_point_lights(surface: Surface, world: vec3<f32>, flat_normal: vec3<f32>
 // lantern, and its own glow.
 // `seen` is the share of the sky the place can see, baked: it scales the sky's light.
 fn light_surface(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32, seen: f32) -> vec3<f32> {
+    return light_surface_at(surface, in, flat_normal, glow, seen, in.world);
+}
+
+// As `light_surface`, with the sun's shadow taken at `shadow_at`: where a surface stands
+// for more than is drawn of it, as the ground under a sward does, the shadow is that of
+// what it stands for.
+fn light_surface_at(surface: Surface, in: Varyings, flat_normal: vec3<f32>, glow: f32, seen: f32, shadow_at: vec3<f32>) -> vec3<f32> {
     let to_eye = normalize(view.eye_time.xyz - in.world);
     let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
-    let shadow = sun_shadow(in.world, flat_normal, depth_in_view);
+    let shadow = sun_shadow(shadow_at, flat_normal, depth_in_view);
     var colour = shade_light(surface, to_eye, view.light_dir_hour.xyz, view.light_colour.rgb) * shadow;
     // Contact occlusion: the fine darkening where things meet, at half resolution.
-    let contact = textureSampleLevel(contact_occlusion, fog_sampler, in.position.xy * 0.5 / vec2<f32>(textureDimensions(contact_occlusion)), 0.0).r;
+    let contact = mix(1.0, textureSampleLevel(contact_occlusion, fog_sampler, in.position.xy * 0.5 / vec2<f32>(textureDimensions(contact_occlusion)), 0.0).r, view.quality.y);
     // The sky's light, as much of it as this place can see.
     colour += shade_sky(surface, to_eye, view.sky_zenith.rgb, view.sky_horizon.rgb, view.sky_horizon.rgb * 0.35) * seen * contact;
     // And what the sunlit ground sends back, from below and the sides. A place that sees
@@ -266,8 +299,256 @@ fn ink_of(albedo: vec3<f32>) -> vec3<f32> {
     return vec3<f32>(0.012, 0.010, 0.009) + albedo * 0.03;
 }
 
+// ---- the rain on surfaces ----
+
+// How wet a surface is: the world's wetness where the sky reaches it, and none under an
+// overhang. `seen` is the share of the sky the place sees.
+fn wet_at(seen: f32, n: vec3<f32>) -> f32 {
+    return view.weather.y * smoothstep(0.15, 0.55, seen) * smoothstep(-0.4, 0.2, n.y);
+}
+
+// A surface as rain leaves it: darker, as soaked things are, and glossy, though never
+// so sharp that its fine relief breaks into crawling points of light. Only standing
+// water, which is flat, is a mirror.
+fn wetted(s: Surface, wet: f32) -> Surface {
+    return Surface(s.albedo * (1.0 - 0.5 * wet * (1.0 - s.metal)), s.normal, mix(s.roughness, min(s.roughness, 0.28), wet), s.metal);
+}
+
+// Rain running down a wall: here and there a rivulet, written as a column of `|` that
+// runs downwards in broken lengths. Returns how much of the pixel is a rivulet's ink, or
+// 0 where there is none or the letters are not drawn. `anchor` is the page, with y up
+// the wall.
+fn runoff(anchor: vec2<f32>, footprint: AnchorFootprint, wet: f32) -> f32 {
+    if wet <= 0.05 || view.switches.x < 0.5 {
+        return 0.0;
+    }
+    let size = CELL_0 * 2.0;
+    let squeeze = max(length(footprint.dx), length(footprint.dy));
+    let h = size / max(squeeze, 1.0e-6) * view.switches.w;
+    if h < 3.0 {
+        return 0.0;
+    }
+    let p = anchor / size;
+    let cell = vec2<i32>(floor(p));
+    let column = hash_cell(vec2<i32>(cell.x, 0), 2, 61u);
+    if unit(column) > 0.22 * wet {
+        return 0.0;
+    }
+    // Water runs about twelve characters a second, in lengths of some ten characters.
+    let run = (f32(cell.y) + view.eye_time.w * (9.0 + unit(column >> 8u) * 6.0)) / 10.0 + unit(hash_cell(vec2<i32>(cell.x, 1), 2, 67u));
+    if fract(run) > 0.55 {
+        return 0.0;
+    }
+    let f = fract(p);
+    let du = footprint.dx * vec2<f32>(1.0 / size, -1.0 / size);
+    let dv = footprint.dy * vec2<f32>(1.0 / size, -1.0 / size);
+    let g = cell_glyph(124u - 32u, vec2<f32>(f.x, 1.0 - f.y), du, dv, h, 0.5);
+    return g.cover * influence_rise(h);
+}
+
+// The rings rain makes on still water, as the slope of the surface, rise over run along
+// x and z. Each cell of a third of a metre takes a drop now and then; its ring runs out
+// and fades. Fewer cells take drops in light rain.
+fn rain_rings(p: vec2<f32>, rain: f32) -> vec2<f32> {
+    if rain <= 0.0 {
+        return vec2<f32>(0.0);
+    }
+    let size = 0.33;
+    let base = vec2<i32>(floor(p / size));
+    let time = view.eye_time.w;
+    var slope = vec2<f32>(0.0);
+    for (var dz = -1; dz <= 1; dz++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let c = base + vec2<i32>(dx, dz);
+            let h = hash_cell(c, 3, 77u);
+            if unit(h >> 8u) > rain {
+                continue;
+            }
+            let period = 0.9 + unit(h >> 4u) * 0.6;
+            let age = fract(time / period + unit(h)) * period;
+            let centre = (vec2<f32>(c) + vec2<f32>(unit(h >> 12u), unit(hash_cell(c, 4, 79u)))) * size;
+            let away = p - centre;
+            let d = length(away);
+            let r = age * 0.32;
+            let x = (d - r) / 0.02;
+            let ring = x * exp(-x * x) * (1.0 - age / period);
+            slope += away / max(d, 1.0e-4) * ring * 0.35;
+        }
+    }
+    return slope;
+}
+
 @fragment
 fn fs(in: Varyings) -> @location(0) vec4<f32> {
+    return shade_mesh(in);
+}
+
+// ---- trees ----
+
+// How high above the ground a sward takes the sun's shadow, in metres: partway up its
+// blades. Pasture, then barley.
+const SWARD_SHADOW: f32 = 0.15;
+const BARLEY_SHADOW: f32 = 0.6;
+// What a blade about a pixel wide, shaded as the sward's average, is darkened by, and
+// the share of the sky it sees.
+const THIN_BLADE_SHADE: f32 = 0.8;
+const THIN_BLADE_SKY: f32 = 0.55;
+
+// A tree's coarsest level: the crossed cards of its far form.
+const FAR_LEVEL: u32 = 3u;
+// Samples in each pixel. Matches `SAMPLES` in the scene pass.
+const PIXEL_SAMPLES: u32 = 4u;
+// The share of a leaf card that is leaf, on average: what a card is seen as when its
+// leaves are too small to tell apart.
+const LEAF_SHARE: f32 = 0.42;
+
+// `count` of the pixel's samples, a run starting at sample `start` and wrapping round.
+fn samples_from(count: u32, start: u32) -> u32 {
+    let run = (1u << min(count, PIXEL_SAMPLES)) - 1u;
+    return ((run << start) | (run >> (PIXEL_SAMPLES - start))) & ((1u << PIXEL_SAMPLES) - 1u);
+}
+
+// How many of a pixel's samples a coverage from 0 to 1 is.
+fn samples_of(cover: f32, door: f32) -> u32 {
+    return u32(clamp(floor(cover * f32(PIXEL_SAMPLES) + door), 0.0, f32(PIXEL_SAMPLES)));
+}
+
+// Which samples of a tree's pixel are drawn. A crossfade between two levels shares out
+// the samples, the coarser level taking a run and the finer the rest, so the two
+// together cover the tree once. A leaf card covers the samples its leaves do, and the
+// far form those its picture does, so their edges are as smooth as any other and do not
+// crawl when the eye moves. The depth pre-pass and the lit pass both call it, so they
+// agree on every sample.
+fn tree_samples(in: Varyings) -> u32 {
+    let object = instances[in.instance];
+    // Taken for every fragment, before any choice, so their slopes are known everywhere.
+    let leaf = leaf_at(in.anchor, in.thickness);
+    let leaf_width = fwidth(leaf);
+    let m = materials.entries[in.material];
+    let uv = vec2<f32>(in.anchor.x, -in.anchor.y) / m.surface.x;
+    let picture = textureSample(material_normal, material_sampler, uv, in.material).w;
+    let picture_width = fwidth(picture);
+
+    let all = (1u << PIXEL_SAMPLES) - 1u;
+    var mask = all;
+    let door = screen_door(in.position.xy, 0.0);
+    let start = u32(screen_door(in.position.xy, 0.53) * f32(PIXEL_SAMPLES)) % PIXEL_SAMPLES;
+    let lod = lod_of(object.bounds.w, distance(view.eye_time.xyz, object.bounds.xyz), batch.base.w);
+    let chosen = u32(lod.x + 0.5);
+    let coarser = samples_from(samples_of(lod.y, door), start);
+    if batch.base.y == chosen {
+        mask &= all & ~coarser;
+    } else if batch.base.y == chosen + 1u {
+        mask &= coarser;
+    }
+    // Leaves too small to tell apart are seen as a card of their average cover.
+    if in.material + 1u == batch.base.z && batch.base.y != FAR_LEVEL {
+        let sharp = clamp((1.0 - leaf) / max(leaf_width, 1.0e-4) + 0.5, 0.0, 1.0);
+        // A card seen edge on is a line, not leaves: it fades out as it turns away.
+        let facing = abs(dot(normalize(in.normal), normalize(view.eye_time.xyz - in.world)));
+        let cover = mix(sharp, LEAF_SHARE, smoothstep(0.6, 2.5, leaf_width)) * smoothstep(0.05, 0.2, facing);
+        mask &= samples_from(samples_of(cover, 0.5), (start + 1u) % PIXEL_SAMPLES);
+    }
+    if batch.base.y == FAR_LEVEL {
+        let cover = clamp((picture - 0.5) / max(picture_width, 1.0e-4) + 0.5, 0.0, 1.0);
+        mask &= samples_from(samples_of(cover, 0.5), (start + 2u) % PIXEL_SAMPLES);
+    }
+    return mask;
+}
+
+@fragment
+fn fs_tree_depth(in: Varyings) -> @builtin(sample_mask) u32 {
+    let mask = tree_samples(in);
+    if mask == 0u {
+        discard;
+    }
+    return mask;
+}
+
+struct TreeOut {
+    @location(0) colour: vec4<f32>,
+    @builtin(sample_mask) mask: u32,
+}
+
+// Leaf cards are seen from both sides. From behind, the card is turned round so that its
+// letters still read the right way: the anchor runs back along the card and the normal
+// and tangent turn with it.
+@fragment
+fn fs_tree(seen: Varyings, @builtin(front_facing) front: bool) -> TreeOut {
+    let mask = tree_samples(seen);
+    if mask == 0u {
+        discard;
+    }
+    var in = seen;
+    if !front {
+        in.normal = -in.normal;
+        if in.material + 1u == batch.base.z {
+            let card = card_of(in.anchor);
+            in.anchor.x = card * CARD_STRIDE + in.thickness - (in.anchor.x - card * CARD_STRIDE);
+            in.tangent = vec4<f32>(-in.tangent.xyz, in.tangent.w);
+        }
+    }
+    return TreeOut(shade_mesh(in), mask);
+}
+
+// ---- magic on surfaces ----
+
+// The rewrite waves passing this point of this instance: rgb their light, a how much the
+// surface's print is revealed.
+fn rewrite_waves(world: vec3<f32>, instance: u32) -> vec4<f32> {
+    var out = vec4<f32>(0.0);
+    for (var i = 0u; i < min(view.magic_counts.x, MAX_WAVES); i++) {
+        let w = view.waves[i];
+        let over = u32(w[1].w + 0.5);
+        if over != 0u && over != instance + 1u {
+            continue;
+        }
+        let age = view.eye_time.w - w[0].w;
+        if age < 0.0 {
+            continue;
+        }
+        let d = distance(world, w[0].xyz);
+        let front = age * w[2].x;
+        // The front, bright and narrow, and behind it the rewritten print, sinking back.
+        let band = 1.0 - smoothstep(0.0, 0.45, abs(d - front));
+        let behind = select(0.0, exp(-(front - d) * 1.6), d < front);
+        let sinking = 1.0 - smoothstep(w[2].y / max(w[2].x, 0.1), w[2].y / max(w[2].x, 0.1) + 1.4, age);
+        let inside = 1.0 - smoothstep(w[2].y, w[2].y + 0.4, d);
+        let s = (band + 0.45 * behind) * sinking * inside * w[2].z;
+        out = vec4<f32>(out.rgb + w[1].rgb * band * sinking * inside * w[2].z, max(out.a, min(s, 1.0)));
+    }
+    return out;
+}
+
+// What a word holding on a thing shows: shining, opened, knitting, quieted, or edged, as
+// `crates/render/src/magic.rs` numbers them in the instance's state.
+fn lasting_light(code: f32, ink: f32, revealed: f32, world: vec3<f32>) -> vec3<f32> {
+    let kind = u32(code);
+    if kind == 0u {
+        return vec3<f32>(0.0);
+    }
+    let t = view.eye_time.w;
+    let flicker = 0.75 + 0.25 * sin(t * 3.1 + dot(world, vec3<f32>(5.3, 7.1, 6.7)));
+    var colour = vec3<f32>(0.0);
+    var at_any_distance = 0.0;
+    if kind == 1u {
+        // Shining: the thing gives off light, at any distance.
+        colour = vec3<f32>(1.0, 0.86, 0.58);
+        at_any_distance = 0.35;
+    } else if kind == 2u {
+        colour = vec3<f32>(1.0, 0.82, 0.42);
+    } else if kind == 3u {
+        colour = vec3<f32>(0.55, 1.0, 0.68);
+    } else if kind == 4u {
+        colour = vec3<f32>(0.66, 0.56, 1.0) * (0.6 + 0.4 * sin(t * 0.9));
+    } else {
+        colour = vec3<f32>(0.85, 0.92, 1.0) * step(0.93, fract(t * 0.7 + dot(world, vec3<f32>(1.3, 2.1, 0.7))));
+    }
+    return colour * (at_any_distance + ink * revealed * 1.6 * flicker) / view.viewport.z;
+}
+
+// A placed thing's surface, lit, with its fine print.
+fn shade_mesh(in: Varyings) -> vec4<f32> {
     let m = materials.entries[in.material];
     let uv = vec2<f32>(in.anchor.x, -in.anchor.y) / m.surface.x;
     let colour_texel = textureSample(material_colour, material_sampler, uv, in.material);
@@ -295,9 +576,12 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
     // The fine print. Beyond the reveal distance this returns at once, having sampled
     // nothing, and the surface is exactly what it would be with the layer off.
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
+    let wave = rewrite_waves(in.world, in.instance);
+    wave_reveal = wave.a;
     if view.switches.x > 0.5 {
         glyphs = glyph_surface(in.anchor, footprint, in.material, in.page, colour_texel.rgb, light, instances[in.instance].state.x);
     }
+    wave_reveal = 0.0;
 
     if view.viewport.w > 0.5 {
         // A tool's view: white where the fine print is drawn, black beyond the reveal
@@ -312,8 +596,16 @@ fn fs(in: Varyings) -> @location(0) vec4<f32> {
         let tangent_normal = map_normal + glyphs.relief;
         let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
         let normal = normalize(t * tangent_normal.x + b * tangent_normal.y + n * z);
-        let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
+        let wet = wet_at(in.sky, n);
+        // On walls, rain runs down in rivulets of `|`: dark and glossy where they run.
+        let streak = runoff(in.anchor, footprint, wet * (1.0 - smoothstep(0.3, 0.6, abs(n.y))));
+        var surface = wetted(Surface(colour_texel.rgb * glyphs.tone * (1.0 - 0.7 * streak), normal, normal_texel.z, colour_texel.a), wet);
+        surface.roughness = mix(surface.roughness, 0.05, streak);
         colour = light_surface(surface, in, n, m.surface.w, in.sky);
+        // Magic: a rewrite wave passing, its print lit in the word's light; and what a
+        // word holding on the thing shows.
+        colour += wave.rgb * (0.12 + 2.4 * glyphs.ink) / view.viewport.z;
+        colour += lasting_light(instances[in.instance].state.z, glyphs.ink, glyphs.revealed, in.world);
         // Heat. A thing hot enough glows, as hot iron does, at any distance: that is the
         // world, not its letters. Up close, the strokes of the letters saying so glow
         // first, as embers in the grain.
@@ -650,9 +942,29 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     bitangent = normalize(bitangent * sign(dot(bitangent, page_y) + 1.0e-6));
     let map_normal = vec2<f32>(normal_texel.x, normal_texel.y) * 2.0 - 1.0;
 
+    // The share of the sky this place sees, baked, between its four samples.
+    let s00 = textureLoad(terrain_sky, base + 1, layer, 0).r;
+    let s10 = textureLoad(terrain_sky, base + vec2<i32>(2, 1), layer, 0).r;
+    let s01 = textureLoad(terrain_sky, base + vec2<i32>(1, 2), layer, 0).r;
+    let s11 = textureLoad(terrain_sky, base + 2, layer, 0).r;
+    let seen = mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+
+    // Puddles, in the low places of flat ground, as wet as the world is. In a puddle
+    // the ground is water, and is written as water.
+    let wet = wet_at(seen, n);
+    let low = sky_noise(in.world.xz * 0.35 + vec2<f32>(3.1, 7.7)) * 0.65 + sky_noise(in.world.xz * 1.3) * 0.35;
+    // Roads, bare earth, and banks hold water; pasture and fields drink it.
+    let holds = mix(0.25, 1.0, clamp(weights[2] + weights[3] + weights[4], 0.0, 1.0));
+    // Its edge is softened to the pixel's footprint: an edge drawn by the shader is not
+    // smoothed by multisampling, and a hard one crawls as the eye moves.
+    let rise = wet * 0.34 * holds - low + 0.05;
+    let soft = max(fwidth(rise), 0.03);
+    let puddle = smoothstep(0.96, 0.995, n.y) * smoothstep(-soft * 0.5, soft, rise) * (1.0 - weights[7]);
+    let written_as = select(material, terrain_material(9u), puddle > 0.5);
+
     var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     if view.switches.x > 0.5 {
-        glyphs = glyph_surface(anchor, footprint, material, 0u, colour_texel.rgb, 0.0, 0.0);
+        glyphs = glyph_surface(anchor, footprint, written_as, 0u, colour_texel.rgb, 0.0, 0.0);
     }
     if terrain_cut(in.world, in.tile) {
         discard;
@@ -660,18 +972,39 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     if view.viewport.w > 0.5 {
         return vec4<f32>(vec3<f32>(glyphs.revealed * 100.0), 1.0);
     }
-    let tangent_normal = map_normal + glyphs.relief;
+    let tangent_normal = map_normal * (1.0 - puddle) + glyphs.relief;
     let z = sqrt(max(1.0 - dot(tangent_normal, tangent_normal), 0.05));
-    let normal = normalize(tangent * tangent_normal.x + bitangent * tangent_normal.y + n * z);
-    let surface = Surface(colour_texel.rgb * glyphs.tone, normal, normal_texel.z, colour_texel.a);
-    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, material, 0u, 1.2, 1.0, 0u);
-    // The share of the sky this place sees, baked, between its four samples.
-    let s00 = textureLoad(terrain_sky, base + 1, layer, 0).r;
-    let s10 = textureLoad(terrain_sky, base + vec2<i32>(2, 1), layer, 0).r;
-    let s01 = textureLoad(terrain_sky, base + vec2<i32>(1, 2), layer, 0).r;
-    let s11 = textureLoad(terrain_sky, base + 2, layer, 0).r;
-    let seen = mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
-    var colour = light_surface(surface, as_surface, n, 0.0, seen);
+    var normal = normalize(tangent * tangent_normal.x + bitangent * tangent_normal.y + n * z);
+    // Where the wind writes, the grass the ground stands for bows and shines with the
+    // blades above it, so the strokes read whole where the blades thin out.
+    let bowed = sentence_press(in.world.xz) * clamp(weights[0] + weights[1], 0.0, 1.0);
+    var surface = wetted(Surface(colour_texel.rgb * glyphs.tone * (1.0 + 0.9 * bowed), normal, normal_texel.z, colour_texel.a), wet);
+    // Ground under a sward, where blades are drawn, is shaded and matte: what glints
+    // between swaying blades blinks, and that is shimmer.
+    let sward = clamp(weights[0] + weights[1], 0.0, 1.0) * (1.0 - smoothstep(55.0, 72.0, length(in.world - view.eye_time.xyz)));
+    surface.roughness = mix(surface.roughness, max(surface.roughness, 0.75), sward);
+    if puddle > 0.0 {
+        // Still water over the ground: dark, smooth, and ringed while it rains.
+        let rings = rain_rings(in.world.xz, view.weather.x);
+        let still = normalize(vec3<f32>(-rings.x, 1.0, -rings.y) + vec3<f32>(glyphs.relief.x, 0.0, -glyphs.relief.y) * 0.25);
+        normal = normalize(mix(normal, still, puddle));
+        surface = Surface(mix(surface.albedo, surface.albedo * 0.35, puddle), normal, mix(surface.roughness, 0.06, puddle), 0.0);
+    }
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(tangent, 1.0), anchor, written_as, 0u, 1.2, 1.0, 0u);
+    // The ground under a sward stands for the sward, and takes the sun's shadow where the
+    // blades drawn over it take theirs.
+    let crop = weights[0] + weights[1];
+    let sward_height = select(SWARD_SHADOW, (weights[0] * SWARD_SHADOW + weights[1] * BARLEY_SHADOW) / crop, crop > 1.0e-4);
+    let shadow_at = in.world + vec3<f32>(0.0, sward_height * sward, 0.0);
+    var colour = light_surface_at(surface, as_surface, n, 0.0, seen, shadow_at);
+    // Against a low sun a sward glows, the light coming through its blades. The ground
+    // the sward stands for glows with the blades drawn over it, so that each blade is not
+    // a bright line on dark ground, which flickers as the eye moves.
+    let backlit = pow(max(dot(normalize(in.world - view.eye_time.xyz), view.light_dir_hour.xyz), 0.0), 6.0) * 0.8 * sward;
+    if backlit > 1.0e-3 {
+        let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
+        colour += surface.albedo * view.light_colour.rgb * sun_shadow(shadow_at, n, depth_in_view) * backlit;
+    }
     let look = u32(view.effects.z + 0.5);
     if look > 0u && glyphs.revealed > 0.0 {
         let to_eye = normalize(view.eye_time.xyz - in.world);
@@ -689,4 +1022,1079 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
     // Never hand the bloom chain a NaN: one would spread through it into a block.
     colour = select(colour, vec3<f32>(0.0), colour != colour);
     return vec4<f32>(colour, glyphs.revealed);
+}
+
+// ---- grass: blades made from their number, on the terrain they stand on ----
+
+struct GrassUniform {
+    // xy: the wind's direction over the ground. z: its strength, 0 to 1. w: how fast its
+    // gusts travel, in metres a second.
+    wind: vec4<f32>,
+    // x: within this distance the grass is at full density. y: blades per square metre
+    // there. z: the side of a patch. w: the farthest any blade is drawn.
+    shape: vec4<f32>,
+    // Each thing that pushes the grass aside: where it is, and how far it reaches.
+    pushers: array<vec4<f32>, 8>,
+    // x: how many pushers. y: the blades a patch holds at full density.
+    counts: vec4<u32>,
+    // The wind's sentences, 32 characters to each, four to a word.
+    sentences: array<vec4<u32>, 16>,
+    // Each sentence's length in characters.
+    lengths: array<vec4<u32>, 2>,
+}
+
+@group(3) @binding(4) var<uniform> grass: GrassUniform;
+
+fn sentence_char(sentence: u32, k: u32) -> u32 {
+    let c = sentence * 32u + k;
+    return (grass.sentences[c / 16u][(c / 4u) % 4u] >> ((c % 4u) * 8u)) & 0xffu;
+}
+
+// How hard the wind's sentence presses the grass at a place, 0 to 1: inside a letter's
+// strokes while the gust is writing it. The gust writes the line from its start to its
+// end, holds it a moment, and lifts it away in the same order.
+fn sentence_press(at: vec2<f32>) -> f32 {
+    let progress = view.gust.x;
+    if progress < 0.0 {
+        return 0.0;
+    }
+    let along = view.sentence.zw;
+    let away = vec2<f32>(along.y, -along.x);
+    let rel = at - view.sentence.xy;
+    let u = dot(rel, along) / view.gust.z;
+    let v = dot(rel, away) / view.gust.w;
+    let index = u32(view.gust.y);
+    let count = grass.lengths[index / 4u][index % 4u];
+    if u < 0.0 || u >= f32(count) || v < 0.0 || v >= 1.0 {
+        return 0.0;
+    }
+    let character = sentence_char(index, u32(u));
+    if character <= 32u {
+        return 0.0;
+    }
+    // The letter's strokes, softened: a gust is not a pen.
+    let d = textureSampleLevel(glyph_atlas, glyph_sampler, vec2<f32>(fract(u), 1.0 - v), character - 32u, 2.0).a;
+    let stroke = smoothstep(0.42, 0.56, d);
+    let x = progress * 3.0 - 0.2 - u / f32(count);
+    return stroke * smoothstep(-0.05, 0.05, x) * (1.0 - smoothstep(1.1, 1.6, x));
+}
+
+struct GrassVaryings {
+    @builtin(position) @invariant position: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    // x: along the blade, in metres from the root. y: across it, in metres from its middle.
+    @location(2) page: vec2<f32>,
+    // How far up the blade: 0 at the root, 1 at the tip.
+    @location(3) up: f32,
+    @location(4) @interpolate(flat) seed: u32,
+    @location(5) @interpolate(flat) material: u32,
+    // x: the share of the sky the root sees. y: the side of the blade's character cells.
+    @location(6) @interpolate(flat) blade: vec2<f32>,
+    // How hard the wind's sentence presses this blade.
+    @location(7) @interpolate(flat) pressed: f32,
+    // How well the blade is seen: 0 where it is about a pixel wide and is shaded as the
+    // sward's average, 1 where it is wide enough to show its own light and shade.
+    @location(8) @interpolate(flat) seen: f32,
+    // The blade's height, in metres.
+    @location(9) @interpolate(flat) tall: f32,
+}
+
+@vertex
+fn vs_grass(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -> GrassVaryings {
+    var out: GrassVaryings;
+    out.position = NOWHERE;
+    out.world = vec3<f32>(0.0);
+    out.normal = vec3<f32>(0.0, 1.0, 0.0);
+    out.page = vec2<f32>(0.0);
+    out.up = 0.0;
+    out.seed = 0u;
+    out.material = 0u;
+    out.blade = vec2<f32>(0.0);
+    out.pressed = 0.0;
+    out.seen = 0.0;
+    out.tall = 0.0;
+
+    let object = instances[instance_of(index)];
+    let origin = object.model[3].xyz;
+    let tile = u32(object.state.z);
+    let blade = vertex / 7u;
+    let k = vertex % 7u;
+    let side_of_patch = grass.shape.z;
+    let cell = vec2<i32>(floor(origin.xz / side_of_patch + 0.5));
+    let seed = hash_cell(cell, i32(blade), 0x9e37u);
+    let shape_hash = hash_cell(cell, i32(blade), 0x61u);
+    let r1 = unit(shape_hash);
+    let r2 = unit(shape_hash >> 16u);
+    let r3 = unit(seed >> 16u);
+
+    // Where the blade stands. Any first run of this sequence is spread evenly over the
+    // patch, so each level of detail, which draws only the first blades, is even too.
+    let spread = fract(vec2<f32>(0.5) + f32(blade) * vec2<f32>(0.7548776662, 0.5698402910));
+    let jitter = vec2<f32>(unit(seed), unit(shape_hash >> 8u)) - 0.5;
+    let at = origin.xz + fract(spread + jitter * 0.6 / sqrt(f32(grass.counts.y))) * side_of_patch;
+
+    // The ground under it, exactly as the terrain is drawn there.
+    let t = terrain.tiles[tile * 2u];
+    let layer = i32(t.w);
+    let local = (at - t.xy) / t.z;
+    let base = clamp(vec2<i32>(floor(local)), vec2<i32>(0), vec2<i32>(63));
+    let f = clamp(local - vec2<f32>(base), vec2<f32>(0.0), vec2<f32>(1.0));
+    let h00 = terrain_sample(base.x, base.y, layer);
+    let h10 = terrain_sample(base.x + 1, base.y, layer);
+    let h01 = terrain_sample(base.x, base.y + 1, layer);
+    let h11 = terrain_sample(base.x + 1, base.y + 1, layer);
+    var height: f32;
+    if f.x >= f.y {
+        height = h00 + f.x * (h10 - h00) + f.y * (h11 - h10);
+    } else {
+        height = h00 + f.y * (h01 - h00) + f.x * (h11 - h01);
+    }
+    let slope = normalize(vec3<f32>(-(h10 - h00 + h11 - h01) * 0.5 / t.z, 1.0, -(h01 - h00 + h11 - h10) * 0.5 / t.z));
+    let nearest = clamp(vec2<i32>(round(local)), vec2<i32>(0), vec2<i32>(64));
+    let ground = textureLoad(terrain_ground, nearest + 1, layer, 0).r;
+    let barley = ground == 1u;
+    // Pasture and barley are full of it; a wood's floor has a little; nothing grows on
+    // roads, earth, banks, the bed of the water, or rock.
+    var grows = select(0.0, 1.0, ground == 0u || barley);
+    if ground == 6u {
+        grows = 0.2;
+    }
+    grows = select(0.0, 1.0, unit(seed >> 8u) < grows) * smoothstep(0.62, 0.8, slope.y);
+    let root = vec3<f32>(at.x, height, at.y);
+
+    // Fewer blades with distance, each fading out by its own number, so that none pops.
+    let eye = view.eye_time.xyz;
+    let dist = distance(eye, root);
+    let near = grass.shape.x;
+    let keep = min(1.0, (near * near) / max(dist * dist, 1.0e-3));
+    // The governor may thin the grass beyond 30 m.
+    let wanted = f32(grass.counts.y) * keep * mix(1.0, view.quality.x, smoothstep(30.0, 40.0, dist));
+    var fade = clamp((wanted - f32(blade)) / max(wanted * 0.3, 1.0), 0.0, 1.0);
+    fade *= 1.0 - smoothstep(grass.shape.w * 0.7, grass.shape.w, dist);
+    fade *= grows;
+    if fade <= 0.0 {
+        return out;
+    }
+
+    // Its shape: meadows run tall and short in broad swathes, and in clumps within them.
+    let clump = sky_noise(at * 0.35);
+    let meadow = sky_noise(at * 0.06 + vec2<f32>(17.0, 3.0));
+    var tall: f32;
+    var wide: f32;
+    if barley {
+        tall = (0.85 + 0.25 * r1) * (0.9 + 0.2 * clump);
+        wide = 0.0065 + 0.002 * r2;
+    } else {
+        tall = (0.16 + 0.3 * r1) * (0.55 + 0.9 * meadow) * (0.8 + 0.4 * clump);
+        wide = 0.009 + 0.007 * r2;
+    }
+    let cell_side = wide;
+    tall *= mix(0.25, 1.0, fade);
+    out.tall = tall;
+    // Beyond the near distance each blade stands for several, so it is wider: about the
+    // same width on screen at any distance, and the field keeps its cover.
+    wide *= max(1.0, dist / near) * fade;
+
+    // Its lean: its own, the wind's, and anything walking through it.
+    let yaw = unit(shape_hash >> 4u) * 6.2831853;
+    let across = vec3<f32>(cos(yaw), 0.0, sin(yaw));
+    let facing = vec3<f32>(-sin(yaw), 0.0, cos(yaw));
+    var lean = facing.xz * select(0.1 + 0.45 * r3, 0.04 + 0.08 * r3, barley);
+    let time = view.eye_time.w;
+    let wind = grass.wind.xy;
+    let gust_at = at * 0.045 - wind * time * grass.wind.w * 0.045;
+    let gust = sky_noise(gust_at) * 0.7 + sky_noise(gust_at * 2.3 + vec2<f32>(5.0, 9.0)) * 0.3;
+    let flutter = sin(time * (1.7 + 1.3 * r2) + r1 * 6.2831853);
+    lean += wind * grass.wind.z * ((0.1 + 1.1 * gust * gust) * select(1.0, 0.7, barley) + 0.07 * flutter);
+    for (var p = 0u; p < min(grass.counts.x, 8u); p++) {
+        let pusher = grass.pushers[p];
+        let away = at - pusher.xz;
+        let d = length(away);
+        if d < pusher.w && root.y > pusher.y - 2.4 && root.y < pusher.y + 0.3 {
+            let push = 1.0 - d / pusher.w;
+            lean += away / max(d, 1.0e-3) * push * (2.0 - push);
+        }
+    }
+    // The wind that reads: inside its letters the grass bows with the wind and turns
+    // its bright side up, as a gust shows on a field of grain.
+    let pressed = sentence_press(at);
+    lean += wind * pressed * 1.2;
+    let amount = min(length(lean), 1.45);
+    let towards = vec3<f32>(lean.x, 0.0, lean.y) / max(length(lean), 1.0e-5);
+    let up = vec3<f32>(0.0, 1.0, 0.0);
+    let tip = root + (towards * sin(amount) + up * cos(amount)) * tall;
+    let knee = root + (towards * sin(amount * 0.5) + up * cos(amount * 0.5)) * tall * 0.5;
+
+    // Three pairs of vertices up the blade and one at the tip. Barley's head is the
+    // swelling near the top.
+    let level = min(k / 2u, 3u);
+    var ups = array<f32, 4>(0.0, 0.4, 0.75, 1.0);
+    var widths = array<f32, 4>(1.0, 0.72, 0.4, 0.0);
+    if barley {
+        ups = array<f32, 4>(0.0, 0.58, 0.8, 1.0);
+        widths = array<f32, 4>(0.6, 0.5, 1.7, 0.0);
+    }
+    let s = ups[level];
+    let along = mix(mix(root, knee, s), mix(knee, tip, s), s);
+    let tangent = normalize(mix(knee - root, tip - knee, s) + up * 1.0e-4);
+    let sign = select(select(-1.0, 1.0, (k & 1u) == 1u), 0.0, k == 6u);
+    // Never thinner than about a pixel, tip included: an edge finer than a pixel turns its
+    // samples on and off as it moves, and that is shimmer.
+    let pixel = 1.3e-3 * 1080.0 / view.viewport.y * dist;
+    let half = max(wide * widths[level] * 0.5, pixel * 0.55 * select(1.0, 0.6, k == 6u));
+    out.world = along + across * sign * half;
+    // Rounded across its width, so it catches the light as a real blade does, and bent
+    // towards the sky, as the sward together faces it: a field is lit as the ground it
+    // covers, and each blade still has its own light.
+    // A blade too narrow to show its rounding is shaded as the sward is: what is finer
+    // than the pixels cannot be drawn, and drawn anyway it flickers as the eye moves.
+    out.seen = smoothstep(1.5, 4.0, 2.0 * max(wide * 0.5, pixel * 0.55) / pixel);
+    let own = normalize(cross(across, tangent) + across * sign * 0.5 * out.seen);
+    out.normal = normalize(mix(own, slope, mix(0.9, 0.55, out.seen)));
+    out.page = vec2<f32>(s * tall, sign * cell_side * widths[level] * 0.5);
+    out.up = s;
+    out.seed = seed;
+    out.material = terrain_material(select(0u, 1u, barley));
+    out.blade = vec2<f32>(textureLoad(terrain_sky, nearest + 1, layer, 0).r, cell_side);
+    out.pressed = pressed;
+    out.position = view.view_proj * vec4<f32>(out.world, 1.0);
+    return out;
+}
+
+struct BladeLetters {
+    // Multiplies the blade's colour. Averages to 1 over a character.
+    tone: f32,
+    // How much of the pixel is ink.
+    ink: f32,
+    // 1 where the letters are drawn at all.
+    revealed: f32,
+    // Below one half, the pixel is not part of the blade: at arm's length the blade is
+    // nothing but its characters.
+    keep: f32,
+}
+
+// The `i`th character up a blade's line in a given epoch: its words in turn, a space
+// between.
+fn blade_char(material: u32, seed: u32, i: i32, epoch: u32) -> u32 {
+    let words = 1u + materials.entries[material].info.y;
+    var slot = (seed >> 4u) + epoch;
+    var pos = i + i32((seed >> 12u) % 7u);
+    for (var n = 0; n < 16; n++) {
+        let s = slot % words;
+        let count = i32(word_length(material, s));
+        if pos <= count {
+            if pos < count {
+                return word_char(material, s, u32(pos));
+            }
+            return 32u;
+        }
+        pos -= count + 1;
+        slot += 1u;
+    }
+    return 32u;
+}
+
+// Each blade is a line of characters, running from its root to its tip: the words of its
+// lexicon, `grass` and what grass is made of. Beyond the reveal distance this returns at
+// once, having sampled nothing.
+fn blade_letters(in: GrassVaryings, front: bool) -> BladeLetters {
+    var out = BladeLetters(1.0, 0.0, 0.0, 1.0);
+    // Seen from the side the normal faces, the line would read mirrored; turned over.
+    let page = vec2<f32>(in.page.x, select(in.page.y, -in.page.y, front));
+    let dx = dpdx(page);
+    let dy = dpdy(page);
+    if view.switches.x < 0.5 {
+        return out;
+    }
+    let c = in.blade.y;
+    let squeeze = max(length(dx), length(dy));
+    if squeeze <= 0.0 || c <= 0.0 {
+        return out;
+    }
+    let h = c / squeeze * view.switches.w;
+    if h < 3.0 {
+        return out;
+    }
+    let i = i32(floor(page.x / c));
+    let uv = vec2<f32>(fract(page.x / c), 0.5 - page.y / c);
+    let du = dx * vec2<f32>(1.0 / c, -1.0 / c);
+    let dv = dy * vec2<f32>(1.0 / c, -1.0 / c);
+
+    // The line: the blade's words one after another, a space between: its name and what
+    // it is made of, `grass C6H12O6 grass C6H10O5`. Every few seconds a blade moves on to
+    // the next of its words, the old line fading out as the new one fades in, so that no
+    // letter ever jumps from one frame to the next.
+    let m = materials.entries[in.material];
+    let clock = view.eye_time.w / 7.0 + unit(in.seed >> 3u) * 7.0;
+    let epoch = u32(floor(clock));
+    let change = smoothstep(0.85, 1.0, fract(clock));
+    let old = blade_char(in.material, in.seed, i, epoch);
+    var g = cell_glyph(old - 32u, uv, du, dv, h, 0.42);
+    if change > 0.0 {
+        let next = cell_glyph(blade_char(in.material, in.seed, i, epoch + 1u) - 32u, uv, du, dv, h, 0.42);
+        g = CellGlyph(mix(g.cover, next.cover, change), mix(g.mean, next.mean, change), mix(g.distance, next.distance, change), mix(g.threshold, next.threshold, change));
+    }
+    let w = influence_rise(h);
+    let contrast = m.surface.y * view.switches.z;
+    out.tone = max(1.0 + contrast * w * nearness(h) * (g.mean - g.cover), 0.05);
+    out.ink = g.cover * w;
+    out.revealed = 1.0;
+    let solid = smoothstep(14.0, 30.0, h);
+    let inside = smoothstep(g.threshold - 0.14, g.threshold - 0.05, g.distance);
+    out.keep = mix(1.0, inside, solid);
+    return out;
+}
+
+@fragment
+fn fs_grass_depth(in: GrassVaryings, @builtin(front_facing) front: bool) {
+    // In a tool's mask the whole blade is kept: what shows through its letters is seen
+    // only because they are drawn, so it counts as within the reveal distance.
+    if blade_letters(in, front).keep < 0.5 && view.viewport.w < 0.5 {
+        discard;
+    }
+}
+
+@fragment
+fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+    let letters = blade_letters(in, front);
+    if view.viewport.w > 0.5 {
+        return vec4<f32>(vec3<f32>(letters.revealed * 100.0), 1.0);
+    }
+    if letters.keep < 0.5 {
+        discard;
+    }
+    let to_eye = normalize(view.eye_time.xyz - in.world);
+    var n = normalize(in.normal);
+    if !front {
+        // The far side of the blade: its normal mirrored about the sky-facing part.
+        n = normalize(reflect(n, normalize(vec3<f32>(n.x, 0.0, n.z) + vec3<f32>(0.0, 1.0e-4, 0.0))));
+    }
+    // Low in the sward the blades shade one another.
+    // A blade about a pixel wide is drawn as the sward's average, not its own light and
+    // shade: its root's shadow, its own tint, and its paler tip each tend to their mean.
+    let ao = mix(0.8, mix(0.5, 1.0, smoothstep(0.0, 0.8, in.up)), in.seen);
+    let place = vec2<f32>(unit(in.seed), unit(in.seed >> 16u));
+    let texel = textureSampleLevel(material_colour, material_sampler, place, in.material, 5.0);
+    // Turned to face the sky as the sward does, a thin blade would catch more light than
+    // its upright faces do on average; it is darkened to match, so that the field is as
+    // bright as when every blade showed its own light and shade.
+    var albedo = texel.rgb * (0.8 + 0.4 * unit(in.seed >> 9u)) * mix(THIN_BLADE_SHADE, 1.0, in.seen);
+    // Tips are drier and paler than the stem.
+    albedo = mix(albedo, albedo * vec3<f32>(1.25, 1.18, 0.85), in.up * in.up * 0.6) * ao;
+    // Grass bowed by the wind shows its paler, shinier side.
+    albedo *= 1.0 + 1.0 * in.pressed;
+    // Wet blades shine, but broadly: a blade is too narrow to hold a sharp highlight
+    // still, and one that sparkles as it sways is shimmer.
+    var surface = wetted(Surface(albedo * letters.tone, n, 0.6, 0.0), wet_at(in.blade.x, vec3<f32>(0.0, 1.0, 0.0)) * 0.8);
+    surface.roughness = max(surface.roughness, 0.55);
+    let as_surface = Varyings(in.position, in.world, n, vec4<f32>(1.0, 0.0, 0.0, 1.0), vec2<f32>(0.0), in.material, 0u, 0.0, 1.0, 0u);
+    // A blade about a pixel wide is in the sun or the shade as a whole, as the sward is:
+    // its shadow is taken partway up it, where the ground under it takes it too. Against
+    // a low sun, a lit tip over a shaded root is finer than the pixels.
+    let sward_height = select(SWARD_SHADOW, BARLEY_SHADOW, in.material == terrain_material(1u));
+    let shadow_at = in.world + vec3<f32>(0.0, (sward_height - in.up * in.tall) * (1.0 - in.seen), 0.0);
+    // Inside a sward a blade sees less sky than its root's open ground does: its
+    // neighbours hide much of it. A blade wide enough to show its own facing shows that
+    // by itself, turned from the sky; one about a pixel wide takes the sward's share.
+    let sky = in.blade.x * mix(THIN_BLADE_SKY, 1.0, in.seen);
+    var colour = light_surface_at(surface, as_surface, n, 0.0, sky, shadow_at);
+    // Light through the blade: a blade lit from behind glows.
+    let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
+    let l = view.light_dir_hour.xyz;
+    // A blade about a pixel wide passes the sward's average light, not its own.
+    let through = mix(0.12, max(dot(-n, l), 0.0) * 0.3, in.seen) + pow(max(dot(-to_eye, l), 0.0), 6.0) * 0.8;
+    colour += albedo * letters.tone * view.light_colour.rgb * sun_shadow(shadow_at, n, depth_in_view) * through;
+    colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
+    if view.switches.y > 0.0 {
+        let text = mix(paper_of(texel.rgb), ink_of(texel.rgb), letters.ink) / view.viewport.z;
+        colour = mix(colour, text, view.switches.y);
+    }
+    colour = select(colour, vec3<f32>(0.0), colour != colour);
+    return vec4<f32>(colour, letters.revealed);
+}
+
+// ---- water: the river and the pond, over the scene they lie on ----
+
+@group(3) @binding(5) var water_level: texture_2d_array<f32>;
+@group(3) @binding(6) var<uniform> water_list: array<vec4<u32>, 48>;
+@group(3) @binding(7) var behind: texture_2d<f32>;
+@group(3) @binding(8) var scene_depth: texture_depth_multisampled_2d;
+@group(3) @binding(9) var behind_sampler: sampler;
+
+// The level stored where a sample is dry. Matches `DRY` in `crates/render/src/terrain.rs`.
+const DRY: f32 = -1.0e6;
+// How long one phase of the flow lasts, in seconds: the surface is two layers carried
+// along the flow, each reset while the other shows.
+const FLOW_PERIOD: f32 = 2.4;
+
+struct WaterVaryings {
+    @builtin(position) position: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    // How the water moves over the ground, in metres a second.
+    @location(1) flow: vec2<f32>,
+    @location(2) @interpolate(flat) tile: u32,
+    // 1 at a wet sample, a half at a dry one beside water, 0 at one with none beside it.
+    // Wherever it is below a half the surface is not drawn.
+    @location(3) wet: f32,
+}
+
+fn water_sample(i: i32, j: i32, layer: i32) -> f32 {
+    return textureLoad(water_level, vec2<i32>(i + 1, j + 1), layer, 0).r;
+}
+
+@vertex
+fn vs_water(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> WaterVaryings {
+    let tile = water_list[instance / 4u][instance % 4u];
+    let t = terrain.tiles[tile * 2u];
+    let layer = i32(t.w);
+    let i = i32(vertex % TERRAIN_SAMPLES);
+    let j = i32(vertex / TERRAIN_SAMPLES);
+    var level = water_sample(i, j, layer);
+    // A dry sample beside water takes the water's level, so that the surface runs on
+    // into the bank and the bank, drawn already, cuts it where they meet. A dry sample
+    // with no water beside it is put under the ground, where it is never seen.
+    var sum = 0.0;
+    var count = 0.0;
+    var lo = vec2<f32>(0.0);
+    var hi = vec2<f32>(0.0);
+    for (var dj = -1; dj <= 1; dj++) {
+        for (var di = -1; di <= 1; di++) {
+            let w = water_sample(i + di, j + dj, layer);
+            if w > DRY * 0.5 {
+                sum += w;
+                count += 1.0;
+            }
+        }
+    }
+    var wet = 1.0;
+    if level <= DRY * 0.5 {
+        level = select(terrain_sample(i, j, layer), sum / max(count, 1.0), count > 0.0);
+        wet = select(0.0, 0.5, count > 0.0);
+    }
+    // The water runs down its own surface: the steeper, the faster.
+    let here = level;
+    var ex = water_sample(i + 1, j, layer);
+    var wx = water_sample(i - 1, j, layer);
+    var sz = water_sample(i, j + 1, layer);
+    var nz = water_sample(i, j - 1, layer);
+    ex = select(here, ex, ex > DRY * 0.5);
+    wx = select(here, wx, wx > DRY * 0.5);
+    sz = select(here, sz, sz > DRY * 0.5);
+    nz = select(here, nz, nz > DRY * 0.5);
+    let slope = vec2<f32>(ex - wx, sz - nz) / (2.0 * t.z);
+    let steep = length(slope);
+    var out: WaterVaryings;
+    out.flow = select(vec2<f32>(0.0), -slope / max(steep, 1.0e-6) * clamp(steep * 220.0, 0.0, 1.6), steep > 1.0e-5);
+    out.world = vec3<f32>(t.x + f32(i) * t.z, level, t.y + f32(j) * t.z);
+    out.tile = tile;
+    out.wet = wet;
+    out.position = view.view_proj * vec4<f32>(out.world, 1.0);
+    return out;
+}
+
+// The slope of the surface's ripples at a place, as rise over run along x and z.
+fn ripple_slope(p: vec2<f32>, fine: f32) -> vec2<f32> {
+    let e = 0.04;
+    var s = vec2<f32>(0.0);
+    // Broad swell, then small ripples, each fading where they would be finer than a pixel.
+    let scales = array<f32, 3>(0.9, 2.7, 7.9);
+    let heights = array<f32, 3>(0.05, 0.022, 0.009);
+    for (var k = 0; k < 3; k++) {
+        let q = p * scales[k] + vec2<f32>(f32(k) * 17.3, f32(k) * 9.1);
+        let fade = 1.0 - smoothstep(0.25, 0.6, fine * scales[k]);
+        let dx = sky_noise(q + vec2<f32>(e, 0.0)) - sky_noise(q - vec2<f32>(e, 0.0));
+        let dz = sky_noise(q + vec2<f32>(0.0, e)) - sky_noise(q - vec2<f32>(0.0, e));
+        s += vec2<f32>(dx, dz) / (2.0 * e) * scales[k] * heights[k] * fade;
+    }
+    return s;
+}
+
+// A place in the world as the scene before the water saw it: from a pixel of the target
+// and that pixel's depth.
+fn scene_point(pixel: vec2<f32>, depth: f32) -> vec3<f32> {
+    let uv = (pixel - view.viewport_origin.xy) / view.viewport.xy;
+    let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
+    let p = view.inv_view_proj * ndc;
+    return p.xyz / p.w;
+}
+
+// What a ray from the water's surface meets, from the scene drawn before the water: its
+// light and how sure the answer is, 0 where it left the view or met nothing.
+fn reflected_scene(start: vec3<f32>, dir: vec3<f32>) -> vec4<f32> {
+    let target_size = vec2<f32>(textureDimensions(behind));
+    var t = 0.25;
+    for (var k = 0; k < 28; k++) {
+        t *= 1.16;
+        let q = start + dir * t;
+        let clip = view.view_proj * vec4<f32>(q, 1.0);
+        if clip.w <= 1.0e-3 {
+            break;
+        }
+        let ndc = clip.xyz / clip.w;
+        if abs(ndc.x) > 1.0 || abs(ndc.y) > 1.0 {
+            break;
+        }
+        let pixel = view.viewport_origin.xy + (ndc.xy * vec2<f32>(0.5, -0.5) + 0.5) * view.viewport.xy;
+        let d = textureLoad(scene_depth, vec2<i32>(pixel), 0);
+        if d > ndc.z {
+            // Something drawn is nearer than the ray here. It is a hit if the ray has
+            // only just gone behind it, not passed far beneath it.
+            let surface = scene_point(pixel, d);
+            let eye = view.eye_time.xyz;
+            let behind_by = distance(eye, q) - distance(eye, surface);
+            if behind_by < t * 0.3 + 0.2 {
+                let edge = 1.0 - smoothstep(0.8, 1.0, max(abs(ndc.x), abs(ndc.y)));
+                return vec4<f32>(textureSampleLevel(behind, behind_sampler, pixel / target_size, 0.0).rgb, edge);
+            }
+            break;
+        }
+    }
+    return vec4<f32>(0.0);
+}
+
+@fragment
+fn fs_water(in: WaterVaryings) -> @location(0) vec4<f32> {
+    // Footprints first, while every pixel of the quad is still here.
+    let dwx = dpdx(in.world);
+    let dwy = dpdy(in.world);
+    let fine = max(length(dwx), length(dwy));
+    let time = view.eye_time.w;
+    let phase = time / FLOW_PERIOD;
+    let p0 = fract(phase);
+    let p1 = fract(phase + 0.5);
+    // The weight of the second layer: it shows while the first resets.
+    let second = abs(1.0 - 2.0 * p0);
+    let drift = grass.wind.xy * grass.wind.z * time * 0.25;
+    let at0 = in.world.xz - in.flow * p0 * FLOW_PERIOD;
+    let at1 = in.world.xz - in.flow * p1 * FLOW_PERIOD + vec2<f32>(0.37, 0.71);
+    // The water's page, carried by the flow: its letters drift downstream.
+    let anchor0 = vec2<f32>(at0.x, -at0.y);
+    let anchor1 = vec2<f32>(at1.x, -at1.y);
+    let footprint = AnchorFootprint(vec2<f32>(dwx.x, -dwx.z), vec2<f32>(dwy.x, -dwy.z));
+    let material = terrain_material(9u);
+    var glyphs = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
+    if view.switches.x > 0.5 {
+        let g0 = glyph_surface(anchor0, footprint, material, 0u, vec3<f32>(0.08), 0.0, 0.0);
+        let g1 = glyph_surface(anchor1, footprint, material, 0u, vec3<f32>(0.08), 0.0, 0.0);
+        glyphs = GlyphResult(mix(g0.tone, g1.tone, second), mix(g0.relief, g1.relief, second), mix(g0.ink, g1.ink, second), max(g0.revealed, g1.revealed));
+    }
+
+    if terrain_cut(in.world, in.tile) || in.wet < 0.499 {
+        discard;
+    }
+    // The water tests depth itself against the scene drawn before it.
+    let pixel = in.position.xy;
+    let ground_depth = textureLoad(scene_depth, vec2<i32>(pixel), 0);
+    if ground_depth >= in.position.z {
+        discard;
+    }
+    if view.viewport.w > 0.5 {
+        return vec4<f32>(vec3<f32>(glyphs.revealed * 100.0), 1.0);
+    }
+
+    let eye = view.eye_time.xyz;
+    let to_eye = normalize(eye - in.world);
+    let distance_to = length(eye - in.world);
+    let ground = scene_point(pixel, ground_depth);
+    // How deep the water is beneath this point, and how far the eye looks through it.
+    let deep = max(in.world.y - ground.y, 0.0);
+    let through = clamp(distance(eye, ground) - distance_to, 0.0, 60.0);
+
+    // The surface: ripples carried by the flow and stirred by the wind, and the letters'
+    // own relief, which is how they are written on water.
+    let s0 = ripple_slope(at0 + drift, fine);
+    let s1 = ripple_slope(at1 + drift, fine);
+    let calm = smoothstep(0.0, 0.3, deep);
+    let slope = mix(s0, s1, second) * mix(0.3, 1.0, calm) + rain_rings(in.world.xz, view.weather.x);
+    var n = normalize(vec3<f32>(-slope.x, 1.0, -slope.y) + vec3<f32>(glyphs.relief.x, 0.0, -glyphs.relief.y) * 0.5);
+    if dot(n, to_eye) < 0.05 {
+        n = normalize(n + to_eye * (0.05 - dot(n, to_eye)));
+    }
+
+    // What lies beneath, bent by the surface, and the water's colour through its depth.
+    let target_size = vec2<f32>(textureDimensions(behind));
+    var bent = pixel + n.xz * view.viewport.y * 0.05 * clamp(through, 0.0, 1.5) / max(distance_to, 1.0);
+    bent = clamp(bent, view.viewport_origin.xy, view.viewport_origin.xy + view.viewport.xy - 1.0);
+    if textureLoad(scene_depth, vec2<i32>(bent), 0) >= in.position.z {
+        // Bent onto something in front of the water: take what is straight beneath.
+        bent = pixel;
+    }
+    let under = textureSampleLevel(behind, behind_sampler, bent / target_size, 0.0).rgb;
+    let m = materials.entries[material];
+    let tint = textureSampleLevel(material_colour, material_sampler, at0 / m.surface.x, material, 6.0).rgb;
+    // A northern river: peat and silt take the light quickly, red first, and what the
+    // water gives back of the day is a dark green-brown.
+    let absorb = vec3<f32>(0.9, 0.42, 0.5);
+    let kept = exp(-absorb * through);
+    let lit_from_above = view.sky_zenith.rgb * 0.8 + view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * 0.5;
+    let body = under * kept + tint * vec3<f32>(0.9, 0.8, 0.55) * lit_from_above * 0.5 * (1.0 - kept);
+
+    // What it mirrors: the scene where a ray finds it, the sky where it does not.
+    var r = reflect(-to_eye, n);
+    r.y = max(r.y, 0.01);
+    r = normalize(r);
+    let sky = sky_colour(r, view);
+    let found = reflected_scene(in.world, r);
+    let mirrored = mix(sky, found.rgb, found.a);
+    let facing = max(dot(n, to_eye), 0.0);
+    let fresnel = 0.02 + 0.98 * pow(1.0 - facing, 5.0);
+    var colour = mix(body, mirrored, fresnel);
+
+    // The sun's glint, where the sun reaches the water.
+    let depth_in_view = -(view.view * vec4<f32>(in.world, 1.0)).z;
+    let shadow = sun_shadow(in.world, vec3<f32>(0.0, 1.0, 0.0), depth_in_view);
+    let glint = shade_light(Surface(vec3<f32>(0.0), n, 0.06, 0.0), to_eye, view.light_dir_hour.xyz, view.light_colour.rgb);
+    colour += glint * shadow;
+
+    // Foam where it is shallow at the edge and where it runs fast, carried along. Up
+    // close it is written: it is `.` and `,` and nothing between.
+    let speed = length(in.flow);
+    let froth0 = sky_noise(at0 * 3.1) * 0.6 + sky_noise(at0 * 9.3) * 0.4;
+    let froth1 = sky_noise(at1 * 3.1) * 0.6 + sky_noise(at1 * 9.3) * 0.4;
+    let froth = mix(froth0, froth1, second);
+    let lace = sky_noise(mix(at0, at1, second) * 0.6 + vec2<f32>(41.0, 7.0));
+    var foam = clamp((1.0 - smoothstep(0.0, 0.08, deep)) * (0.4 + lace) + smoothstep(1.2, 1.6, speed) * 0.4 - (1.0 - froth) * 1.2, 0.0, 1.0) * 0.85;
+    let squeeze = max(length(footprint.dx), length(footprint.dy));
+    let h = CELL_0 * 4.0 / max(squeeze, 1.0e-6) * view.switches.w;
+    if foam > 0.0 && view.switches.x > 0.5 && h >= 3.0 {
+        let size = CELL_0 * 4.0;
+        let q = select(anchor1, anchor0, second < 0.5) / size;
+        let cell = vec2<i32>(floor(q));
+        let f = fract(q);
+        let character = select(46u, 44u, (hash_cell(cell, 1, 31u) & 1u) == 1u);
+        let du = footprint.dx * vec2<f32>(1.0 / size, -1.0 / size);
+        let dv = footprint.dy * vec2<f32>(1.0 / size, -1.0 / size);
+        let g = cell_glyph(character - 32u, vec2<f32>(f.x, 1.0 - f.y), du, dv, h, 0.5);
+        let written = smoothstep(g.threshold - 0.12, g.threshold - 0.02, g.distance);
+        foam *= mix(1.0, written * 2.5, influence_rise(h));
+    }
+    let foam_light = view.light_colour.rgb * max(view.light_dir_hour.y, 0.0) * shadow * 0.8 + view.sky_zenith.rgb * 0.9;
+    colour = mix(colour, vec3<f32>(0.85, 0.87, 0.86) * foam_light, clamp(foam, 0.0, 1.0));
+
+    // The water's fine print, `~ - =` and its words, drifting with it. It is written on
+    // the ripples, not ruled over the water: letters gather on the crests, most of all
+    // at the edge, and the troughs between are clear.
+    let crest = smoothstep(0.03, 0.09, length(mix(s0, s1, second))) * mix(0.45, 1.0, 1.0 - smoothstep(0.2, 1.2, deep));
+    colour *= mix(1.0, glyphs.tone, crest);
+    let look = u32(view.effects.z + 0.5);
+    if look > 0u && glyphs.revealed > 0.0 {
+        // Up close the eye sees down into it: characters float in the water.
+        let tangent = vec3<f32>(1.0, 0.0, 0.0);
+        let bitangent = vec3<f32>(0.0, 0.0, -1.0);
+        let in_frame = vec3<f32>(dot(to_eye, tangent), dot(to_eye, bitangent), to_eye.y);
+        let win = Window(anchor0, tangent, bitangent, lit_from_above, 0.0);
+        colour = glyph_depth(colour, anchor0, footprint, in_frame, WorldFootprint(in.world, dwx, dwy), -to_eye, distance_to, material, 0u, max(deep, 0.3), glyphs.ink, look, win);
+    }
+
+    // At the very edge, the water thins to nothing over the bank.
+    colour = mix(under, colour, smoothstep(0.0, 0.03, deep));
+    colour = through_air(colour, in.world, pixel - view.viewport_origin.xy);
+    if view.switches.y > 0.0 {
+        let text = mix(paper_of(tint), ink_of(tint), glyphs.ink) / view.viewport.z;
+        colour = mix(colour, text, view.switches.y);
+    }
+    colour = select(colour, vec3<f32>(0.0), colour != colour);
+    return vec4<f32>(colour, glyphs.revealed);
+}
+
+// ---- rain: streaks in columns fixed to the ground around the eye, and their splashes ----
+
+// Columns across the square of rain around each eye, and the side of each column's cell.
+const RAIN_SIDE: u32 = 160u;
+const RAIN_CELL: f32 = 0.3;
+// How fast a drop falls, and how far above and below the eye it is drawn, in metres.
+const RAIN_SPEED: f32 = 7.5;
+const RAIN_ABOVE: f32 = 12.0;
+const RAIN_BELOW: f32 = 6.0;
+// How long a splash shows, in seconds.
+const SPLASH_SECONDS: f32 = 0.16;
+
+struct RainVaryings {
+    @builtin(position) position: vec4<f32>,
+    // A streak: x across it, -1 to 1, and y along it, 0 at its tail and 1 at its head.
+    // A splash: the place in its character's cell.
+    @location(0) uv: vec2<f32>,
+    // 0 for a streak, 1 for a splash.
+    @location(1) @interpolate(flat) kind: u32,
+    @location(2) @interpolate(flat) fade: f32,
+}
+
+// The ground's height under a place, from the finest tiles around the eye, or very far
+// below where none holds it.
+fn ground_height_at(p: vec2<f32>) -> f32 {
+    for (var k = 0; k < 4; k++) {
+        let g = view.ground_tiles[k];
+        if g.w < 0.5 {
+            continue;
+        }
+        let t = terrain.tiles[u32(g.z) * 2u];
+        let local = (p - t.xy) / t.z;
+        if any(local < vec2<f32>(0.0)) || any(local > vec2<f32>(64.0)) {
+            continue;
+        }
+        let layer = i32(t.w);
+        let base = clamp(vec2<i32>(floor(local)), vec2<i32>(0), vec2<i32>(63));
+        let f = clamp(local - vec2<f32>(base), vec2<f32>(0.0), vec2<f32>(1.0));
+        let h00 = terrain_sample(base.x, base.y, layer);
+        let h10 = terrain_sample(base.x + 1, base.y, layer);
+        let h01 = terrain_sample(base.x, base.y + 1, layer);
+        let h11 = terrain_sample(base.x + 1, base.y + 1, layer);
+        if f.x >= f.y {
+            return h00 + f.x * (h10 - h00) + f.y * (h11 - h10);
+        }
+        return h00 + f.y * (h01 - h00) + f.x * (h11 - h01);
+    }
+    return -1.0e6;
+}
+
+@vertex
+fn vs_rain(@builtin(vertex_index) vertex: u32, @builtin(instance_index) drop: u32) -> RainVaryings {
+    var out: RainVaryings;
+    out.position = NOWHERE;
+    out.uv = vec2<f32>(0.0);
+    out.kind = 0u;
+    out.fade = 0.0;
+    let rain = view.weather.x;
+    let eye = view.eye_time.xyz;
+    let half = i32(RAIN_SIDE / 2u);
+    let cell = vec2<i32>(floor(eye.xz / RAIN_CELL)) - vec2<i32>(half) + vec2<i32>(i32(drop % RAIN_SIDE), i32(drop / RAIN_SIDE));
+    let h = hash_cell(cell, 5, 91u);
+    // Light rain has fewer columns falling.
+    if unit(h) > rain * view.quality.w {
+        return out;
+    }
+    let corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
+    );
+    let c = corners[vertex];
+    // Where the drop lands; it falls slanting, carried downwind.
+    let column = (vec2<f32>(cell) + vec2<f32>(unit(h >> 4u), unit(h >> 12u))) * RAIN_CELL;
+    let drift = view.wind.xy * view.weather.z * 2.5;
+    let top = eye.y + RAIN_ABOVE;
+    let period = (RAIN_ABOVE + RAIN_BELOW) / RAIN_SPEED;
+    let since = fract(view.eye_time.w / period + unit(hash_cell(cell, 6, 93u))) * period;
+    let ground = ground_height_at(column);
+    let lands = (top - max(ground, eye.y - RAIN_BELOW)) / RAIN_SPEED;
+    let up = vec3<f32>(0.0, 1.0, 0.0);
+    // The world's size of a pixel at a distance of one metre.
+    let pixel = 1.3e-3 * 1080.0 / view.viewport.y;
+    if since < lands {
+        let head = vec3<f32>(column.x, top - RAIN_SPEED * since, column.y) - vec3<f32>(drift.x, 0.0, drift.y) * (lands - since);
+        let to_eye = eye - head;
+        let distance_to = length(to_eye);
+        if distance_to > 30.0 {
+            return out;
+        }
+        let fall = normalize(vec3<f32>(drift.x, -RAIN_SPEED, drift.y));
+        // A drop is a streak as long as it falls in a twentieth of a second, and never
+        // thinner than a pixel; a wider one is fainter, so each keeps its weight.
+        let thin = 0.0012;
+        let wide = max(thin, distance_to * pixel * 0.9);
+        let side = normalize(cross(fall, to_eye / distance_to) + vec3<f32>(1.0e-5, 0.0, 0.0));
+        let world = head + side * c.x * wide * 0.5 - fall * (1.0 - c.y) * 0.38;
+        out.position = view.view_proj * vec4<f32>(world, 1.0);
+        out.uv = c;
+        out.kind = 0u;
+        out.fade = thin / wide * (1.0 - smoothstep(20.0, 30.0, distance_to));
+        return out;
+    }
+    let age = since - lands;
+    if age > SPLASH_SECONDS || ground < -1.0e5 || ground < eye.y - RAIN_BELOW {
+        return out;
+    }
+    // A splash stands on the ground where the drop struck, facing the eye.
+    let at = vec3<f32>(column.x, ground, column.y);
+    let to_eye = eye - at;
+    if length(to_eye) > 12.0 {
+        return out;
+    }
+    let right = normalize(cross(up, to_eye) + vec3<f32>(1.0e-5, 0.0, 0.0));
+    let size = 0.035;
+    let world = at + right * c.x * size * 0.5 + up * c.y * size;
+    out.position = view.view_proj * vec4<f32>(world, 1.0);
+    out.uv = vec2<f32>(c.x * 0.5 + 0.5, 1.0 - c.y);
+    out.kind = 1u;
+    out.fade = 1.0 - age / SPLASH_SECONDS;
+    return out;
+}
+
+@fragment
+fn fs_rain(in: RainVaryings) -> @location(0) vec4<f32> {
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    if textureLoad(scene_depth, vec2<i32>(in.position.xy), 0) > in.position.z {
+        discard;
+    }
+    let light = view.sky_horizon.rgb * 0.9 + view.light_colour.rgb * 0.12;
+    if in.kind == 0u {
+        if view.viewport.w > 0.5 {
+            discard;
+        }
+        // Soft at both ends: a pixel the streak passes over brightens and fades over the
+        // frames it takes to pass, rather than switching on when the head arrives.
+        let across = 1.0 - abs(in.uv.x);
+        let along = sin(3.14159265 * in.uv.y);
+        return vec4<f32>(light * 1.3, 0.36 * in.fade * across * along * along);
+    }
+    // Close by, a splash is a `'`; further off, a fleck of spray.
+    let h = 1.0 / max(max(length(du), length(dv)), 1.0e-5);
+    let legible = smoothstep(4.0, 7.0, h) * view.switches.x;
+    let g = cell_glyph(39u - 32u, in.uv, du, dv, h, 0.5);
+    let fleck = smoothstep(1.0, 0.3, length((in.uv - vec2<f32>(0.5, 0.6)) * vec2<f32>(2.2, 3.0)));
+    let cover = mix(fleck * 0.6, g.cover, legible);
+    if view.viewport.w > 0.5 {
+        if legible > 0.0 && cover > 0.1 {
+            return vec4<f32>(vec3<f32>(100.0), 1.0);
+        }
+        discard;
+    }
+    return vec4<f32>(light * 1.5, cover * in.fade * 0.85);
+}
+
+// ---- the particles of magic: words gathering, flying, and bursting ----
+
+struct SparkVaryings {
+    @builtin(position) position: vec4<f32>,
+    // Within the particle's cell, 0 to 1, v down.
+    @location(0) uv: vec2<f32>,
+    @location(1) @interpolate(flat) character: u32,
+    // rgb: its light. a: how much of it there is now.
+    @location(2) @interpolate(flat) colour: vec4<f32>,
+    // How many pixels tall its cell is.
+    @location(3) @interpolate(flat) pixels: f32,
+    // 1 for ink, drawn over what is behind it; 0 for light, added to it.
+    @location(4) @interpolate(flat) ink: u32,
+}
+
+fn spark_hash(a: u32, b: u32) -> u32 {
+    var h = a * 0x9e3779b9u ^ (b + 0x7f4a7c15u) * 0x85ebca6bu;
+    h ^= h >> 15u;
+    h *= 0x2c1b3c6du;
+    h ^= h >> 12u;
+    return h;
+}
+
+// A direction on the sphere, from a hash.
+fn spark_direction(h: u32) -> vec3<f32> {
+    let z = unit(h) * 2.0 - 1.0;
+    let a = unit(h >> 9u) * 6.2831853;
+    let r = sqrt(max(1.0 - z * z, 0.0));
+    return vec3<f32>(r * cos(a), z, r * sin(a));
+}
+
+// The `k`th character of an emitter's word.
+fn spark_character(emitter: u32, k: u32) -> u32 {
+    let text = view.emitter_text[emitter];
+    var length = 0u;
+    for (var i = 0u; i < 16u; i++) {
+        if ((text[i / 4u] >> ((i % 4u) * 8u)) & 0xffu) == 0u {
+            break;
+        }
+        length = i + 1u;
+    }
+    if length == 0u {
+        return 42u;
+    }
+    let i = k % length;
+    return (text[i / 4u] >> ((i % 4u) * 8u)) & 0xffu;
+}
+
+@vertex
+fn vs_spark(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: u32) -> SparkVaryings {
+    var out: SparkVaryings;
+    out.position = NOWHERE;
+    out.uv = vec2<f32>(0.0);
+    out.character = 32u;
+    out.colour = vec4<f32>(0.0);
+    out.pixels = 0.0;
+    out.ink = 0u;
+    let emitter = index / PARTICLES_PER_EMITTER;
+    let k = index % PARTICLES_PER_EMITTER;
+    if emitter >= min(view.magic_counts.y, MAX_EMITTERS) {
+        return out;
+    }
+    let e = view.emitters[emitter];
+    let kind = u32(e[0].w + 0.5);
+    // The governor may thin the particles.
+    let count = u32(e[3].x * view.quality.w);
+    if k >= count {
+        return out;
+    }
+    let h = spark_hash(emitter * 977u + u32(e[3].z * 13.0), k);
+    let t = view.eye_time.w;
+    let centre = e[0].xyz;
+    let eye = view.eye_time.xyz;
+    let towards = normalize(centre - eye + vec3<f32>(1.0e-4));
+    let right = normalize(cross(towards, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1.0e-4, 0.0, 0.0));
+    let up = cross(right, towards);
+    var place = centre;
+    var size = e[3].y;
+    var amount = 1.0;
+    if kind == 0u {
+        // The charge: characters spiral in towards the hand, again and again.
+        let charge = e[3].w;
+        let phase = fract(t * (0.8 + 0.6 * unit(h >> 3u)) + unit(h));
+        let r = mix(0.16, 0.025, phase) * (0.6 + 0.6 * charge);
+        let a = unit(h >> 8u) * 6.2831853 + t * (2.0 + 3.0 * unit(h >> 5u)) + phase * 3.0;
+        place = centre + (right * cos(a) + up * sin(a)) * r + towards * (unit(h >> 14u) - 0.5) * 0.08;
+        amount = sin(phase * 3.14159265);
+        size *= 0.7 + 0.6 * unit(h >> 11u);
+    } else if kind == 1u {
+        // The flight: a bright head, and a trail behind it that scatters and fades.
+        let dir = e[1].xyz;
+        let length = min(1.1 + 0.6 * e[3].w, e[1].w);
+        let s = pow(unit(h), 1.7) * length;
+        let side = normalize(cross(dir, vec3<f32>(0.0, 1.0, 0.0)) + vec3<f32>(1.0e-4, 0.0, 0.0));
+        let lift = cross(side, dir);
+        let wobble = vec2<f32>(sin(t * 9.0 + unit(h >> 6u) * 30.0), cos(t * 7.0 + unit(h >> 10u) * 30.0));
+        place = centre - dir * s + (side * wobble.x + lift * wobble.y) * s * 0.14;
+        amount = pow(1.0 - s / max(length, 0.01), 1.4);
+        if k < 6u {
+            // The head itself: the word's letters, larger and brighter.
+            place = centre + side * (f32(k) - 2.5) * size * 0.9;
+            size *= 1.8;
+            amount = 1.6;
+        }
+    } else if kind == 3u {
+        // Burning: embers rising off the thing, flickering, again and again.
+        let radius = e[1].w;
+        let phase = fract(t * (0.35 + 0.4 * unit(h >> 3u)) + unit(h));
+        let a = unit(h >> 8u) * 6.2831853;
+        let r = sqrt(unit(h >> 12u)) * radius * 0.8;
+        let start = centre + vec3<f32>(cos(a) * r, (unit(h >> 16u) - 0.6) * radius, sin(a) * r);
+        let sway = vec3<f32>(sin(t * 2.3 + unit(h >> 5u) * 20.0), 0.0, cos(t * 1.9 + unit(h >> 6u) * 20.0)) * 0.08 * phase;
+        place = start + vec3<f32>(0.0, phase * radius * 1.6, 0.0) + sway;
+        amount = sin(phase * 3.14159265) * (0.7 + 0.3 * sin(t * 13.0 + unit(h) * 40.0));
+        size *= 0.6 + 0.8 * unit(h >> 9u);
+    } else if kind == 5u {
+        // An Inkling: a churning mass of ink characters, swelling and rearing as it
+        // gathers itself to strike, and running out into a flat pool as it dies.
+        let telegraph = e[1].y;
+        let facing = normalize(vec3<f32>(e[1].x, 0.0, e[1].z) + vec3<f32>(1.0e-4, 0.0, 0.0));
+        let radius = e[1].w;
+        let height = e[2].w;
+        let dying = e[3].w;
+        var d = spark_direction(h);
+        let depth = pow(unit(h >> 18u), 0.5);
+        // Churning: each character runs round the body on its own circle.
+        let a = t * (0.6 + 1.4 * unit(h >> 5u)) + unit(h >> 9u) * 6.2831853;
+        d = normalize(d + vec3<f32>(cos(a), sin(a * 0.7) * 0.6, sin(a)) * 0.5);
+        let swell = 1.0 + 0.35 * telegraph;
+        var p = vec3<f32>(d.x * radius * swell, d.y * height * 0.5 * (1.0 + 0.4 * telegraph), d.z * radius * swell) * depth;
+        // Rearing back from the way it faces, then thrown forward.
+        p += facing * (-0.25 * telegraph * radius) * (d.y * 0.5 + 0.5);
+        // Dying, it spreads into a pool on the ground.
+        let pool = vec3<f32>(d.x, 0.0, d.z) * radius * (1.0 + 1.6 * dying) * depth;
+        place = centre + mix(p, pool, dying);
+        amount = 1.0 - 0.4 * dying;
+        size *= 0.7 + 0.6 * unit(h >> 11u);
+        out.ink = 1u;
+    } else if kind == 4u {
+        // Frost: glitter over the thing, each point catching the light now and then.
+        let radius = e[1].w;
+        let d = spark_direction(h);
+        place = centre + d * radius * 0.85 - vec3<f32>(0.0, fract(t * 0.05 + unit(h)) * 0.1, 0.0);
+        amount = pow(max(sin(t * (1.0 + 2.0 * unit(h >> 4u)) + unit(h >> 7u) * 40.0), 0.0), 6.0);
+    } else {
+        // The impact: a burst shaped by the word's class.
+        let age = t - e[1].w;
+        let p = clamp(age / 0.9, 0.0, 1.0);
+        let ease = 1.0 - (1.0 - p) * (1.0 - p);
+        var d = spark_direction(h);
+        let shape = u32(e[3].w + 0.5);
+        if shape == 0u {
+            place = centre + d * 1.5 * ease;
+        } else if shape == 1u {
+            // Creeping: low, along the surface.
+            d.y *= 0.15;
+            place = centre + normalize(d) * 1.1 * p;
+        } else if shape == 2u {
+            // Knitting: drawn inward to the point.
+            place = centre + d * 1.3 * (1.0 - ease);
+        } else if shape == 3u {
+            // Cracking: flat lines out from the point.
+            d.y = 0.0;
+            place = centre + normalize(d) * (1.7 * ease) * (0.6 + 0.4 * unit(h >> 7u));
+        } else if shape == 4u {
+            // Drifting: rising slowly.
+            place = centre + d * 0.45 * p + vec3<f32>(0.0, 0.9 * p, 0.0);
+        } else if shape == 5u {
+            // Dropping.
+            place = centre + d * 0.7 * p - vec3<f32>(0.0, 1.4 * p * p, 0.0);
+        } else {
+            // A word refused: a few characters, falling away.
+            place = centre + d * 0.35 * ease - vec3<f32>(0.0, 0.5 * p * p, 0.0);
+        }
+        amount = pow(1.0 - p, 1.3) * smoothstep(0.0, 0.05, age);
+    }
+    let corners = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
+        vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
+    );
+    let c = corners[vertex];
+    // Never smaller than about a pixel and a half, so that nothing sparkles.
+    let distance_to = max(distance(place, eye), 0.05);
+    let pixel = 1.3e-3 * 1080.0 / view.viewport.y * distance_to;
+    let half = max(size * 0.5, pixel * 0.75);
+    let world = place + (right * c.x + up * c.y) * half;
+    out.position = view.view_proj * vec4<f32>(world, 1.0);
+    out.uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+    out.character = spark_character(emitter, k);
+    let strength = select(e[2].w, 1.0, kind == 5u);
+    out.colour = vec4<f32>(e[2].rgb * strength, amount * min(size * 0.5 / max(half, 1.0e-5), 1.0));
+    out.pixels = half * 2.0 / pixel;
+    return out;
+}
+
+// A particle's character, as its share of the cell: its designed weight while it has
+// room, a soft point while it is too small to read.
+fn spark_cover(in: SparkVaryings) -> f32 {
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    let h = in.pixels;
+    let k = ATLAS_RANGE * h / ATLAS_CELL;
+    let large = smoothstep(9.0, 12.5, h);
+    let small_d = textureSampleGrad(glyph_atlas, glyph_sampler, in.uv, in.character - 32u, du, dv).a;
+    let big = textureSampleGrad(glyph_atlas, glyph_sampler, in.uv, in.character - 32u + GLYPHS_PER_FACE, du, dv);
+    let median = max(min(big.r, big.g), min(max(big.r, big.g), big.b));
+    let d = mix(small_d, mix(big.a, median, smoothstep(24.0, 48.0, h)), large);
+    let letter = clamp((d - 0.5) * max(k, 1.0) + 0.5, 0.0, 1.0);
+    let point = smoothstep(0.5, 0.0, length(in.uv - vec2<f32>(0.5)));
+    return mix(point * 0.6, letter, smoothstep(3.0, 6.0, in.pixels));
+}
+
+// Ink: dark characters laid over what is behind them, premultiplied.
+@fragment
+fn fs_ink(in: SparkVaryings) -> @location(0) vec4<f32> {
+    if view.viewport.w > 0.5 || in.ink == 0u || in.colour.a <= 0.0 {
+        discard;
+    }
+    let cover = spark_cover(in) * in.colour.a;
+    return vec4<f32>(in.colour.rgb * cover / view.viewport.z, cover);
+}
+
+@fragment
+fn fs_spark(in: SparkVaryings) -> @location(0) vec4<f32> {
+    if view.viewport.w > 0.5 || in.colour.a <= 0.0 || in.ink != 0u {
+        discard;
+    }
+    let du = dpdx(in.uv);
+    let dv = dpdy(in.uv);
+    // A character at its designed weight, not thickened to a tone as print on a surface
+    // is: the pixel face while small, the printed face once it has room.
+    let h = in.pixels;
+    let k = ATLAS_RANGE * h / ATLAS_CELL;
+    let large = smoothstep(9.0, 12.5, h);
+    let small_d = textureSampleGrad(glyph_atlas, glyph_sampler, in.uv, in.character - 32u, du, dv).a;
+    let big = textureSampleGrad(glyph_atlas, glyph_sampler, in.uv, in.character - 32u + GLYPHS_PER_FACE, du, dv);
+    let median = max(min(big.r, big.g), min(max(big.r, big.g), big.b));
+    let d = mix(small_d, mix(big.a, median, smoothstep(24.0, 48.0, h)), large);
+    let letter = clamp((d - 0.5) * max(k, 1.0) + 0.5, 0.0, 1.0);
+    // Too small to read, a character is a soft point of its light.
+    let point = smoothstep(0.5, 0.0, length(in.uv - vec2<f32>(0.5)));
+    let cover = mix(point * 0.6, letter, smoothstep(3.0, 6.0, in.pixels));
+    let light = in.colour.rgb * cover * in.colour.a / view.viewport.z;
+    return vec4<f32>(light, 0.0);
 }

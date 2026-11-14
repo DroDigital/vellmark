@@ -204,6 +204,11 @@ const BOTTOM_LEVEL_DIVE: i32 = -4;
 
 // `light` is how brightly the surface is lit, 0 to 1. It is used only in close
 // reading, where light is kept as the weight of the ink and nothing else.
+// Where a rewrite wave is passing, 0 to 1: the surface's coarser print shows there, as
+// it does in close reading, so that the rewriting can be seen from where the word was
+// written. Set by the caller before `glyph_surface`; 0 everywhere else.
+var<private> wave_reveal: f32 = 0.0;
+
 fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, page: u32, albedo: vec3<f32>, light: f32, heat: f32) -> GlyphResult {
     var result = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     let m = materials.entries[material];
@@ -221,7 +226,8 @@ fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, p
 
     // Which levels can show. A level shows while its cells are between about 3 and 160
     // pixels tall; each level is four times the last.
-    let top_allowed = select(TOP_LEVEL, TOP_LEVEL_READING, reading > 0.0);
+    let coarse = max(reading, wave_reveal);
+    let top_allowed = select(TOP_LEVEL, TOP_LEVEL_READING, coarse > 0.0);
     let bottom_allowed = select(0, BOTTOM_LEVEL_DIVE, dive > 0.0);
     let top = min(top_allowed, i32(floor(log2(160.0 / h0) * 0.5)));
     let bottom = max(bottom_allowed, i32(ceil(log2(3.0 / h0) * 0.5)));
@@ -276,7 +282,7 @@ fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, p
         // 1. Coarser levels belong to close reading, finer ones to a dive.
         var w = influence_rise(h);
         if level >= 2 {
-            w *= influence_fall(h) * reading;
+            w *= influence_fall(h) * coarse;
         } else if level == 1 {
             w *= influence_fall(h);
         } else if level == 0 {

@@ -8,6 +8,7 @@ mod game;
 mod log;
 mod paths;
 mod perf;
+mod sound;
 
 use std::process::ExitCode;
 

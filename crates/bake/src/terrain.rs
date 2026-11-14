@@ -1037,6 +1037,101 @@ pub fn map_image(spacing: f32, heights: &[f32], water: &[f32], ground: &[Ground]
 
 pub const GRID_SAMPLES: usize = GRID;
 
+
+// ---- where the trees stand ----
+
+/// One tree of the valley: its kind, where it stands, which way it is turned, and how
+/// much larger or smaller than its kind's size.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TreePlace {
+    pub kind: &'static str,
+    pub x: f32,
+    pub z: f32,
+    pub yaw: f32,
+    pub scale: f32,
+}
+
+fn distance_to_line(points: &[(f32, f32)], x: f32, z: f32) -> f32 {
+    let mut best = f32::MAX;
+    for w in points.windows(2) {
+        let (ax, az, bx, bz) = (w[0].0, w[0].1, w[1].0, w[1].1);
+        let (dx, dz) = (bx - ax, bz - az);
+        let len2 = (dx * dx + dz * dz).max(1.0e-6);
+        let t = (((x - ax) * dx + (z - az) * dz) / len2).clamp(0.0, 1.0);
+        let (px, pz) = (ax + dx * t - x, az + dz * t - z);
+        best = best.min((px * px + pz * pz).sqrt());
+    }
+    best
+}
+
+/// Where the valley's trees stand: the woods at its north and east edges, rows of
+/// apples in the Quiet Orchard, and hawthorn hedges along the roads. Never on a road,
+/// in water, or in a field. Within the playable area only: beyond it, the far ring's
+/// woods are drawn by the terrain itself.
+pub fn tree_places(path: &Path) -> Result<Vec<TreePlace>, BakeError> {
+    let (a, _) = read(path)?;
+    let clear = |x: f32, z: f32, margin: f32| {
+        a.roads.iter().all(|r| distance_to_line(&r.points, x, z) > r.width * 0.5 + margin)
+            && a.rivers.iter().all(|r| distance_to_line(&r.points, x, z) > r.width * 0.5 + r.bank + margin)
+            && a.ponds.iter().all(|p| ((x - p.centre.0).powi(2) + (z - p.centre.1).powi(2)).sqrt() > p.radius + p.bank + margin)
+            && !a.fields.iter().any(|f| inside(&f.points, x, z))
+    };
+    let unit = |x: i32, z: i32, salt: u32| (hash(hash(x as u32 ^ salt.wrapping_mul(0x9e37_79b9)) ^ z as u32) & 0xffff) as f32 / 65535.0;
+    let mut out = Vec::new();
+    // The woods: a jittered grid seven metres apart, oak and ash with hawthorn between.
+    let spacing = 7.0;
+    for gz in -36..36 {
+        for gx in -36..36 {
+            let x = (gx as f32 + 0.15 + unit(gx, gz, 1) * 0.7) * spacing;
+            let z = (gz as f32 + 0.15 + unit(gx, gz, 2) * 0.7) * spacing;
+            if x.abs() > 252.0 || z.abs() > 252.0 || !a.woods.iter().any(|w| inside(&w.points, x, z)) || !clear(x, z, 3.0) {
+                continue;
+            }
+            let pick = unit(gx, gz, 3);
+            let kind = if pick < 0.5 { "oak" } else if pick < 0.85 { "ash" } else { "hawthorn" };
+            out.push(TreePlace { kind, x, z, yaw: unit(gx, gz, 4) * std::f32::consts::TAU, scale: 0.8 + unit(gx, gz, 5) * 0.45 });
+        }
+    }
+    // The orchard: rows of apples, six metres apart, inside its flat.
+    if let Some(orchard) = a.flats.iter().find(|f| f.key == "quiet_orchard") {
+        let (cx, cz) = orchard.centre;
+        for row in -4..=4 {
+            for col in -4..=4 {
+                let (x, z) = (cx + col as f32 * 6.0 + (row & 1) as f32 * 3.0, cz + row as f32 * 6.0);
+                if ((x - cx).powi(2) + (z - cz).powi(2)).sqrt() > orchard.radius * 0.8 || !clear(x, z, 2.0) {
+                    continue;
+                }
+                out.push(TreePlace { kind: "apple", x, z, yaw: unit(col, row, 6) * std::f32::consts::TAU, scale: 0.85 + unit(col, row, 7) * 0.3 });
+            }
+        }
+    }
+    // Hedges along the roads: hawthorn either side, with gaps.
+    for road in a.roads.iter().filter(|r| r.key == "penance_road" || r.key == "bridge_road") {
+        for w in road.points.windows(2) {
+            let (ax, az, bx, bz) = (w[0].0, w[0].1, w[1].0, w[1].1);
+            let len = ((bx - ax).powi(2) + (bz - az).powi(2)).sqrt();
+            let (nx, nz) = (-(bz - az) / len, (bx - ax) / len);
+            let steps = (len / 4.0) as i32;
+            for i in 0..steps {
+                for side in [-1.0f32, 1.0] {
+                    let t = (i as f32 + 0.5) / steps as f32;
+                    let key = (i, (ax * 7.0 + side * 3.0) as i32);
+                    if unit(key.0, key.1, 8) < 0.45 {
+                        continue;
+                    }
+                    let off = road.width * 0.5 + 2.4 + unit(key.0, key.1, 9) * 0.8;
+                    let (x, z) = (ax + (bx - ax) * t + nx * side * off, az + (bz - az) * t + nz * side * off);
+                    if x.abs() > 252.0 || z.abs() > 252.0 || !a.rivers.iter().all(|r| distance_to_line(&r.points, x, z) > r.width * 0.5 + r.bank + 3.0) {
+                        continue;
+                    }
+                    out.push(TreePlace { kind: "hawthorn", x, z, yaw: unit(key.0, key.1, 10) * std::f32::consts::TAU, scale: 0.7 + unit(key.0, key.1, 11) * 0.4 });
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1214,5 +1309,21 @@ mod tests {
         for (x, y) in a.tiles.iter().zip(&b.tiles) {
             assert!(x.to_bytes() == y.to_bytes());
         }
+    }
+
+    #[test]
+    fn trees_stand_in_the_woods_the_orchard_and_the_hedges_never_on_the_road() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/terrain/valley.ron");
+        let places = tree_places(&path).unwrap();
+        let count = |k: &str| places.iter().filter(|p| p.kind == k).count();
+        assert!(count("oak") > 100 && count("ash") > 50, "the woods are woods: {} oak, {} ash", count("oak"), count("ash"));
+        assert!(count("apple") >= 12, "the orchard has its rows: {}", count("apple"));
+        assert!(count("hawthorn") > 30, "the hedges: {}", count("hawthorn"));
+        let (a, _) = read(&path).unwrap();
+        for p in &places {
+            assert!(a.roads.iter().all(|r| distance_to_line(&r.points, p.x, p.z) > r.width * 0.5 + 1.5), "no tree on a road: {p:?}");
+            assert!(!a.fields.iter().any(|f| inside(&f.points, p.x, p.z)), "no tree in the barley: {p:?}");
+        }
+        assert_eq!(places, tree_places(&path).unwrap(), "the same every time");
     }
 }

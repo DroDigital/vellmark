@@ -2,13 +2,430 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: Standing Pages and the scripted run (S03-T14)
+
+- **A Standing Page is a text that teaches.** Read for 1.2 s, it gives its word; the word settles into the writing hand (a word just learned replaces the word in hand; a shield stays), the screen says the prologue's line ("You have learned a word. It is not yours. Nothing here is."), and its motif plays.
+- **The Tithe Hill Stone's text is the prologue's.** The Mended Bridge Page's text is new, in the Ledger's voice the yard's wall already uses, and waits on the owner's ear (`docs/PLAYTEST_CHECKLIST.md`).
+- **Shut doors are solid** until a word opens them. A thing that can break collides as its own turned boxes, not their bounding boxes, which stood out over the bridge's deck.
+- **Ink for big things.** A target's size raises a word's cost at most 2.4 times (it was 3), so that `WHOLE` fully charged on the bridge (86 Ink) can be written from a full well.
+- **The Inkling has 120 health** (it had 70, and fell to a sword in two seconds).
+- **The run is placed station to station.** Walking the whole tour is the Showcase tour bot's (S07). Words whose Pages are S06's (`LIT`, `COLD`, `BURNING`) are given where the run needs them.
+
+## 2026-11-14: the sounds of words and steel (S03-T13)
+
+- **Synthesized, all of it,** until the approved sample packs are downloaded: motifs as two-operator FM bells, one timbre per word class; combat as filtered noise and pitched thumps. Sounds that are meant to be recorded later (the blade, the ink) will be replaced, not added to.
+- **A typo is heard as a word going wrong**: its motif plays as written until the last note, which falls a semitone flat and slides further, with a sour partial beating against it.
+- **No locks and no allocation on the audio thread**: cues pass through a fixed queue of 64 slots of atomics; a full queue drops a cue rather than wait; a new cue takes the quietest of 24 voices.
+
+## 2026-11-14: the grey-box Inkling (S03-T12)
+
+- **Drawn as what it is.** The canon makes the Inkling a formless mass of characters; it is drawn as one, on the magic's particle system (kind 5), through a second pipeline that lays dark ink over the scene rather than adding light. Up to 160 characters each, churning; it swells and rears as it gathers itself, and runs out into a pool when it dies.
+- **Annotations chosen** are the three the Showcase's words answer: `LOCKED` (answered by `OPEN`), `BURNING` (by `COLD`), `COLD` (by `BURNING`). An annotation stands in its Inscription at Tough resistance, so only a charged word replaces it, which strips it and staggers the creature, as `5c-enemies-and-bosses.md` says.
+- **Splitting** is on a blow of at least 6 (so a turned blow on a locked front does not split it): the part takes 40% of the health at 0.62 the size; the whole keeps 60% at 0.8. Parts smaller than 0.42 do not split; at most seven stand at once. The swing that split it does not strike the part.
+- **Its yards** are off the bridge road's west end, 20 m apart, on flat ground away from the hedges: the brief's "yard beside the road".
+
+## 2026-11-14: the first-person hands (S03-T11)
+
+- **A kit, not a model.** Until approved arm and weapon models exist, the hands and what they hold are boxes in `assets/kit/hands.ron`, written in letters like every surface, in three new materials: `steel` (`= + T Y`, as metal), and `leather` and `skin` (`o e c a s`, as skin; leather is hide and is not in the art direction's table).
+- **Drawn in front.** First-person things fold their reversed depth into the nearest half of the range, in the depth pre-pass and the colour pass alike, so they never pass into a wall; they skip occlusion culling and cast no shadow into the world. No second projection: they share the view's field of view.
+- **Curves, not clips.** Each pose is a hand placement in view space; a swing passes through wind-up, strike, and recovery with an eased strike. The writing hand's fingertip rests where the charge gathers (`WRITING_TIP`), so the glyph particles come off the finger.
+
+## 2026-11-14: words on the weapon, combat lines, and the bow (S03-T10)
+
+- **On the weapon.** Both hands together, weapon and word, write the word on the weapon at once, with no flight, for the word's Ink (half again at full charge). It lasts 30 s, 60 s fully charged; a typo typed as it charges does the typo's `weapon` result. What a weapon carries passes to what it strikes: `ignite` for 5 s, `frost` as a 4 s slow. A sharp edge sets armour aside and cuts 15% deeper.
+- **Combat lines as marks.** Each word's effect on a creature is read by steel as a mark: gaping (blows do half again), slowed (a heavy blow shatters it for 60% more and ends it), burning (4 a second at full strength), pacified and dazzled (for the Inkling's mind).
+- **The bow.** Full draw in 0.9 s; an arrow leaves at 18 to 60 m/s with 6 to 32 damage by the draw, under gravity; a held draw drains 7 Stamina a second and looses on its own when Stamina runs out. A quiver holds 20; stuck arrows within 2.2 m of the eye are gathered with Interact.
+
+## 2026-11-14: steel and Stamina (S03-T09)
+
+- **Numbers.** Health and Stamina 100. Stamina comes back at 28 a second once nothing has spent it for 0.8 s. A sidestep costs 18, a shield bash 16, a sword's heavy attack 24. Close reading drains 9 a second (4.5 in co-op). Sprinting is free: the brief names what Stamina pays for, and running is not among them.
+- **The chain** is three swings, right, left, right; a tap within 0.45 s of a swing ending carries it on, and a tap during a swing is kept for when it ends. A swing strikes between a third and three fifths of the way through. A heavy attack is drawn back while held and released on letting go; too tired for it, it is a light swing.
+- **Blocking** takes 60% of a blow faced within about 70 degrees with a weapon and 85% with a shield, at 0.9 Stamina a point kept; with too little Stamina the guard breaks and the player staggers 0.8 s. A blow on a player that gets more than half through interrupts the hands, as a blow did in S03-T07.
+- **Weapons by moveset.** Base numbers per type are in `melee.rs` until the loot generator of the full game gives each weapon its own; the trait of each is as `5d-loot.md` names it. A staggered creature takes a quarter more.
+- **Hit stop** holds the striker's view on the frame of the blow for 55 ms (110 ms for a heavy or sneak blow) and kicks it slightly; it is the app's, per view, and never the rules'.
+
+## 2026-11-14: props, breaking, and the Mended Bridge (S03-T08)
+
+- **Letters are the pieces.** The brief pre-fractures breakable props into pieces that fall under physics and crumble into characters within seconds; here a broken thing goes straight to its letters, which already fall and settle with their own physics (`docs/PLAN_CHANGES.md`, 2026-11-11). A marked structure's pieces are its authored boxes, drawn one by one (`pieces: true` in a scene), so that `WHOLE` puts it back a piece at a time.
+- **Mending.** Each letter flies home along an arc from where it lies, which is the parabola it fell along when it fell freely; letters set out so that neighbours arrive together, and later the further their home is from the writer's feet (0.11 s a metre). A piece is drawn and bears weight the moment its last letter is home; the thing is whole, and its Inscription says `WHOLE`, when every letter is. Mending lasts until something breaks it again. `HOLE`, the typo, knocks a whole breakable thing down.
+- **A budget per thing.** One thing falls into at most 24,000 letters (a door's worth). A bigger thing scatters its letters over its faces rather than through its volume, since its print is what is seen.
+- **Props.** Loose props are rigid bodies in their own `rapier3d` world, built on the same still things as the body's, settled at load. Interact picks up a prop of up to 40 kg within 2.6 m; it is drawn 1.3 m before the eye and let go if it catches on something; the main hand throws it at 11 m/s for 5 kg, less for heavier things. A breakable prop whose speed changes by more than 7.5 m/s in one step breaks. Things burning longer than 15 s break.
+- **Not yet:** props neither block the body nor are pushed by it, and do not stand on mended structures. Their weight words (`HEAVY`, `LIGHT`) come with the full game.
+
+## 2026-11-13: Inscriptions and casting (S03-T05)
+
+**Numbers, for the Play Gate.** A charge is full in 1.2 s. Tough targets need half a
+charge, Hard a full one; both hands holding the same word reach a tier further, half again
+as strong, and cost 1.6 times as much. A staggered or unaware target resists a tier less.
+Written words hold 45 s from a tap and up to 120 s from a full charge, half as long again
+from both hands, then fade back to what they replaced. Ink: 100, refilling at 2.5 a second
+while no hand charges; a word costs its sheet's Ink, more on larger things (0.6 to 3
+times by size), on tougher ones (up to twice), and with its charge (up to twice). Words
+reach 40 m.
+
+**A word joins or replaces.** A word replaces the word of its class on a target; if there
+is none it joins the Inscription, up to three words, a written one giving way when full.
+So `BURNING` on the yard's `LOCKED` door gives `LOCKED BURNING`, and the door burns locked.
+
+## 2026-11-13: the word sheets (S03-T04)
+
+**Thirteen target classes.** The brief asks for a result or a refusal for every word on
+every target class but does not list the classes. The Showcase's are door, container,
+lamp, fire, water, structure, plant, creature, inkling, person, weapon, paper, and stone,
+in `assets/data/words/targets.ron`; the full game adds to the list, and every sheet must
+then answer the new class before the bake passes.
+
+**Sheets name effects; the rules carry them out.** A sheet says which effect a word has
+on a class (`open`, `ignite`, `freeze`, and 33 more, listed in `bake::words::EFFECTS`),
+how strongly, and the preview; the rules hold the effects' mechanics. The preview is the
+effect's own (`preview.open`, "Opens it") unless the sheet names another. People refuse
+harm and Mind words other than `CALM`; `OPEN` and `HOLE` on a person refuse with the
+canon's "Not without a signature."
+
+**Motifs in D Dorian.** `OPEN` D A D, `LIT` A C E G, `WHOLE` D F E D, `CALM` A G E D,
+`BURNING` E F E B C, `COLD` B F B (falling tritones), `SHARP` C G F. The Vale's four
+Standing Page words (`OPEN`, `LIT`, `WHOLE`, `CALM`) will make the main theme. The bake
+refuses two motifs with the same intervals.
+
+## 2026-11-13: the hands and the settings (S03-T02)
+
+**The rules read the hands.** Which hand tapped, held, or let go is worked out in `sim`
+from the buttons each step, so bots and replays see exactly what a player's hands did:
+a press let go within 0.22 s is a tap; held longer it is a hold that charges until let
+go; the second hand pressed within 0.12 s of the first, before either is a hold, makes
+both hands act as one until either is let go.
+
+**Settings are multipliers and differences.** The settings file holds sensitivity as a
+multiple of the default and only the buttons the player moved, so a later change of a
+default reaches every player. Moving an action onto a button swaps whatever was there
+onto the action's old button: nothing is left without one. Prompts are string keys
+(`prompt.key.space`, `prompt.pad.playstation.south`), so their letters are in the
+string table, and every key the code can build is checked to be there.
+
+## 2026-11-13: the body (S03-T01)
+
+**Rapier for the still world; the body's own state for the rest.** The terrain's finest
+tiles become heightfields, each cell split from its least corner to its greatest as the
+terrain is drawn (rapier's zigzag split), so feet stand exactly on the drawn ground. The
+scene's solid boxes are cuboids and each tree's trunk a capsule as thick as its record
+says. This world never changes once loaded, so it is shared between copies of the
+`World`. A player is a capsule moved by rapier's kinematic character controller, with
+autostep to 0.38 m and snapping to the ground; jumping, the sidestep, the mantle,
+crouching, and swimming are the body's own small state, stepped at the fixed rate, so
+the same inputs give the same body. `enhanced-determinism` is on.
+
+**Numbers.** Jog 5 m/s and sprint 7.5 m/s (the brief's), crouch 2.4, swim 2.6 and 3.8
+sprinting. Gravity 20 m/s² and a jump of 6.4 m/s, about a metre, with 0.12 s of grace
+before landing and after leaving an edge. The sidestep is 2 m in 0.22 s, fast out and
+easing in, untouchable for its first 0.12 s, with 0.18 s before the next. A ledge from
+0.45 m to 1.9 m above the feet is mantled in 0.42 s when the body jumps at it or pushes at
+it in the air. Water deeper than 1.25 m is swum, the eye 0.18 m above it; shallower water
+slows the legs. All of it is feel, for the owner's hands at the Play Gate.
+
+## 2026-11-13: the ambience is synthesized until the samples come (S02-T13)
+
+**Our own mixer, on SDL3's audio stream.** `vellmark-audio` holds a mixer that the
+platform crate's SDL3 playback stream calls on the audio thread. It reads what the game
+wants through atomics and renders into a buffer made once: nothing is allocated or
+locked there, and a test holds it to that. No `fundsp`: the few building blocks needed
+(pink noise, a state-variable filter, a sine, smoothing) are a hundred lines.
+
+**Four layers, all chance.** Wind is band-passed noise whose band rises with gusts that
+come and go every one to four seconds, a low roll under it and a whistle in a strong
+gust; leaves hiss and flutter in it near trees. Rain is a hiss and drops striking at
+random pitches and places, more of them as it rains harder. The river is a low run of
+water and resonances that jump about as it turns over stones, louder as it is nearer.
+Birds are calls of two to six notes from three kinds of bird, falling, rising, or
+trilled, by day, in the open, and not in rain or a hard wind. The game sets them from
+the weather, the hour, water found in rings about the listener, and the trees near.
+Recorded beds from the approved packs go under them when the owner fetches them
+(`third_party/DOWNLOADS.md`).
+
+## 2026-11-13: a tree's bark records its age (S02-T08d)
+
+**The truth is data.** The bake records each placed tree's kind, age, and girth in a
+`trees.records` table beside the scene. A tree's age is its kind's age at its grown size
+(`age` in `assets/trees/kinds.ron`: oak 140, ash 90, apple 40, hawthorn 55), older as the
+tree is larger (scale to the power 1.6), and up to 15% older or younger by where it
+stands. Nothing about it is written into the pack as text.
+
+**The text is written where it is read.** The page table keeps its last eight pages, and
+the page sheet its bottom 128 rows, for generated truth; authored text has the rest, and
+the bake refuses more. The renderer lends the eight pages to the trees nearest any eye,
+within 14 m, and rewrites a page only when the tree it is lent to changes. A tree's
+instance tells its bark which page to read, and any surface of it without an authored
+page reads it, its leaves never. The record runs round the trunk from 0.35 m to 2.75 m
+up, at the second level of the cascade (letters about 2.5 cm tall), a blank row between
+lines and each line a little further round than the last. Its words are in the string
+table (`assets/text/en/trees.ron`): `Oak. Stood 130 years.`, after the yard's bench.
+
+## 2026-11-13: grass about a pixel wide is shaded as the sward (S02-T07b)
+
+**Prefiltered, not blurred.** Pasture seen almost edge on, and barley against a low sun,
+failed the shimmer check: a blade a pixel or two wide carried detail finer than the
+pixels (its root's shadow, its rounded and randomly turned face, a lit tip over a shaded
+root), and 4x MSAA turned it on and off as the eye moved. The brief allows no temporal
+accumulation, so the detail is filtered where it is made. A blade's `seen`, from 0 at
+about a pixel and a half wide to 1 at four, blends it towards the sward's average:
+the sward's normal (90%), the root's shadow at its mean, the sward's share of the sky
+(55% of the root's), and the sun's shadow taken partway up the sward (0.15 m in pasture,
+0.6 m in barley), where the ground under it takes it too. Each blade keeps its own tint
+and its paler tip. Against a low sun the ground under a sward glows as its blades do.
+Thin blades are darkened to 0.8 so the field keeps its brightness: the near pasture's
+mean colour is within 1% of what it was, and its contrast from pixel to pixel falls
+from 0.080 to 0.061. Evidence: `docs/evidence/S02/grass_grazing.jpg`.
+
+**The barley's shimmer shots moved into the field.** The road's hedges, placed in
+S02-T08b, stand where S02-T14 took them from (-60, 44); they are now taken from inside
+the barley at (-50, -20). Three grazing pasture shots were added to the exit captures.
+
+## 2026-11-13: trees drawn (S02-T08c)
+
+**The level is chosen once, in culling.** Each tree's level comes from the share of the
+view its bounding sphere fills (`shaders/lod.wgsl`: below 9%, 4%, and 1.8% it goes one
+level coarser), and the culling pass writes it into that level's batch. A view's list
+keeps a place for every level of every tree, after the scene's own instances; the grass
+follows them. The shadows draw each tree once, from its third level.
+
+**Crossfades and cut-outs over the pixel's samples, not by discarding pixels.** Over the
+fifth above each share, a tree is in both levels' batches and the two share out the
+pixel's four samples, the coarser taking a run and the finer the rest. Leaf cards cover
+the samples their leaves do, and the far form those its picture does, with leaves too
+small to tell apart seen as their average cover. Whole-pixel screen doors were tried
+first; they crawl under a slow move. The depth pre-pass and the lit pass compute the
+same samples, so the pre-pass's equal test still holds.
+
+**Leaf cards are two-sided and never mirrored.** From behind, a card's anchor runs back
+along it and its normal and tangent turn, so its `^ A v` read the right way round. A card
+seen edge on fades out. Each card's side is carried as its vertices' thickness, and its
+number in its anchor (cards a hundred metres apart), so the shader cuts the same spray
+the bake painted into the far form's picture.
+
+## 2026-11-13: trees grown in the bake (S02-T08a)
+
+**Grown, not modelled.** The kinds are data (`assets/trees/kinds.ron`: oak, ash, apple,
+hawthorn), each grown from its seed by `bake::trees` the same way every time: a leaning
+trunk, branches leaving it in golden-angle turns above the crown line, each branch
+branching again, drooping under its weight and reaching up at its ends; cards of leaves
+at the ends of the finest branches, facing out from the crown with some scatter.
+Approved model packs (Quaternius in the catalogue) wait for the owner's download list.
+
+**Bark carries a page.** Each branch is a tube whose page runs round it and up it, with
+one seam, so its letters wrap the trunk. Its material is `bark` (`| ! 1 l`, and its
+lexicon). Leaves are `leaves` (`^ A v`). Cards are squares; the shader cuts each into a
+spray of leaf ovals (`trees::leafy`, to be mirrored in the shader in S02-T08c).
+
+**Levels.** Three levels and a far form. Each level draws fewer, coarser tubes (9, 6,
+and 4 sides for the trunk; twigs dropped) and one card in 1, 2, then 5, made larger by
+the square root of what was dropped so the crown keeps its cover. An oak is 5,886, 1,684,
+and 556 triangles.
+
+**The far form keeps the true silhouette.** Two crossed cards as wide as the crown and as
+tall as the tree, in an impostor material per kind (`impostor.oak` and so on), made in
+the material bake by projecting the finest level from the side: bark first, leaves over
+it, each card cut to its leaves, coverage in the height channel. Far forms have no words.
+
+## 2026-11-13: every weather, and the shimmer across the barley (S02-T14)
+
+**Fog is weather.** The rules keep a fog amount beside the rain; it gathers and lifts at
+a quarter of the rain's pace and stills the wind. It adds 0.012 a metre at full to the
+hour's own mist, raises how high the mist reaches, and dims the sun by up to 60%.
+Console: `fog 0..1`.
+
+**The exit captures** are `captures/s02_weathers.ron`: the valley from Tithe Hill at
+dawn (6:24), noon, dusk (17:48, the hour of the golden barley; 18:18 is already night
+in this sky), night, rain, and fog, and the shimmer check across the barley in clear
+air, at dusk, in rain, and in fog. Every shot is also a glyph-off comparison.
+
+**A shimmer run moves the eye 12 mm over 24 frames.** The check assumes the picture
+moves less than a pixel a frame; grass a metre from the eye moves four pixels a frame
+at the yard's runs' speed, which is motion, not shimmer.
+
+**What the check found, and what fixed it:**
+
+- Grass blades are never drawn thinner than about a pixel, tips included. An edge finer
+  than a pixel switches its samples on and off as it moves.
+- Wet blades shine broadly (roughness no less than 0.55), and the ground under a sward
+  is matte where blades are drawn: sharp sun glints on narrow swaying blades, and on
+  ground blinking between them, sparkle.
+- Wet surfaces gloss to roughness 0.28 at most; only standing water is a mirror.
+- A puddle's edge is softened to the pixel's footprint, since multisampling does not
+  smooth an edge drawn by a shader.
+- Rain streaks fade in and out along their length, so a pixel brightens and dims as a
+  streak passes instead of switching on.
+- Blade words crossfade when a blade moves on to its next word, and the instant flicker
+  of single letters is gone.
+
+**Measured:** p99 0.0176 clear, 0.0113 dusk, 0.0175 rain, 0.0192 fog, all under 0.020.
+Wet ground in full sun after rain, which is not one of the gate's weathers, measures
+0.0214; it is listed in `docs/STATE.md`.
+
+## 2026-11-12: the governor and the presets (S02-T12)
+
+**One governor** (`render::governor`), fed every frame the sum of the GPU's pass timers
+(the frame's wall time where the GPU cannot time its passes), smoothed over half a
+second. Above 16.0 ms it gives up a tenth of the next thing in the brief's order and
+waits a quarter of a second; below 14.1 ms it takes back a tenth of the last thing
+given and waits three quarters. Between the two it holds still. The timers are now on
+in every build where the GPU has them, since the governor reads them.
+
+**What each step gives up**, from nothing to all of it:
+
+| Knob | At nothing | At all |
+|---|---|---|
+| The far cascade | redrawn after a quarter of a degree | after a degree, and at most every eighth frame |
+| Particles | all | half |
+| Grass beyond 30 m | all | 35% |
+| The fog grid | 160 by 90 by 64 | 60% along each side, a sub-grid of the same texture |
+| Contact occlusion | full | none, and not computed |
+| The scene's resolution | 100% | 85%, drawn in the corner of full-size targets and stretched with a sharpening filter |
+
+Nothing is reallocated as the knobs move, so nothing stalls; letters keep their reveal
+distances because the reveal is measured against the scene's own size. Reading brings
+the resolution back at once. Each step is logged, and the performance report lists
+them with the lowest resolution reached.
+
+**Presets.** Low, Medium, and High set grass density and its near distance (80, 120, and
+160 blades a square metre within 6, 7, and 8 m), how many lights cast shadows (1, 2, 3),
+and the share of particles (60%, 80%, all). Medium is the Showcase's target and the
+game's default; `--preset` and the console's `preset` choose another. Captures and
+tests draw at High with nothing given up, so the evidence does not move. Choosing Low
+automatically on the minimum machine waits for its numbers.
+
+## 2026-11-12: cached shadows and rationed lights (S02-T11)
+
+**The far cascade is kept.** The two near cascades are drawn every frame. The far one,
+out to 260 m, is fitted to a sphere around a cell of a grid an eighth of its reach,
+not to the slice of the view, so turning the head never changes it. It is drawn once
+and kept until the light has moved a quarter of a degree (about two seconds of the
+day's clock), the eye has crossed into another cell, or a still thing has changed:
+the scene, the terrain, or what is broken. Its texels are a little coarser than a fit
+to the view's slice (about 29 cm against 15 to 25), which at that distance is not seen.
+
+**Shadowed lights are rationed.** The three nearest lights that cast shadows each hold a
+cube of a cube array. A cube is drawn once and kept while its light and what casts
+shadows near it stay as they are, loose letters included, and at most one cube is
+drawn in a frame. A light newly among the nearest lights without a shadow until its
+cube is drawn, which is the next frame or two. The count is the presets' to change.
+
+**Cube arrays** are core WebGPU and present on Metal, Vulkan, and DirectX 12; the build's
+shader check now allows them.
+
+**Not yet.** Grass casts no shadow: its blades are made from the view's eye, and the
+near cascade would need its own pass of them. Judged with the governor's numbers.
+
+## 2026-11-12: rain and the wind that reads (S02-T10)
+
+**Weather is the rules'.** `sim::weather` keeps the rain, how wet the world is, and the
+wind, steps them with the world's clock, and sends them in the snapshot, so every view
+sees one sky. Rain comes and eases at 8% a second; a downpour soaks the ground in about
+a minute, and it dries in eight. The wind wanders by the clock and blows harder in rain.
+
+**The sky in rain.** The hour's atmosphere is closed over: cloud cover rises, the sun is
+lost behind it (85% at full rain), the sky's light greys and dims, and the mist thickens.
+
+**Wet surfaces.** What sees the sky is darkened and glossed by the wetness, and nothing
+under an overhang is. Puddles lie on flat ground in the low places of a broad noise, on
+roads, bare earth, and banks; pasture and fields drink the rain and seldom hold any. A
+puddle is written as water (`~ - =`, `water`, `H2O`) and rings in rain, as the river does.
+
+**Rain.** Streaks in a square of 160 by 160 columns around each view, fixed to the
+ground so they do not swim as the eye moves, each column one drop falling at 7.5 m/s,
+slanted by the wind, never thinner than a pixel and fainter as it widens. Where it lands
+on the terrain, a splash for a sixth of a second: up close a `'`, further off a fleck.
+Down walls, rivulets in broken lengths of `|`. Rain is drawn after the water, blended,
+testing depth itself. It falls everywhere for now: shelter comes with the buildings in
+S04, as a map of what is overhead.
+
+**The wind's sentences.** Six, in `assets/text/en/wind.ron`, taken word for word from the
+canon's Ledger voice (the bible and the prologue) until the owner writes the Vale's own.
+
+**The wind that reads.** At most one gust in each 150 seconds, at a time fixed by the
+clock, while the wind is strong enough. It is laid where the first view's gaze meets
+the grass, no nearer than 14 m, its letters as wide as the view allows and long away
+from the eye as the eye looks across rather than down on them. Over 3.2 seconds it
+writes the line from start to end, holds it, and lifts it away in the same order.
+Inside its strokes the blades bow downwind and shine, and so does the ground's grass
+beneath them. The mechanism is in place; making it legible is S02-T10b, with the owner.
+
+## 2026-11-12: water (S02-T09)
+
+**A pass of its own, after the opaque pass.** Water is drawn into the resolved scene,
+reading a copy of it and its depth (one sample of the multisampled depth), so it can
+see what lies beneath and behind it. It tests depth itself and needs no depth target.
+It uses the terrain's grid: a tile with any water is drawn at the water's level, a dry
+sample beside water takes its neighbours' level so the surface runs on into the bank
+and the bank cuts it, and wherever no sample is wet the surface is not drawn. Dry is
+stored as a level of minus a million rather than NaN, so the shader never tests NaN.
+
+**The surface.** Ripples in three octaves, each fading before it is finer than a pixel,
+carried by the flow in two layers that take turns, and drifted by the wind. The flow
+runs down the water's own surface, faster where it is steeper; the pond is still.
+
+**Light.** Fresnel between what lies beneath and what it mirrors. Beneath: the scene,
+bent by the ripples (and not bent onto anything in front of the water), through peaty
+water that takes red first and gives back a dark green-brown. Mirrored: a screen-space
+march through the depth, 28 steps growing by a sixth each, and the sky where it finds
+nothing or leaves the view. The sun's glint, in its shadow. The water thins to nothing
+over the last three centimetres at the bank.
+
+**Foam** where it is shallow at the edge and where it runs fast, broken by noise and
+carried with the flow. Up close foam is written: `.` and `,`, and nothing between.
+
+**Its letters.** Water has its own material, `water`, with the family `~ - = _` and its
+lexicon (`water`, `H2O`). Its page drifts with the flow in the same two layers as the
+ripples. The letters are written on the ripples, gathering on the crests and most of
+all at the edge, so they never form a grid over open water. In the living look the eye
+sees down into it.
+
+**Not yet.** Rain rings (S02-T10); ripples where the player wades, and swimming (S03 on);
+the brook's mouth into the river is carved as a steep dry-looking gully by the terrain
+bake, which is the Content lane's to soften.
+
+## 2026-11-12: grass (S02-T07)
+
+**Patches as instances.** The ground near each view is cut into 4 m patches, and every
+patch with grass is an instance in the one instance buffer, culled per view by the same
+compute pass as everything else. A patch has no mesh: each blade is made in the vertex
+shader from its number, on the terrain's own heights and ground, so grass costs no
+memory beyond one shared list of indices. Grass grows on pasture and barley, a little on
+a wood's floor, and nowhere too steep. The instance limit is now 8,192.
+
+**Levels without popping.** Four levels of detail, each a quarter of the blades of the
+last, chosen by the patch's nearest point to the nearest eye. Blades are placed along a
+low-discrepancy sequence, so every level's blades are the first of the full set and are
+spread evenly. Each blade fades by its own number as its distance grows: within 8 m the
+grass is at 160 blades a square metre, beyond it the count falls with the square of the
+distance and each blade widens to keep the cover, so a blade is about the same width on
+screen at any distance and none is thinner than a pixel. Grass ends at 72 m, fading over
+the last fifth, where the terrain's grass colour carries it.
+
+**Bending.** Each blade is a curve from root to tip with its own lean, the wind's (gusts
+that travel across the field, and a flutter), and a push away from anything within its
+reach. Up to eight pushers; for now each view's eye, standing for the player. Barley
+stands taller and stiffer, with a swelling head. The wind wanders on its own until the
+weather drives it in S02-T10.
+
+**Shading.** Blade normals are half the blade's own and half the ground's, so a field is
+lit as the ground it covers and each blade still has its own light. Blades low in the
+sward are darker, tips are paler, and light comes through a blade lit from behind.
+Grass receives the sun's shadows but does not cast them yet; the shadow rota is S02-T11.
+
+**A line of characters.** Each blade is written from root to tip with its lexicon's
+words, a space between: `grass C6H12O6 grass C6H10O5`. Its cells are the blade's width,
+so the text follows the same reveal rule as every surface, by the cell's size on screen,
+and the glyph-off comparison holds. Every few seconds a blade moves on to its next word,
+and now and then a letter flickers. At arm's length, where a cell is over about twenty
+pixels, the blade between its letters thins away in the depth pass and the colour pass
+alike: the blade is nothing but its characters.
+
 ## 2026-11-12: culling and instancing (S02-T06)
 
 **One pool, one instance buffer.** Every mesh of a scene is in one vertex and one index
 buffer; every placed thing is an instance in a storage buffer (transform, state, the
 sphere that holds it, its batch), kept together by mesh so that each mesh is one batch.
 Vertex shaders read their instance through a list, so the same draw serves every list.
-Limits: 4,096 instances and 256 meshes a scene. Grass, trees, and creatures will join it.
+Limits: 4,096 instances (now 8,192, with grass) and 256 meshes a scene. Grass, trees, and creatures will join it.
 
 **Lists.** List 0 is every instance, in order, for the shadow maps, which are not culled
 yet (their far cascade's rota is S02-T11). List 1 + v is what view v can see, written by

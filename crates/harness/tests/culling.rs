@@ -68,6 +68,9 @@ fn drawn(offscreen: &mut Offscreen, eye: (f32, f32, f32), yaw: f32) -> (u32, u32
         letters_step: 0,
         broken: &[],
         heat: &[],
+        weather: Default::default(),
+        wind_gust: None,
+        relief: Default::default(),
         ui: None,
     };
     offscreen.frame(&frame);

@@ -5,8 +5,9 @@ use glam::Mat4;
 use vellmark_content::{AssetId, GlyphAtlas, MaterialSet, Mesh, Scene, TextPages, Vertex, GLYPHS_PER_FACE, TONE_STEPS};
 use vellmark_gpu::{wgpu, Gpu};
 
-/// The most placed things in a scene, and the most distinct meshes they are drawn from.
-pub const MAX_INSTANCES: usize = 4096;
+/// The most instances in a frame, placed things and grass patches together, and the most
+/// batches they are drawn in.
+pub const MAX_INSTANCES: usize = 8192;
 pub const MAX_GROUPS: usize = 256;
 pub const MAX_MATERIALS: usize = 32;
 
@@ -31,7 +32,10 @@ pub struct InstanceGpu {
     pub state: [f32; 4],
     /// The sphere that holds it, in the world: centre and radius.
     pub bounds: [f32; 4],
-    /// x: its group, the mesh it is drawn from. y: the group's first instance.
+    /// x: its group, the mesh it is drawn from. y: where the group's batch starts in a
+    /// list. z: how many levels of detail it has (1 for none) in the low byte, and above
+    /// it how many instances the group has, which is how far apart its coarser levels'
+    /// batches are. w: where its first coarser level's batch starts in a list.
     pub group: [u32; 4],
 }
 
@@ -47,11 +51,26 @@ pub struct MeshRange {
 }
 
 /// Every instance of one mesh, which are kept together in the instance buffer.
+///
+/// A mesh with coarser levels of detail has a group for each level, one after another.
+/// Only the finest holds instances; the culling pass moves each to the level it is seen
+/// at, writing it into that level's own batch in the view's list.
 #[derive(Clone, Copy, Debug)]
 pub struct Group {
     pub mesh: usize,
     pub first_instance: u32,
     pub count: u32,
+    /// Where the group's batch starts in a list.
+    pub list_base: u32,
+    /// For the finest of a chain, how many levels it has; 1 for a mesh with none; 0 for
+    /// a coarser level, which holds no instances of its own.
+    pub levels: u32,
+}
+
+impl Group {
+    pub fn is_coarser_level(&self) -> bool {
+        self.levels == 0
+    }
 }
 
 /// One placed thing: what it is and where.
@@ -60,6 +79,14 @@ pub struct Placed {
     pub key: AssetId,
     pub group: usize,
     pub transform: Mat4,
+    /// The thing this is a piece of, if it is one: its heat and lasting words are the
+    /// whole thing's.
+    pub parent: AssetId,
+    /// Drawn at all: a part of the first-person kit only while the view model places it.
+    pub shown: bool,
+    /// 0 a thing of the world; 1 drawn in first person, nearer than the world and casting
+    /// no shadow; 2 casting no shadow (an arrow).
+    pub kind: u8,
 }
 
 /// The scene on the GPU: every mesh in one pool of vertices and indices, and every placed
@@ -75,6 +102,15 @@ pub struct SceneGpu {
     pub lights: Vec<vellmark_content::Light>,
     /// The scene's authored text. The renderer uploads it when the scene is set.
     pub pages: TextPages,
+    /// Where the scene's batches end in a list; what follows (grass) starts here.
+    pub list_end: u32,
+    /// For each placed thing, the generated page its surface reads, counted from 1; 0
+    /// for none.
+    pub generated: Vec<u32>,
+    /// What is true of the scene's trees, for their bark.
+    pub records: vellmark_content::TreeRecords,
+    /// Counts the times a placed thing has moved.
+    moves: u64,
 }
 
 fn bounds_of(mesh: &Mesh) -> (glam::Vec3, f32) {
@@ -94,12 +130,24 @@ fn bounds_of(mesh: &Mesh) -> (glam::Vec3, f32) {
 
 impl SceneGpu {
     /// `mesh_of` returns a mesh by its ID, from the pack.
-    pub fn new(gpu: &Gpu, scene: &Scene, pages: TextPages, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
-        // Every distinct mesh once, in the pool.
+    pub fn new(gpu: &Gpu, scene: &Scene, pages: TextPages, levels: &vellmark_content::MeshLevels, mesh_of: &dyn Fn(AssetId) -> Option<Mesh>) -> Result<Self, String> {
+        // Every distinct mesh once, in the pool; a mesh with levels of detail is followed
+        // by its coarser levels.
         let mut ids: Vec<AssetId> = vec![scene.static_mesh];
+        let mut chain_len: Vec<u32> = vec![1];
         for object in &scene.objects {
             if !ids.contains(&object.mesh) {
                 ids.push(object.mesh);
+                match levels.chain(object.mesh) {
+                    Some(chain) if chain.len() > 1 => {
+                        chain_len.push(chain.len() as u32);
+                        for coarser in &chain[1..] {
+                            ids.push(*coarser);
+                            chain_len.push(0);
+                        }
+                    }
+                    _ => chain_len.push(1),
+                }
             }
         }
         let mut vertices: Vec<Vertex> = Vec::new();
@@ -122,26 +170,42 @@ impl SceneGpu {
             return Err(format!("the scene has {} meshes; the limit is {MAX_GROUPS}", meshes.len()));
         }
         // Every placed thing, kept together by mesh.
-        let mut by_mesh: Vec<Vec<(AssetId, Mat4)>> = vec![Vec::new(); meshes.len()];
-        by_mesh[0].push((scene.static_mesh, Mat4::IDENTITY));
+        let mut by_mesh: Vec<Vec<(AssetId, Mat4, AssetId)>> = vec![Vec::new(); meshes.len()];
+        by_mesh[0].push((scene.static_mesh, Mat4::IDENTITY, AssetId(0)));
         for object in &scene.objects {
             let t = object.transform;
             let transform = Mat4::from_cols_array(&[
                 t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7], t[11], 1.0,
             ]);
             let m = ids.iter().position(|id| *id == object.mesh).unwrap();
-            by_mesh[m].push((object.key, transform));
+            by_mesh[m].push((object.key, transform, object.parent));
         }
-        let mut groups = Vec::new();
+        let mut groups: Vec<Group> = Vec::new();
         let mut placed = Vec::new();
         for (m, list) in by_mesh.into_iter().enumerate() {
-            groups.push(Group { mesh: m, first_instance: placed.len() as u32, count: list.len() as u32 });
-            for (key, transform) in list {
-                placed.push(Placed { key, group: m, transform });
+            let first = placed.len() as u32;
+            groups.push(Group { mesh: m, first_instance: first, count: list.len() as u32, list_base: first, levels: chain_len[m] });
+            for (key, transform, parent) in list {
+                let kind = crate::viewmodel::kit_kind(key);
+                placed.push(Placed { key, group: m, transform, parent, shown: kind == 0, kind });
             }
         }
-        if placed.len() > MAX_INSTANCES {
-            return Err(format!("the scene has {} placed things; the limit is {MAX_INSTANCES}", placed.len()));
+        // A coarser level holds as many as its finest might send it, in its own part of
+        // each list, after every placed thing's.
+        let mut list_end = placed.len() as u32;
+        let mut finest = 0;
+        for g in 0..groups.len() {
+            if groups[g].levels >= 1 {
+                finest = g;
+            } else {
+                groups[g].count = groups[finest].count;
+                groups[g].first_instance = groups[finest].first_instance;
+                groups[g].list_base = list_end;
+                list_end += groups[finest].count;
+            }
+        }
+        if list_end as usize > MAX_INSTANCES {
+            return Err(format!("the scene needs {list_end} places in a list; the limit is {MAX_INSTANCES}"));
         }
         let make = |label, bytes: &[u8], usage| {
             let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -161,31 +225,80 @@ impl SceneGpu {
             placed,
             lights: scene.lights.clone(),
             pages,
+            list_end,
+            generated: Vec::new(),
+            records: Default::default(),
+            moves: 0,
         })
     }
 
     /// Moves a placed thing. The simulation's snapshot will drive this once doors open.
     pub fn set_transform(&mut self, key: AssetId, transform: Mat4) {
         if let Some(p) = self.placed.iter_mut().find(|p| p.key == key) {
-            p.transform = transform;
+            if p.transform != transform {
+                p.transform = transform;
+                self.moves = self.moves.wrapping_add(1);
+            }
         }
     }
 
+    /// Places a part of the first-person kit, or hides it. It casts no shadow, so this
+    /// never makes the shadows be drawn again.
+    pub fn place_kit(&mut self, key: AssetId, transform: Option<Mat4>) {
+        if let Some(p) = self.placed.iter_mut().find(|p| p.key == key) {
+            p.shown = transform.is_some();
+            if let Some(t) = transform {
+                p.transform = t;
+            }
+        }
+    }
+
+    /// Changes whenever a placed thing moves, so that the shadows it casts are drawn again.
+    pub fn moves(&self) -> u64 {
+        self.moves
+    }
+
     /// Every instance as the GPU reads it, with this frame's heat and breakage.
-    pub fn instances(&self, heat: &[(u64, f32)], broken: &[u64]) -> Vec<InstanceGpu> {
+    /// Which placed things read which generated pages: (place, page counted from 1).
+    pub fn set_generated(&mut self, pages: impl Iterator<Item = (usize, u32)>) {
+        self.generated.clear();
+        self.generated.resize(self.placed.len(), 0);
+        for (placed, page) in pages {
+            if let Some(g) = self.generated.get_mut(placed) {
+                *g = page;
+            }
+        }
+    }
+
+    /// `lasting`: what words holding on things show, by ID, as `magic` numbers it.
+    pub fn instances(&self, heat: &[(u64, f32)], broken: &[u64], lasting: &[(u64, f32)]) -> Vec<InstanceGpu> {
         self.placed
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(i, p)| {
                 let mesh = &self.meshes[p.group];
                 let centre = p.transform.transform_point3(mesh.centre);
                 let scale = p.transform.x_axis.truncate().length().max(p.transform.y_axis.truncate().length()).max(p.transform.z_axis.truncate().length());
-                let heat = heat.iter().find(|(id, _)| *id == p.key.0).map_or(0.0, |(_, h)| *h);
-                let hidden = if broken.contains(&p.key.0) { 1.0 } else { 0.0 };
+                let owner = if p.parent.0 != 0 { p.parent.0 } else { p.key.0 };
+                let heat = heat.iter().find(|(id, _)| *id == owner).map_or(0.0, |(_, h)| *h);
+                let hidden = if !p.shown || broken.contains(&p.key.0) {
+                    1.0
+                } else {
+                    match p.kind {
+                        1 => -1.0,
+                        2 => -2.0,
+                        _ => 0.0,
+                    }
+                };
                 InstanceGpu {
                     model: p.transform.to_cols_array(),
-                    state: [heat, hidden, 0.0, 0.0],
+                    state: [heat, hidden, lasting.iter().find(|(id, _)| *id == owner).map_or(0.0, |(_, l)| *l), self.generated.get(i).copied().unwrap_or(0) as f32],
                     bounds: [centre.x, centre.y, centre.z, mesh.radius * scale],
-                    group: [p.group as u32, self.groups[p.group].first_instance, 0, 0],
+                    group: {
+                        let g = &self.groups[p.group];
+                        let coarser = if g.levels > 1 { self.groups[p.group + 1].list_base } else { 0 };
+                        [p.group as u32, g.list_base, g.levels.max(1) | (g.count << 8), coarser]
+                    },
                 }
             })
             .collect()
@@ -225,6 +338,8 @@ pub struct SurfaceResources {
     page_sheet: wgpu::Texture,
     /// Bit i is set if material i gives off light.
     pub glowing: u32,
+    /// The trees' leaf cards' material, counted from 1; 0 if the set has none.
+    pub leaves: u32,
 }
 
 fn array_texture(gpu: &Gpu, label: &str, size: u32, mips: u32, layers: u32, format: wgpu::TextureFormat) -> wgpu::Texture {
@@ -345,9 +460,10 @@ impl SurfaceResources {
         });
         let page_view = page_sheet.create_view(&Default::default());
 
+        // Read in the vertex stage too: the wind writes its sentences into the grass there.
         let texture_array = |binding| wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
             ty: wgpu::BindingType::Texture {
                 sample_type: wgpu::TextureSampleType::Float { filterable: true },
                 view_dimension: wgpu::TextureViewDimension::D2Array,
@@ -357,7 +473,7 @@ impl SurfaceResources {
         };
         let sampler_entry = |binding| wgpu::BindGroupLayoutEntry {
             binding,
-            visibility: wgpu::ShaderStages::FRAGMENT,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
             count: None,
         };
@@ -419,9 +535,26 @@ impl SurfaceResources {
             ],
         });
         let glowing = set.materials.iter().enumerate().filter(|(_, m)| m.emissive > 0.0).fold(0u32, |bits, (i, _)| bits | 1 << i);
-        let resources = Self { layout, bind_group, page_table, page_sheet, glowing };
+        let leaves = set.index_of(AssetId::from_key("material.leaves")).map_or(0, |i| i + 1);
+        let resources = Self { layout, bind_group, page_table, page_sheet, glowing, leaves };
         resources.set_pages(gpu, &TextPages::default());
         Ok(resources)
+    }
+
+    /// Writes one of the generated pages: its entry at the end of the table and its
+    /// characters at the bottom of the sheet.
+    pub fn set_generated_page(&self, gpu: &Gpu, written: &crate::bark::Written) {
+        let e = &written.entry;
+        let params = PageParams { place: [e.left, e.top, e.width as i32, e.height as i32], sheet_level: [e.sheet_x, e.sheet_y, e.level, 0] };
+        let index = crate::bark::FIRST_ENTRY + written.slot;
+        gpu.queue.write_buffer(&self.page_table, (index * std::mem::size_of::<PageParams>()) as u64, bytemuck::bytes_of(&params));
+        let side = crate::bark::SIDE;
+        gpu.queue.write_texture(
+            wgpu::TexelCopyTextureInfo { texture: &self.page_sheet, mip_level: 0, origin: wgpu::Origin3d { x: e.sheet_x, y: e.sheet_y, z: 0 }, aspect: wgpu::TextureAspect::All },
+            &written.chars,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(side), rows_per_image: Some(side) },
+            wgpu::Extent3d { width: side, height: side, depth_or_array_layers: 1 },
+        );
     }
 
     /// Replaces the authored text with a scene's. Text travels with its scene, so this

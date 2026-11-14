@@ -1,6 +1,6 @@
 /// Keys the game can bind. Named by position on the keyboard, not by the letter
 /// printed on it, so that the defaults sit under the same fingers on every layout.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Key {
     W, A, S, D, Q, E, R, F, C, X, Z, V, T, G, B, I, M, P,
     Num1, Num2, Num3, Num4, Num5, Num6, Num7,
@@ -9,14 +9,14 @@ pub enum Key {
     F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MouseButton {
     Left,
     Right,
     Middle,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PadButton {
     South, East, West, North,
     LeftShoulder, RightShoulder,
@@ -53,7 +53,7 @@ pub enum RawInput {
 }
 
 /// Everything the game can be asked to do with a button.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum Action {
     /// The main hand: tap to strike, hold for a heavy attack.

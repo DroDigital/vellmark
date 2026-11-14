@@ -2,12 +2,70 @@ use crate::world::PlayerId;
 use glam::{Quat, Vec3};
 
 /// One player as drawn.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlayerSnap {
     pub id: PlayerId,
     pub feet: Vec3,
     pub yaw: f32,
     pub pitch: f32,
+    pub grounded: bool,
+    pub crouching: bool,
+    pub swimming: bool,
+    /// Attacks pass through it now: the first moments of a sidestep.
+    pub untouchable: bool,
+    /// What it is reading, if anything.
+    pub reading: crate::reading::ReadingSnap,
+    /// The text it would read if it held Read now, by its ID.
+    pub in_focus: Option<u64>,
+    pub ink: f32,
+    /// What each hand holds: main, then off.
+    pub holding: [crate::casting::Holding; 2],
+    /// Each hand's charge, 0 to 1, and both hands' together.
+    pub charge: [f32; 3],
+    /// What the crosshair shows for each hand's word, if it holds one and something is
+    /// in the gaze: the target, and what the word would do.
+    pub preview: [Option<(u64, crate::emendation::Preview)>; 2],
+    pub health: f32,
+    pub stamina: f32,
+    /// The weapon in the main hand, if it holds one.
+    pub weapon: crate::melee::WeaponKind,
+    /// The swing under way, and how far through it is, 0 to 1.
+    pub swing: Option<(crate::melee::SwingKind, f32)>,
+    /// The heavy attack drawn back, or the bow drawn, since this long.
+    pub drawing: Option<f32>,
+    /// Arrows in the quiver.
+    pub quiver: u32,
+    /// Words on the held weapon, by effect.
+    pub on_weapon: Vec<String>,
+    pub blocking: bool,
+    /// Its guard was broken.
+    pub staggered: bool,
+    /// A word just learned from a Standing Page, for a few seconds after.
+    pub learned: Option<String>,
+}
+
+/// A thing with an Inscription, as drawn.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TargetSnap {
+    pub id: u64,
+    pub centre: Vec3,
+    pub radius: f32,
+    /// Its words, in order.
+    pub words: Vec<String>,
+    /// The effects of the written words on it now.
+    pub effects: Vec<String>,
+}
+
+/// A word on its way.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlightSnap {
+    pub word: String,
+    pub from: Vec3,
+    pub at: Vec3,
+    pub target: u64,
+    pub charge: f32,
+    /// It will come out as its word's typo, and goes wrong halfway.
+    pub typo: String,
 }
 
 /// One camera. There is one for each player, and the renderer draws the whole list.
@@ -43,6 +101,8 @@ pub struct LetterSnap {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Snapshot {
     pub step: u64,
+    /// The rules' clock, in seconds, which runs slow while time is slowed.
+    pub seconds: f64,
     /// Hours since midnight, 0 to 24.
     pub time_of_day: f32,
     pub players: Vec<PlayerSnap>,
@@ -51,11 +111,30 @@ pub struct Snapshot {
     pub letters: std::sync::Arc<Vec<LetterSnap>>,
     /// The step at which the loose letters last changed.
     pub letters_step: u64,
-    /// The permanent IDs of the things that have been broken, which are no longer drawn.
+    /// The permanent IDs of what is not drawn: the things that have been broken, and the
+    /// pieces of a thing being mended piece by piece whose letters are not yet home.
     pub broken: std::sync::Arc<Vec<u64>>,
+    /// Where each loose thing stands now, as its own space placed in the world.
+    pub props: std::sync::Arc<Vec<(u64, glam::Affine3A)>>,
     /// How hot or cold things are, by permanent ID, -1 to 1. Things not listed are as
     /// the weather leaves them.
     pub heat: std::sync::Arc<Vec<(u64, f32)>>,
+    /// The weather of this step.
+    pub weather: crate::Weather,
+    /// Every thing with an Inscription. Shared with the last snapshot while none changed.
+    pub targets: std::sync::Arc<Vec<TargetSnap>>,
+    /// Words in flight.
+    pub flights: Vec<FlightSnap>,
+    /// Words that landed this step.
+    pub landings: Vec<crate::casting::CastEvent>,
+    /// The blows that landed this step.
+    pub hits: Vec<crate::melee::Hit>,
+    /// What else was heard this step.
+    pub heard: Vec<Heard>,
+    /// Arrows in flight and stuck.
+    pub arrows: std::sync::Arc<Vec<crate::melee::Arrow>>,
+    /// What steel meets, as it stands.
+    pub creatures: std::sync::Arc<Vec<crate::melee::Creature>>,
 }
 
 impl Snapshot {
@@ -76,4 +155,26 @@ fn shortest_angle(from: f32, to: f32) -> f32 {
     let tau = std::f32::consts::TAU;
     let d = (to - from).rem_euclid(tau);
     if d > std::f32::consts::PI { d - tau } else { d }
+}
+
+/// Something heard this step, other than a word: the shell gives each its sound.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Heard {
+    /// A swing begins: light, heavy, or a shield's bash.
+    Swing { player: crate::PlayerId, kind: crate::melee::SwingKind },
+    /// A blow lands on a player: how much got through, and whether a guard took it.
+    Struck { player: crate::PlayerId, through: f32, blocked: bool },
+    /// The bow looses an arrow.
+    Loose { player: crate::PlayerId, at: glam::Vec3 },
+    /// An arrow sticks in the ground or a wall.
+    Thunk { at: glam::Vec3 },
+    /// An Inkling begins to gather itself, splits, or dies.
+    Gather { at: glam::Vec3 },
+    Split { at: glam::Vec3 },
+    Spill { at: glam::Vec3 },
+    /// A thing falls to its letters, or stands whole again.
+    Break { at: glam::Vec3 },
+    Mend { at: glam::Vec3 },
+    /// A player took a word from a Standing Page, by its index in the rules.
+    Learned { player: crate::PlayerId, word: usize },
 }

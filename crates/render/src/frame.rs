@@ -27,7 +27,36 @@ pub struct ViewUniform {
     pub effects: [f32; 4],
     pub moon_dir: [f32; 4],
     pub sky: [f32; 4],
+    /// x: rain, 0 to 1. y: how wet the world is. z: the wind's strength.
+    pub weather: [f32; 4],
+    /// xy: the wind's direction over the ground.
+    pub wind: [f32; 4],
+    /// The wind's sentence on the ground: xy where its line starts, zw the way it runs.
+    pub sentence: [f32; 4],
+    /// x: how far the gust has come, 0 to 1, or less than 0 for none. y: which sentence.
+    /// z: the width of a letter, in metres. w: its depth, away from the eye.
+    pub gust: [f32; 4],
+    /// The finest terrain tiles around the eye: corner x and z, layer, and 1 if present.
+    pub ground_tiles: [[f32; 4]; 4],
+    /// What the governor has left: x the share of grass beyond 30 m, y contact
+    /// occlusion's strength, z the fog grid's share of its full size, w the share of
+    /// particles drawn.
+    pub quality: [f32; 4],
+    /// Magic: x how many rewrite waves, y how many emitters of glyph particles.
+    pub magic_counts: [u32; 4],
+    /// Each rewrite wave: where it started and when; its colour and the instance it
+    /// runs over (counted from 1, 0 for any surface); its speed, reach, and strength.
+    pub waves: [[[f32; 4]; 3]; MAX_WAVES],
+    /// Each emitter of glyph particles: where, which way and when, its colour and
+    /// brightness, and its kind, count, size, and seed. See `shaders/frame.wgsl`.
+    pub emitters: [[[f32; 4]; 4]; MAX_EMITTERS],
+    /// Each emitter's characters, four to a word, sixteen at most.
+    pub emitter_text: [[u32; 4]; MAX_EMITTERS],
 }
+
+/// The most rewrite waves and particle emitters a view draws at once.
+pub const MAX_WAVES: usize = 8;
+pub const MAX_EMITTERS: usize = 32;
 
 /// The most views drawn in one frame. Two is all the full game will ever ask for; four
 /// leaves room for tools.
@@ -47,7 +76,7 @@ pub struct Atmosphere {
     pub moon_dir: Vec3,
     /// How much of the moon's face is lit, 0 to 1.
     pub moon_lit: f32,
-    /// How much of the sky is cloud, 0 to 1. The weather (S02-T10) will drive this.
+    /// How much of the sky is cloud, 0 to 1, more as it rains.
     pub cloud_cover: f32,
     /// The mist: density per metre at its floor, the floor's height, and its falloff.
     pub fog: [f32; 3],
@@ -60,6 +89,40 @@ pub struct Atmosphere {
 }
 
 impl Atmosphere {
+    /// The same hour in fog, 0 to 1: the mist thickens many times over and climbs, and
+    /// the sun reaches the ground dimmed and spread.
+    pub fn with_fog(mut self, fog: f32) -> Self {
+        let f = fog.clamp(0.0, 1.0);
+        if f <= 0.0 {
+            return self;
+        }
+        // Added to the hour's own mist: at full, things a few hundred metres off are lost.
+        self.fog[0] += 0.012 * f;
+        self.fog[2] = self.fog[2].max(20.0) * (1.0 + 2.0 * f);
+        self.light_colour *= 1.0 - 0.6 * f;
+        self.cloud_cover = self.cloud_cover.max(0.3 * f);
+        self
+    }
+
+    /// The same hour under rain, 0 to 1: the sky closes over, the sun is lost behind it,
+    /// the sky's own light greys and dims, and the air thickens.
+    pub fn with_rain(mut self, rain: f32) -> Self {
+        let r = rain.clamp(0.0, 1.0);
+        if r <= 0.0 {
+            return self;
+        }
+        self.cloud_cover = self.cloud_cover.max(0.35 + 0.6 * r);
+        self.light_colour *= 1.0 - 0.85 * r;
+        let grey = |c: Vec3| {
+            let l = c.dot(Vec3::new(0.2126, 0.7152, 0.0722));
+            c.lerp(Vec3::splat(l) * Vec3::new(0.95, 1.0, 1.05), 0.8 * r) * (1.0 - 0.35 * r)
+        };
+        self.sky_zenith = grey(self.sky_zenith);
+        self.sky_horizon = grey(self.sky_horizon);
+        self.fog[0] *= 1.0 + 3.0 * r;
+        self
+    }
+
     pub fn at(hour: f32) -> Self {
         let sun_dir = sun_direction(hour);
         // The moon keeps about ten hours behind the sun: a waxing gibbous moon that is
@@ -134,7 +197,13 @@ pub fn cascade_matrix(view: &View, aspect: f32, near: f32, far: f32, light_dir: 
     // A sphere, so the box's size does not change as the camera turns.
     let radius = corners.iter().map(|c| c.distance(centre)).fold(0.0f32, f32::max);
     let radius = (radius * 16.0).ceil() / 16.0;
+    sphere_cascade_matrix(centre, radius, light_dir)
+}
 
+/// The shadow map's view-projection for a sphere of the world: the light looking along
+/// `light_dir`, its texels kept on a fixed grid so that the shadows do not crawl as the
+/// sphere moves.
+pub fn sphere_cascade_matrix(centre: Vec3, radius: f32, light_dir: Vec3) -> Mat4 {
     let up = if light_dir.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
     let light_view = crate::camera::look_at(Vec3::ZERO, -light_dir, up);
     let texel = radius * 2.0 / SHADOW_SIZE as f32;
@@ -199,6 +268,16 @@ pub fn view_uniform(
         effects: [dive, lamps, tuning.look as f32, 0.0],
         moon_dir: atmosphere.moon_dir.extend(atmosphere.moon_lit).to_array(),
         sky: [atmosphere.cloud_cover, atmosphere.fog[0], atmosphere.fog[1], atmosphere.fog[2]],
+        weather: [0.0; 4],
+        wind: [1.0, 0.0, 0.0, 0.0],
+        sentence: [0.0, 0.0, 1.0, 0.0],
+        gust: [-1.0, 0.0, 1.0, 1.0],
+        ground_tiles: [[0.0; 4]; 4],
+        quality: [1.0; 4],
+        magic_counts: [0; 4],
+        waves: [[[0.0; 4]; 3]; MAX_WAVES],
+        emitters: [[[0.0; 4]; 4]; MAX_EMITTERS],
+        emitter_text: [[0; 4]; MAX_EMITTERS],
     }
 }
 

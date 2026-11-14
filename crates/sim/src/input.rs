@@ -12,6 +12,16 @@ pub struct PlayerInput {
     pub look_pitch: f32,
     /// Bits from [`buttons`].
     pub buttons: u32,
+    /// Letters typed this step, up to four, one byte each, the first in the low byte;
+    /// 0 for none. While a word charges, typing it, or its typo, matters.
+    pub typed: u32,
+}
+
+impl PlayerInput {
+    /// Packs up to four typed characters.
+    pub fn pack_typed(text: &str) -> u32 {
+        text.bytes().filter(|b| b.is_ascii_alphabetic() || *b == b' ').take(4).enumerate().fold(0, |acc, (i, b)| acc | (b as u32) << (i * 8))
+    }
 }
 
 /// Held buttons, as bits of [`PlayerInput::buttons`].
@@ -23,6 +33,9 @@ pub mod buttons {
     pub const READ: u32 = 1 << 4;
     pub const ATTACK_MAIN: u32 = 1 << 5;
     pub const ATTACK_OFF: u32 = 1 << 6;
+    pub const SIDESTEP: u32 = 1 << 7;
+    pub const NEXT_WORD: u32 = 1 << 8;
+    pub const PREVIOUS_WORD: u32 = 1 << 9;
 }
 
 impl PlayerInput {
