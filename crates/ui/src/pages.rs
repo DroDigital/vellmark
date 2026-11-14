@@ -139,6 +139,7 @@ impl Menu {
             }
             Page::Sound => vec![
                 e(sid!("ui.setting.master"), pct(s.master_volume, 0.0, 1.0)),
+                e(sid!("ui.setting.music"), pct(s.music_volume, 0.0, 1.0)),
                 e(sid!("ui.setting.effects"), pct(s.effects_volume, 0.0, 1.0)),
                 e(sid!("ui.setting.ambience"), pct(s.ambience_volume, 0.0, 1.0)),
             ],
@@ -263,8 +264,9 @@ impl Menu {
                 changed
             }
             (Page::Sound, 0) => nudge(&mut s.master_volume, 0.1, 0.0, 1.0),
-            (Page::Sound, 1) => nudge(&mut s.effects_volume, 0.1, 0.0, 1.0),
-            (Page::Sound, 2) => nudge(&mut s.ambience_volume, 0.1, 0.0, 1.0),
+            (Page::Sound, 1) => nudge(&mut s.music_volume, 0.1, 0.0, 1.0),
+            (Page::Sound, 2) => nudge(&mut s.effects_volume, 0.1, 0.0, 1.0),
+            (Page::Sound, 3) => nudge(&mut s.ambience_volume, 0.1, 0.0, 1.0),
             (Page::Access, k) if input.confirm || input.change != 0 => {
                 let flag = match k {
                     0 => &mut s.reduced_motion,

@@ -86,6 +86,7 @@ pub struct Settings {
     pub master_volume: f32,
     pub effects_volume: f32,
     pub ambience_volume: f32,
+    pub music_volume: f32,
     /// 0.75 to 1.5: the size of everything on the interface.
     pub interface_scale: f32,
     /// No sway of the hands as you walk, no jolt when a blow lands; dives become fades.
@@ -104,6 +105,7 @@ impl Default for Settings {
             master_volume: 1.0,
             effects_volume: 1.0,
             ambience_volume: 1.0,
+            music_volume: 0.8,
             interface_scale: 1.0,
             reduced_motion: false,
             reduced_screen_response: false,

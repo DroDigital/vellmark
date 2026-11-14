@@ -31,6 +31,9 @@ fn the_mixer_never_allocates() {
     let before = ALLOCATIONS.load(Ordering::Relaxed);
     for i in 0..2000 {
         controls.rain.set((i % 7) as f32 / 7.0);
+        // The score through calm, a fight, and night.
+        controls.danger.set(if (600..1200).contains(&i) { 1.0 } else { 0.0 });
+        controls.daylight.set(if i > 1400 { 0.0 } else { 1.0 });
         mixer.render(&mut buffer);
     }
     assert_eq!(ALLOCATIONS.load(Ordering::Relaxed), before, "the mixer allocated");

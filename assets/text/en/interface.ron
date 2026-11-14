@@ -63,6 +63,7 @@
     "ui.setting.quality": "Quality",
     "ui.setting.interface_scale": "Interface size",
     "ui.setting.master": "Master volume",
+    "ui.setting.music": "Music volume",
     "ui.setting.effects": "Effects volume",
     "ui.setting.ambience": "Surroundings volume",
     "ui.setting.reduced_motion": "Reduced motion",

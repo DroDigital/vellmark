@@ -2,6 +2,14 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: the score (S06-T14)
+
+- **The theme is OPEN, WHOLE, LIT, CALM**, in that order, because it then begins and ends on D, the mode's home. It is read from the word sheets, so it follows any change to a motif.
+- **D Dorian**, the mode every Vale motif already sits in (with `COLD`'s B natural).
+- **Synthesized until samples come.** The brief asks for approved CC0 instrument samples; none is downloaded yet, so the score plays on synthesis built for it (Karplus-Strong strings, bowed saws, a formant choir, a frame drum, a three-note drone). The sequencer does not change when samples replace the voices.
+- **Rests by day, as the place's own music.** A phrase, then 18 to 50 seconds of the valley's sound alone; longer by night. In danger there are no rests.
+- **Danger is a creature that knows of the player within 25 m.** The fight's music begins at once and leaves when the danger has fallen away over a few seconds.
+
 ## 2026-11-14: dialogue (S06-T06)
 
 - **One file to a speaker**, with talks chosen by flags and nodes by name; a Light character is the same file with only `light` lines, so the full game's two character formats share one table.

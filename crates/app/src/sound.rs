@@ -9,6 +9,9 @@ use vellmark_audio::cues::{Cue, CueKind, Timbre, MOTIF_NOTES};
 use vellmark_audio::{Controls, Mixer, SAMPLE_RATE};
 use vellmark_platform::{AudioOut, Platform};
 
+/// The Vale's four words, whose motifs make its theme in turn.
+const VALE_THEME: [&str; 4] = ["OPEN", "WHOLE", "LIT", "CALM"];
+
 /// How far round the listener water and trees are heard, in metres.
 const WATER_REACH: f32 = 45.0;
 const TREE_REACH: f32 = 28.0;
@@ -42,10 +45,19 @@ impl Sound {
 
     /// Loudness from the settings: the whole mix, the one-shot sounds, and the
     /// surroundings (wind, rain, water, leaves, birds).
-    pub fn set_volumes(&mut self, master: f32, effects: f32, ambience: f32) {
+    pub fn set_volumes(&mut self, master: f32, effects: f32, ambience: f32, music: f32) {
+        self.controls.music.set(music.clamp(0.0, 1.0));
         self.controls.master.set(master.clamp(0.0, 1.0));
         self.controls.effects.set(effects.clamp(0.0, 1.0));
         self.controls.ambience.set(ambience.clamp(0.0, 1.0));
+    }
+
+    /// How near danger is, for the score: 1 while a creature that knows of the player is
+    /// within reach of a fight, falling to 0 as none is.
+    pub fn set_danger(&mut self, snap: &vellmark_sim::Snapshot) {
+        let Some(me) = snap.players.first() else { return };
+        let near = snap.creatures.iter().any(|c| c.alive() && c.aware && c.feet.distance(me.feet) < 25.0);
+        self.controls.danger.set(if near { 1.0 } else { 0.0 });
     }
 
     /// Learns every word's motif from the table of words.
@@ -61,6 +73,19 @@ impl Sound {
                 (w.word.clone(), notes, Timbre::of_class(&w.class))
             })
             .collect();
+        // The Vale's theme: the motifs of its four words, in the order that begins and
+        // ends it on D.
+        let theme: Vec<&[u8]> = VALE_THEME
+            .iter()
+            .filter_map(|word| self.motifs.iter().find(|(w, _, _)| w == word))
+            .map(|(_, notes, _)| {
+                let len = notes.iter().position(|n| *n == 0).unwrap_or(MOTIF_NOTES);
+                &notes[..len]
+            })
+            .collect();
+        if theme.len() == VALE_THEME.len() {
+            self.controls.set_theme(&theme);
+        }
     }
 
     /// The sounds of one step of the rules, heard from the first view: words written,

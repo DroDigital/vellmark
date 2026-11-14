@@ -8,6 +8,7 @@
 pub mod ambience;
 pub mod cues;
 pub mod dsp;
+pub mod score;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -57,6 +58,35 @@ pub struct Controls {
     pub effects: Param,
     /// The surroundings' loudness, from the settings.
     pub ambience: Param,
+    /// The score's loudness, from the settings.
+    pub music: Param,
+    /// How near danger is, 0 to 1, for the score.
+    pub danger: Param,
+    /// The Vale's theme as MIDI notes, each motif ended by a 0, and a count that changes
+    /// when it is set.
+    pub theme: [std::sync::atomic::AtomicU32; score::THEME_NOTES],
+    pub theme_version: std::sync::atomic::AtomicU32,
+}
+
+impl Controls {
+    /// Sets the theme from the Vale's motifs, in order.
+    pub fn set_theme(&self, motifs: &[&[u8]]) {
+        use std::sync::atomic::Ordering;
+        let mut k = 0;
+        for slot in &self.theme {
+            slot.store(0, Ordering::Relaxed);
+        }
+        for m in motifs {
+            for &n in m.iter() {
+                if k + 1 < score::THEME_NOTES {
+                    self.theme[k].store(n as u32, Ordering::Relaxed);
+                    k += 1;
+                }
+            }
+            k += 1;
+        }
+        self.theme_version.fetch_add(1, Ordering::Release);
+    }
 }
 
 impl Controls {
@@ -66,6 +96,7 @@ impl Controls {
         c.open.set(1.0);
         c.effects.set(1.0);
         c.ambience.set(1.0);
+        c.music.set(1.0);
         c
     }
 }
@@ -77,11 +108,13 @@ pub struct Mixer {
     ambience: Ambience,
     master: dsp::Smooth,
     cues: cues::Player,
+    score: score::Score,
+    theme_version: u32,
 }
 
 impl Mixer {
     pub fn new(controls: Arc<Controls>, seed: u32) -> Self {
-        Self { controls, ambience: Ambience::new(seed), master: dsp::Smooth::new(0.0, 0.05), cues: cues::Player::new() }
+        Self { controls, ambience: Ambience::new(seed), master: dsp::Smooth::new(0.0, 0.05), cues: cues::Player::new(), score: score::Score::new(seed ^ 0x5c0e), theme_version: 0 }
     }
 
     /// Fills `out` with interleaved stereo frames. Allocates nothing and takes no lock.
@@ -99,9 +132,23 @@ impl Mixer {
         self.cues.take(&c.cues);
         let effects = c.effects.get().clamp(0.0, 1.0);
         let surroundings = c.ambience.get().clamp(0.0, 1.0);
+        let music = c.music.get().clamp(0.0, 1.0);
+        let mood = score::Mood { danger: c.danger.get(), daylight: c.daylight.get() };
+        // A new theme, read without a lock: the notes, then the count that says so.
+        let version = c.theme_version.load(std::sync::atomic::Ordering::Acquire);
+        if version != self.theme_version {
+            self.theme_version = version;
+            let mut notes = [0u8; score::THEME_NOTES];
+            for (n, slot) in notes.iter_mut().zip(&c.theme) {
+                *n = slot.load(std::sync::atomic::Ordering::Relaxed) as u8;
+            }
+            self.score.set_theme_notes(notes);
+        }
         for frame in out.chunks_exact_mut(CHANNELS) {
             let (l, r) = self.ambience.next();
             let (l, r) = (l * surroundings, r * surroundings);
+            let (ml, mr) = self.score.next(mood);
+            let (l, r) = (l + ml * music, r + mr * music);
             let (el, er) = self.cues.next();
             let (l, r) = (l + el * effects, r + er * effects);
             let m = self.master.next(master_target);

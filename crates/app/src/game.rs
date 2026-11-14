@@ -346,7 +346,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut hurried: Option<u64> = None;
     let mut hold_interact = false;
     renderer.set_fewer_flashes(settings.fewer_flashes);
-    sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume);
+    sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume, settings.music_volume);
 
     'frames: loop {
         let now = Instant::now();
@@ -545,7 +545,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 log::line(&format!("preset {p:?}"));
             }
             renderer.set_fewer_flashes(settings.fewer_flashes);
-            sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume);
+            sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume, settings.music_volume);
             match crate::paths::write_atomically(&settings_path, settings.to_text().as_bytes()) {
                 Ok(()) => log::line("settings saved"),
                 Err(e) => log::line(&format!("the settings could not be saved: {e}")),
@@ -666,6 +666,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             previous = current;
             current = world.snapshot();
             sound.heard(&current);
+            sound.set_danger(&current);
             // Hit stop: a blow that lands holds the striker's view a moment and kicks it.
             // Only the view: the shared world never pauses. Reduced screen response and
             // reduced motion leave the view alone.
