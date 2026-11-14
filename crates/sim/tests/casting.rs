@@ -120,9 +120,11 @@ fn the_off_hand_cycles_through_the_words_known() {
     let mut w = world(Resistance::Plain);
     let id = w.snapshot().players[0].id;
     w.learn(id, "BURNING");
-    hold(&mut w, buttons::NEXT_WORD, 1);
-    assert_eq!(w.snapshot().players[0].holding[1], Holding::Word(1));
     hold(&mut w, 0, 1);
+    assert_eq!(w.snapshot().players[0].holding[1], Holding::Word(1), "a word just learned settles into the writing hand");
     hold(&mut w, buttons::NEXT_WORD, 1);
     assert_eq!(w.snapshot().players[0].holding[1], Holding::Word(0));
+    hold(&mut w, 0, 1);
+    hold(&mut w, buttons::NEXT_WORD, 1);
+    assert_eq!(w.snapshot().players[0].holding[1], Holding::Word(1));
 }

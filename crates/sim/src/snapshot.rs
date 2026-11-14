@@ -40,6 +40,8 @@ pub struct PlayerSnap {
     pub blocking: bool,
     /// Its guard was broken.
     pub staggered: bool,
+    /// A word just learned from a Standing Page, for a few seconds after.
+    pub learned: Option<String>,
 }
 
 /// A thing with an Inscription, as drawn.
@@ -173,4 +175,6 @@ pub enum Heard {
     /// A thing falls to its letters, or stands whole again.
     Break { at: glam::Vec3 },
     Mend { at: glam::Vec3 },
+    /// A player took a word from a Standing Page, by its index in the rules.
+    Learned { player: crate::PlayerId, word: usize },
 }

@@ -37,6 +37,7 @@ fn player() -> PlayerSnap {
         on_weapon: Vec::new(),
         blocking: false,
         staggered: false,
+        learned: None,
     }
 }
 

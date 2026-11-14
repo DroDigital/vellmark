@@ -4,7 +4,7 @@
 
 use crate::{AssetId, StringId};
 
-const MAGIC: &[u8; 8] = b"VLMKRDB1";
+const MAGIC: &[u8; 8] = b"VLMKRDB2";
 
 /// The asset key of a scene's readables.
 pub fn readables_key(scene: &str) -> String {
@@ -21,6 +21,9 @@ pub struct Readable {
     pub max: [f32; 3],
     /// Lines only a sharp enough reader sees, each with the Perception it takes.
     pub hidden: Vec<(StringId, u32)>,
+    /// A Standing Page gives the word it holds to whoever reads it: the word's spelling,
+    /// or empty.
+    pub teaches: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -43,6 +46,8 @@ impl Readables {
                 out.extend_from_slice(&s.0.to_le_bytes());
                 out.extend_from_slice(&p.to_le_bytes());
             }
+            out.extend_from_slice(&(r.teaches.len() as u32).to_le_bytes());
+            out.extend_from_slice(r.teaches.as_bytes());
         }
         out
     }
@@ -73,7 +78,9 @@ impl Readables {
             for _ in 0..n {
                 hidden.push((StringId(u64_at(&mut at)?), u32_at(&mut at)?));
             }
-            items.push(Readable { id, text, min: [v[0], v[1], v[2]], max: [v[3], v[4], v[5]], hidden });
+            let k = u32_at(&mut at)? as usize;
+            let teaches = String::from_utf8(take(&mut at, k)?.to_vec()).map_err(|_| "a taught word is not text".to_string())?;
+            items.push(Readable { id, text, min: [v[0], v[1], v[2]], max: [v[3], v[4], v[5]], hidden, teaches });
         }
         Ok(Self { items })
     }
@@ -92,6 +99,7 @@ mod tests {
                 min: [0.0, 1.0, 2.0],
                 max: [3.0, 4.0, 5.0],
                 hidden: vec![(StringId(11), 2)],
+                teaches: "OPEN".into(),
             }],
         };
         assert_eq!(Readables::from_bytes(&r.to_bytes()).unwrap(), r);

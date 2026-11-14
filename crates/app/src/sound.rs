@@ -111,6 +111,13 @@ impl Sound {
                 Heard::Spill { at } => push(CueKind::Spill, at, 0.9),
                 Heard::Break { at } => push(CueKind::Break, at, 1.0),
                 Heard::Mend { at } => push(CueKind::Mend, at, 1.0),
+                Heard::Learned { word, .. } => {
+                    // The word settles into the hand: a shimmer, then its motif.
+                    push(CueKind::Mend, eye, 0.6);
+                    if let Some((_, notes, timbre)) = self.motifs.get(word) {
+                        cues.push(Cue { kind: CueKind::Motif, pan: 0.0, gain: 0.9, notes: *notes, timbre: *timbre, charge: 1.0, ..Default::default() });
+                    }
+                }
             }
         }
     }

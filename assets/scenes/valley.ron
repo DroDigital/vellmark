@@ -7,8 +7,8 @@
     spawn: (eye: (-104.0, 40.0, 112.0), yaw: 20.0, pitch: -6.0),
     boxes: [
         // Two yards off the bridge road's west end for the grey-box Inklings, out of
-        // sight of each other: in the south one a plain Inkling and a LOCKED one, in the
-        // north one a BURNING one and a COLD one. Rail fences, each open to the east.
+        // sight of each other: in the south one a plain Inkling behind a locked gate, by
+        // an unlit lantern; in the north one the three annotated ones. Rail fences.
         (material: "timber", min: (43.93, 8.12, -67.57), max: (44.07, 9.47, -67.43)),
         (material: "timber", min: (43.93, 8.12, -57.57), max: (44.07, 9.47, -57.43)),
         (material: "timber", min: (46.93, 8.12, -67.57), max: (47.07, 9.47, -67.43)),
@@ -22,6 +22,7 @@
         (material: "timber", min: (43.93, 8.12, -65.07), max: (44.07, 9.47, -64.93)),
         (material: "timber", min: (55.93, 8.12, -65.07), max: (56.07, 9.47, -64.93)),
         (material: "timber", min: (43.93, 8.12, -62.57), max: (44.07, 9.47, -62.43)),
+        (material: "timber", min: (55.93, 8.12, -62.57), max: (56.07, 9.47, -62.43)),
         (material: "timber", min: (43.93, 8.12, -60.07), max: (44.07, 9.47, -59.93)),
         (material: "timber", min: (55.93, 8.12, -60.07), max: (56.07, 9.47, -59.93)),
         (material: "timber", min: (44.00, 8.87, -67.53), max: (47.00, 8.96, -67.47)),
@@ -44,6 +45,8 @@
         (material: "timber", min: (43.97, 9.32, -67.50), max: (44.03, 9.41, -57.50)),
         (material: "timber", min: (55.97, 8.87, -67.50), max: (56.03, 8.96, -65.00)),
         (material: "timber", min: (55.97, 9.32, -67.50), max: (56.03, 9.41, -65.00)),
+        (material: "timber", min: (55.97, 8.87, -62.50), max: (56.03, 8.96, -60.00)),
+        (material: "timber", min: (55.97, 9.32, -62.50), max: (56.03, 9.41, -60.00)),
         (material: "timber", min: (55.97, 8.87, -60.00), max: (56.03, 8.96, -57.50)),
         (material: "timber", min: (55.97, 9.32, -60.00), max: (56.03, 9.41, -57.50)),
         (material: "timber", min: (41.43, 8.12, -48.07), max: (41.57, 9.47, -47.93)),
@@ -83,6 +86,10 @@
         (material: "timber", min: (53.47, 9.32, -48.00), max: (53.53, 9.41, -45.50)),
         (material: "timber", min: (53.47, 8.87, -40.50), max: (53.53, 8.96, -38.00)),
         (material: "timber", min: (53.47, 9.32, -40.50), max: (53.53, 9.41, -38.00)),
+        // The Tithe Hill Stone, by the top of the hill: a tall slab covered in letters.
+        (material: "masonry", min: (-103.0, 46.6, 105.3), max: (-101.9, 49.6, 105.7), yaw: 20.0, tag: "tithe_stone"),
+        // The Standing Page at the head of the Mended Bridge, beside the road.
+        (material: "masonry", min: (127.6, 6.2, -98.6), max: (128.5, 8.5, -98.3), tag: "bridge_page"),
     ],
     objects: [
         // The Mended Bridge: timber planks on two stringers, posts and rails, and two
@@ -174,16 +181,53 @@
                 (material: "iron", min: (-0.215, -0.24, -0.215), max: (0.215, -0.2, 0.215)),
             ],
         ),
+        // The south yard's gate, hung on its post at the yard's south-east corner, and
+        // locked. Its origin is the hinge.
+        (
+            key: "yard_gate",
+            position: (56.0, 8.42, -65.0),
+            boxes: [
+                (material: "timber", min: (-0.03, 0.30, 0.08), max: (0.03, 0.42, 2.42)),
+                (material: "timber", min: (-0.03, 0.85, 0.08), max: (0.03, 0.97, 2.42)),
+                (material: "timber", min: (-0.035, 0.10, 0.08), max: (0.035, 1.10, 0.18)),
+                (material: "timber", min: (-0.035, 0.10, 1.20), max: (0.035, 1.10, 1.30)),
+                (material: "timber", min: (-0.035, 0.10, 2.32), max: (0.035, 1.10, 2.42)),
+                (material: "iron", min: (-0.045, 0.55, 2.20), max: (0.045, 0.70, 2.30)),
+            ],
+        ),
+        // A lantern on a post by the gate, never lit.
+        (
+            key: "yard_lantern",
+            position: (57.3, 8.42, -66.2),
+            boxes: [
+                (material: "iron", min: (-0.04, -0.3, -0.04), max: (0.04, 2.05, 0.04)),
+                (material: "iron", min: (-0.04, 1.95, -0.04), max: (0.04, 2.0, 0.42)),
+                (material: "iron", min: (-0.09, 1.62, 0.33), max: (0.09, 1.64, 0.51)),
+                (material: "iron", min: (-0.09, 1.86, 0.33), max: (0.09, 1.88, 0.51)),
+                (material: "iron", min: (-0.09, 1.64, 0.33), max: (-0.075, 1.86, 0.345)),
+                (material: "iron", min: (0.075, 1.64, 0.33), max: (0.09, 1.86, 0.345)),
+                (material: "iron", min: (-0.09, 1.64, 0.495), max: (-0.075, 1.86, 0.51)),
+                (material: "iron", min: (0.075, 1.64, 0.495), max: (0.09, 1.86, 0.51)),
+                (material: "cloth", min: (-0.008, 1.64, 0.412), max: (0.008, 1.70, 0.428)),
+            ],
+        ),
+    ],
+    // The Standing Pages: read them, and they give up the word they hold.
+    texts: [
+        (string: "page.tithe_hill", level: 1, leading: 2, runs: [(tag: "tithe_stone", facing: South)], teaches: "OPEN"),
+        (string: "page.mended_bridge", level: 1, leading: 2, runs: [(tag: "bridge_page", facing: South)], teaches: "WHOLE"),
     ],
     // The grey-box Inklings, each in its yard, facing about.
     creatures: [
         (key: "yard_inkling", kind: "inkling", position: (48.0, 8.42, -61.0), yaw: 30.0),
-        (key: "yard_inkling_locked", kind: "inkling", position: (51.5, 8.42, -65.0), yaw: 200.0, annotation: "LOCKED"),
+        (key: "yard_inkling_locked", kind: "inkling", position: (47.0, 8.42, -46.0), yaw: 200.0, annotation: "LOCKED"),
         (key: "yard_inkling_burning", kind: "inkling", position: (45.5, 8.42, -42.0), yaw: 120.0, annotation: "BURNING"),
         (key: "yard_inkling_cold", kind: "inkling", position: (50.0, 8.42, -44.5), yaw: 300.0, annotation: "COLD"),
     ],
     // A marked structure: broken, as authored, and a little tough to mend.
     inscribed: [
         (thing: "mended_bridge", class: "structure", words: [("BROKEN", "Integrity")], resistance: 1),
+        (thing: "yard_gate", class: "door", words: [("LOCKED", "Access")]),
+        (thing: "yard_lantern", class: "lamp", words: [("DARK", "Light")]),
     ],
 )

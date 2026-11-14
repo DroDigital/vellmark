@@ -35,6 +35,7 @@ fn player(reading: ReadingSnap, in_focus: Option<u64>) -> PlayerSnap {
         on_weapon: Vec::new(),
         blocking: false,
         staggered: false,
+        learned: None,
     }
 }
 

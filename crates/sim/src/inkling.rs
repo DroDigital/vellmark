@@ -12,7 +12,7 @@ use crate::melee::{marks, Creature};
 /// Its kind's usual size: radius and height in metres, and health.
 pub const RADIUS: f32 = 0.42;
 pub const HEIGHT: f32 = 0.9;
-pub const HEALTH: f32 = 70.0;
+pub const HEALTH: f32 = 120.0;
 pub const POISE: f32 = 40.0;
 /// How far it sees, in a cone of this half-width in radians, and how near it hears.
 pub const SIGHT: f32 = 14.0;

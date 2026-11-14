@@ -187,7 +187,8 @@ impl Target {
 /// The Ink a word costs on a target: dearer on larger and tougher things, on a charge,
 /// and from both hands.
 pub fn ink_cost(rule: &WordRule, target: &Target, charge: f32, both: bool) -> f32 {
-    let size = (0.6 + target.radius * 0.4).clamp(0.6, 3.0);
+    // The biggest thing, fully charged and tough, still costs less than a full well.
+    let size = (0.6 + target.radius * 0.4).clamp(0.6, 2.4);
     let tier = 1.0 + 0.5 * (target.resistance as u8).min(2) as f32;
     rule.ink * size * tier * (1.0 + charge) * if both { BOTH_HANDS_COST } else { 1.0 }
 }

@@ -161,7 +161,8 @@ impl Statics {
 
     /// Sets the boxes a breakable thing stands in now: none while it is broken, some
     /// while it is being mended, all once it is whole.
-    pub fn set_thing(&mut self, id: u64, solids: &[crate::debris::Solid]) {
+    /// Each box is its middle, its half size, and how it is turned.
+    pub fn set_thing(&mut self, id: u64, solids: &[(Vec3, Vec3, glam::Quat)]) {
         if let Some(at) = self.things.iter().position(|(t, _)| *t == id) {
             let (_, handles) = self.things.swap_remove(at);
             for h in handles {
@@ -170,13 +171,10 @@ impl Statics {
         }
         let handles: Vec<_> = solids
             .iter()
-            .filter(|s| (s.max - s.min).min_element() > 0.0)
-            .map(|s| {
-                let half = (s.max - s.min) * 0.5;
-                self.world.insert_collider(
-                    ColliderBuilder::cuboid(half.x, half.y, half.z).translation(v(s.min + half)),
-                    None,
-                )
+            .filter(|(_, half, _)| half.min_element() > 0.0)
+            .map(|(centre, half, turn)| {
+                let pose = Pose::from_parts(v(*centre), rapier3d::math::Rotation::from_xyzw(turn.x, turn.y, turn.z, turn.w));
+                self.world.insert_collider(ColliderBuilder::cuboid(half.x, half.y, half.z).position(pose), None)
             })
             .collect();
         if !handles.is_empty() {

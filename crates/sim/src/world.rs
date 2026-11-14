@@ -10,6 +10,8 @@ use std::sync::Arc;
 pub const EYE_HEIGHT: f32 = 1.68;
 
 const MAX_PITCH: f32 = 1.48;
+/// Reading a Standing Page this long, in seconds, takes its word.
+pub const LEARN_SECONDS: f32 = 1.2;
 /// A breakable thing burning longer than this, in seconds, falls to its letters.
 const BURN_TO_BREAK: f64 = 15.0;
 
@@ -60,6 +62,10 @@ struct Player {
     perception: u32,
     caster: crate::casting::Caster,
     melee: crate::melee::Melee,
+    /// Seconds spent reading the text now read.
+    read_for: f32,
+    /// The word last learned from a Standing Page, and when.
+    learned: Option<(usize, f64)>,
 }
 
 /// The ground as the body asks about it.
@@ -186,7 +192,7 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default() });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default(), read_for: 0.0, learned: None });
         id
     }
 
@@ -340,6 +346,10 @@ impl World {
     /// Gives the world the words, as compiled from their sheets.
     pub fn set_word_rules(&mut self, rules: crate::emendation::WordRules) {
         self.rules = Arc::new(rules);
+        // What is solid depends on the classes the words know.
+        if !self.targets.is_empty() {
+            self.rebuild_statics();
+        }
     }
 
     pub fn word_rules(&self) -> &crate::emendation::WordRules {
@@ -359,11 +369,27 @@ impl World {
     /// A breakable thing that bodies stand on and cannot walk through while it is whole:
     /// a marked structure, or one named so.
     fn solid(&self, id: u64) -> bool {
-        self.solid_things.contains(&id) || self.targets.iter().any(|t| t.id == id && self.rules.classes.get(t.class).is_some_and(|c| c == "structure"))
+        self.solid_things.contains(&id) || self.targets.iter().any(|t| t.id == id && self.rules.classes.get(t.class).is_some_and(|c| c == "structure" || c == "door"))
+    }
+
+    /// A door that a word holds open.
+    fn held_open(&self, id: u64) -> bool {
+        self.targets.iter().any(|t| t.id == id && t.effects.iter().any(|e| e.effect == "open" || e.effect == "gape"))
     }
 
     /// A blow lands on a player: a full charge in either hand smudges into its typo and
     /// flies at whatever is in the gaze; a lesser charge is lost.
+    /// Puts a player somewhere, as a load or a tool would: on the ground there, facing
+    /// `yaw`, level.
+    pub fn place_player(&mut self, id: PlayerId, feet: Vec3, yaw: f32) {
+        let ground = self.ground.as_ref().and_then(|g| g.height(feet.x, feet.z));
+        if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+            p.body = crate::character::Body::new(Vec3::new(feet.x, ground.unwrap_or(feet.y), feet.z));
+            p.yaw = yaw;
+            p.pitch = 0.0;
+        }
+    }
+
     /// Sets a player's Ink, as a save or a tool would.
     pub fn set_ink(&mut self, id: PlayerId, ink: f32) {
         if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
@@ -561,26 +587,23 @@ impl World {
 
     /// The boxes a solid thing stands in now, in the world: all of them while it is whole,
     /// the pieces that stand again while it is mended, and none while it lies broken.
-    fn thing_solids(&self, id: u64) -> Vec<Solid> {
+    fn thing_solids(&self, id: u64) -> Vec<(Vec3, Vec3, glam::Quat)> {
         let Some(b) = self.breakables.iter().find(|b| b.id == id) else {
             return Vec::new();
         };
         let standing = self.standing.iter().find(|(t, _)| *t == id).map(|(_, p)| p);
         let broken = self.broken.contains(&id);
+        if self.held_open(id) {
+            return Vec::new();
+        }
         b.boxes
             .iter()
             .enumerate()
             .filter(|(k, _)| !broken || standing.is_some_and(|p| p.contains(&(*k as u32))))
             .map(|(_, (min, max, _))| {
-                let mut lo = Vec3::splat(f32::MAX);
-                let mut hi = Vec3::splat(f32::MIN);
-                for corner in 0..8 {
-                    let p = Vec3::new(if corner & 1 == 0 { min.x } else { max.x }, if corner & 2 == 0 { min.y } else { max.y }, if corner & 4 == 0 { min.z } else { max.z });
-                    let w = b.to_world.transform_point3(p);
-                    lo = lo.min(w);
-                    hi = hi.max(w);
-                }
-                Solid { min: lo, max: hi }
+                // As it is turned: a long rail's bounding box would stand out over the deck.
+                let (_, turn, _) = b.to_world.to_scale_rotation_translation();
+                (b.to_world.transform_point3((*min + *max) * 0.5), (*max - *min) * 0.5, turn)
             })
             .collect()
     }
@@ -807,6 +830,22 @@ impl World {
                     _ => Reading::Close,
                 }
             };
+            // A Standing Page read long enough gives up its word.
+            if let Reading::Text(t) = p.reading {
+                p.read_for += STEP_SECONDS;
+                let teaches = &self.readables[t].teaches;
+                if p.read_for >= LEARN_SECONDS && !teaches.is_empty() {
+                    if let Some(w) = self.rules.word(teaches) {
+                        if !p.caster.known.contains(&w) {
+                            p.caster.learn(w);
+                            p.learned = Some((w, self.seconds));
+                            self.heard.push(crate::snapshot::Heard::Learned { player: p.id, word: w });
+                        }
+                    }
+                }
+            } else {
+                p.read_for = 0.0;
+            }
         }
         // In solo play, close reading slows time. In co-op the shared world never slows.
         self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close { CLOSE_READING_PACE } else { 1.0 };
@@ -1180,6 +1219,13 @@ impl World {
         let faded = crate::casting::fade_all(&mut self.targets, self.seconds);
         if faded || self.landings.len() > landed_before {
             self.refresh_targets();
+            // A door opened or shut by a word lets bodies through, or stops them again.
+            let doors: Vec<u64> = self.targets.iter().filter(|t| self.rules.classes.get(t.class).is_some_and(|c| c == "door")).map(|t| t.id).collect();
+            for id in doors {
+                if self.breakables.iter().any(|b| b.id == id) {
+                    self.refresh_thing(id);
+                }
+            }
         }
         if self.debris.awake() > 0 {
             self.debris.step(dt);
@@ -1238,6 +1284,7 @@ impl World {
                 on_weapon: p.melee.on_weapon.iter().map(|(e, _, _)| e.clone()).collect(),
                 blocking: p.melee.blocking,
                 staggered: p.melee.staggered > 0.0,
+                learned: p.learned.filter(|(_, at)| self.seconds - at < 5.0).map(|(w, _)| self.rules.words[w].spelling.clone()),
             })
             .collect();
         let views = self

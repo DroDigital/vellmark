@@ -16,6 +16,7 @@ fn world() -> World {
         min: Vec3::new(-1.0, 0.0, -3.0),
         max: Vec3::new(1.0, 2.5, -2.8),
         hidden: vec![(71, 2), (72, 5)],
+        teaches: String::new(),
     }]);
     w
 }

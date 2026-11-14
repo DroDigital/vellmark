@@ -79,6 +79,14 @@ impl Hud<'_> {
             // Nothing in the gaze: the hands' words wait, faintly.
         }
 
+        // A word just taken from a Standing Page: its name, and what that means.
+        if let Some(word) = &player.learned {
+            let key = format!("caption.word.{}", word.to_ascii_lowercase());
+            let title = TextStyle { face: Face::Large, size: (30.0 * d).round(), colour: GOLD };
+            self.centred(canvas, cx, h * 0.24, &title, &Shown::from_table(self.strings, StringId::from_key(&key)));
+            let line = TextStyle { face: Face::Large, size: (18.0 * d).round(), colour: WHITE };
+            self.centred(canvas, cx, h * 0.24 + 34.0 * d, &line, &Shown::from_table(self.strings, sid!("ui.learned")));
+        }
         // The words in hand, at the bottom: the off hand to the left, the main to the right.
         let base = h - 28.0 * d;
         for (i, holding) in player.holding.iter().enumerate() {

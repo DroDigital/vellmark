@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T14, the scripted run.
+**Current task:** S03-T15, the exit gate.
 
 ## Lane: Render
 
@@ -34,6 +34,8 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S03-T14, the scripted run (`crates/harness/tests/scripted_run.rs`): in the real valley, a bot reads the Tithe Hill Stone and learns `OPEN`, opens the yard's locked gate and walks through, lights the lantern, learns `WHOLE` from the bridge's Page, mends the bridge and walks across, and wins the Inkling fight with blade and word, with words alone, and with steel alone. Built for it: Standing Pages (a readable that gives its word after 1.2 s of reading, with the prologue's line on screen and the word's motif), the Tithe Hill Stone and the bridge's Page, a locked gate and an unlit lantern, doors that stop bodies until opened, things that break colliding as turned boxes, a cap so the biggest charged word costs less than a full well of Ink, and a word just learned settling into the writing hand. Evidence: `docs/evidence/S03/scripted_run.md`.
 
 **Done:** S03-T12, the grey-box Inkling (`crates/sim/src/inkling.rs`): a mass of `.,;:` drawn as ink on the particle system (a pipeline that lays dark characters over the scene); it notices a player it sees within 14 m in its cone or hears within 4 m (1.4 m crouched), closes weaving, gathers itself for 0.6 s where it can be seen (swelling and rearing back), lunges, and is open for 0.75 s; a sidestep's first moments let the lunge pass; it never passes into a body. A blow of 6 or more splits it, down to a smallest part and at most seven at once; `COLD` stops the splitting and slows it, `LIT` drives it back, `CALM` keeps it from fighting, `BURNING` burns it, `OPEN` gapes it. Three annotations: `LOCKED` (blows from the front turned), `BURNING` (its bite sets you alight), `COLD` (its bite chills you); a charged word of the same class strips one and staggers it. Dead, it spills into a pool and is gone after 25 s. Two fenced yards off the bridge road's west end hold a plain one and a `LOCKED` one, and a `BURNING` and a `COLD` one (scene format 6 carries creatures). Evidence: `docs/evidence/S03/inklings.jpg`. Tests: `crates/sim/tests/inkling.rs` (steel alone finishes every part), `crates/harness/tests/inklings.rs`.
 **Not yet:** a cry, a sound for each act (S03-T13); it does not climb fences, and its look is grey-box until the ink-creature work of the full game.

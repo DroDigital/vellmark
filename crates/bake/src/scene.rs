@@ -73,6 +73,9 @@ struct AuthoredText {
     /// key and the Perception it takes.
     #[serde(default)]
     hidden: Vec<(String, u32)>,
+    /// A Standing Page: the word it gives whoever reads it.
+    #[serde(default)]
+    teaches: Option<String>,
 }
 
 fn one_row() -> u32 {
@@ -388,8 +391,18 @@ fn readables_of(authored: &Authored, name: &str, strings: &BTreeMap<String, Stri
         };
         for run in &text.runs {
             for b in authored.boxes.iter().filter(|b| b.tag.as_deref() == Some(run.tag.as_str())) {
-                grow([b.min.0, b.min.1, b.min.2]);
-                grow([b.max.0, b.max.1, b.max.2]);
+                // A turned box, as the rules see it: the box that bounds it.
+                let (s, c) = b.yaw.to_radians().sin_cos();
+                let centre = [(b.min.0 + b.max.0) * 0.5, (b.min.2 + b.max.2) * 0.5];
+                for corner in 0..8 {
+                    let p = [
+                        if corner & 1 == 0 { b.min.0 } else { b.max.0 },
+                        if corner & 2 == 0 { b.min.1 } else { b.max.1 },
+                        if corner & 4 == 0 { b.min.2 } else { b.max.2 },
+                    ];
+                    let (x, z) = (p[0] - centre[0], p[2] - centre[1]);
+                    grow([centre[0] + c * x + s * z, p[1], centre[1] - s * x + c * z]);
+                }
             }
             for o in &authored.objects {
                 let (s, c) = o.yaw.to_radians().sin_cos();
@@ -419,6 +432,7 @@ fn readables_of(authored: &Authored, name: &str, strings: &BTreeMap<String, Stri
             min: lo,
             max: hi,
             hidden: text.hidden.iter().map(|(k, p)| (StringId::from_key(k), *p)).collect(),
+            teaches: text.teaches.clone().unwrap_or_default(),
         });
     }
     Ok(vellmark_content::Readables { items })

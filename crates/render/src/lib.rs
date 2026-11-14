@@ -325,6 +325,7 @@ pub fn scene_readables(pack: &vellmark_content::Pack, scene_key: &str) -> Vec<ve
             min: t.min.into(),
             max: t.max.into(),
             hidden: t.hidden.iter().map(|(s, p)| (s.0, *p)).collect(),
+            teaches: t.teaches.clone(),
         })
         .collect()
 }

@@ -2,6 +2,15 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: Standing Pages and the scripted run (S03-T14)
+
+- **A Standing Page is a text that teaches.** Read for 1.2 s, it gives its word; the word settles into the writing hand (a word just learned replaces the word in hand; a shield stays), the screen says the prologue's line ("You have learned a word. It is not yours. Nothing here is."), and its motif plays.
+- **The Tithe Hill Stone's text is the prologue's.** The Mended Bridge Page's text is new, in the Ledger's voice the yard's wall already uses, and waits on the owner's ear (`docs/PLAYTEST_CHECKLIST.md`).
+- **Shut doors are solid** until a word opens them. A thing that can break collides as its own turned boxes, not their bounding boxes, which stood out over the bridge's deck.
+- **Ink for big things.** A target's size raises a word's cost at most 2.4 times (it was 3), so that `WHOLE` fully charged on the bridge (86 Ink) can be written from a full well.
+- **The Inkling has 120 health** (it had 70, and fell to a sword in two seconds).
+- **The run is placed station to station.** Walking the whole tour is the Showcase tour bot's (S07). Words whose Pages are S06's (`LIT`, `COLD`, `BURNING`) are given where the run needs them.
+
 ## 2026-11-14: the sounds of words and steel (S03-T13)
 
 - **Synthesized, all of it,** until the approved sample packs are downloaded: motifs as two-operator FM bells, one timbre per word class; combat as filtered noise and pitched thumps. Sounds that are meant to be recorded later (the blade, the ink) will be replaced, not added to.

@@ -43,11 +43,13 @@ impl Default for Caster {
 
 impl Caster {
     pub fn learn(&mut self, word: usize) {
-        if !self.known.contains(&word) {
+        let new = !self.known.contains(&word);
+        if new {
             self.known.push(word);
         }
-        // An empty hand takes up the word just learned.
-        if self.holding[1] == Holding::Empty {
+        // A word just learned settles into the writing hand, if it is empty or holds a
+        // word; a shield stays where it is.
+        if self.holding[1] == Holding::Empty || (new && matches!(self.holding[1], Holding::Word(_))) {
             self.holding[1] = Holding::Word(word);
         }
     }
@@ -169,7 +171,7 @@ pub fn send(
     right: Vec3,
     flights: &mut Vec<Flight>,
 ) -> Release {
-    let Some(t) = caster.aimed else { return Release::NoTarget };
+    let Some(t) = caster.aimed.filter(|t| *t < targets.len()) else { return Release::NoTarget };
     let target = &targets[t];
     let rule = &rules.words[word];
     // A typo costs the Ink of the word it came from.
@@ -288,7 +290,8 @@ pub fn fade_all(targets: &mut [Target], now: f64) -> bool {
 /// What the crosshair shows for a hand's word on the target in the gaze.
 pub fn preview_for(caster: &Caster, rules: &WordRules, targets: &[Target], hand: Hand) -> Option<(u64, Preview)> {
     let Holding::Word(w) = caster.holds(hand) else { return None };
-    let t = &targets[caster.aimed?];
+    // The aim is from this step; the targets may have changed since (a creature gone).
+    let t = targets.get(caster.aimed?)?;
     let both = caster.hands.both().is_some();
     let charge = caster.charge(if both { None } else { Some(hand) });
     Some((t.id, preview(rules, w, t, charge, both)))

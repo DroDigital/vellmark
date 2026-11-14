@@ -19,6 +19,8 @@ pub struct ReadableText {
     pub max: Vec3,
     /// Hidden lines: each string's ID and the Perception it takes.
     pub hidden: Vec<(u64, u32)>,
+    /// A Standing Page: the word it gives whoever reads it, or empty.
+    pub teaches: String,
 }
 
 /// What a player is doing with Read.
@@ -95,7 +97,7 @@ mod tests {
     use super::*;
 
     fn wall() -> ReadableText {
-        ReadableText { id: 1, text: 2, min: Vec3::new(-1.0, 0.0, -3.0), max: Vec3::new(1.0, 2.5, -2.8), hidden: vec![(3, 2)] }
+        ReadableText { id: 1, text: 2, min: Vec3::new(-1.0, 0.0, -3.0), max: Vec3::new(1.0, 2.5, -2.8), hidden: vec![(3, 2)], teaches: String::new() }
     }
 
     #[test]

@@ -10,4 +10,6 @@
     "ui.health.stroke": "|",
     "ui.stamina.stroke": "|",
     "ui.arrow.stroke": "^",
+    // From the prologue's script, when the Tithe Hill Stone gives up its word.
+    "ui.learned": "You have learned a word. It is not yours. Nothing here is.",
 }
