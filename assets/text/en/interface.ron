@@ -7,4 +7,6 @@
     "ui.ring.full": "o",
     "ui.ring.empty": ".",
     "ui.ink.stroke": "|",
+    "ui.health.stroke": "|",
+    "ui.stamina.stroke": "|",
 }

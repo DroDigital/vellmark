@@ -25,6 +25,17 @@ pub struct PlayerSnap {
     /// What the crosshair shows for each hand's word, if it holds one and something is
     /// in the gaze: the target, and what the word would do.
     pub preview: [Option<(u64, crate::emendation::Preview)>; 2],
+    pub health: f32,
+    pub stamina: f32,
+    /// The weapon in the main hand, if it holds one.
+    pub weapon: crate::melee::WeaponKind,
+    /// The swing under way, and how far through it is, 0 to 1.
+    pub swing: Option<(crate::melee::SwingKind, f32)>,
+    /// The heavy attack drawn back, since this long.
+    pub drawing: Option<f32>,
+    pub blocking: bool,
+    /// Its guard was broken.
+    pub staggered: bool,
 }
 
 /// A thing with an Inscription, as drawn.
@@ -108,6 +119,10 @@ pub struct Snapshot {
     pub flights: Vec<FlightSnap>,
     /// Words that landed this step.
     pub landings: Vec<crate::casting::CastEvent>,
+    /// The blows that landed this step.
+    pub hits: Vec<crate::melee::Hit>,
+    /// What steel meets, as it stands.
+    pub creatures: std::sync::Arc<Vec<crate::melee::Creature>>,
 }
 
 impl Snapshot {

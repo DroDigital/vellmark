@@ -59,6 +59,7 @@ struct Player {
     /// How sharp a reader: hidden lines up to this are seen.
     perception: u32,
     caster: crate::casting::Caster,
+    melee: crate::melee::Melee,
 }
 
 /// The ground as the body asks about it.
@@ -123,6 +124,10 @@ pub struct World {
     props_settled: bool,
     /// Where each loose thing stands now, for the snapshot.
     prop_poses: Arc<Vec<(u64, glam::Affine3A)>>,
+    /// What steel meets.
+    creatures: Vec<crate::melee::Creature>,
+    /// The blows that landed this step.
+    hits: Vec<crate::melee::Hit>,
 }
 
 impl World {
@@ -162,6 +167,8 @@ impl World {
             carried: Vec::new(),
             props_settled: false,
             prop_poses: Arc::default(),
+            creatures: Vec::new(),
+            hits: Vec::new(),
         }
     }
 
@@ -170,7 +177,7 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default() });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default() });
         id
     }
 
@@ -256,6 +263,56 @@ impl World {
 
     /// A blow lands on a player: a full charge in either hand smudges into its typo and
     /// flies at whatever is in the gaze; a lesser charge is lost.
+    /// Sets a player's Ink, as a save or a tool would.
+    pub fn set_ink(&mut self, id: PlayerId, ink: f32) {
+        if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+            p.caster.ink = ink.clamp(0.0, crate::emendation::INK_MAX);
+        }
+    }
+
+    /// Puts a creature in the world for steel to meet.
+    pub fn add_creature(&mut self, creature: crate::melee::Creature) {
+        self.creatures.push(creature);
+    }
+
+    pub fn creatures(&self) -> &[crate::melee::Creature] {
+        &self.creatures
+    }
+
+    pub fn creatures_mut(&mut self) -> &mut [crate::melee::Creature] {
+        &mut self.creatures
+    }
+
+    /// Puts a weapon in a player's main hand, and a shield or nothing in the other.
+    pub fn arm(&mut self, id: PlayerId, weapon: crate::melee::WeaponKind, shield: bool) {
+        if let Some(p) = self.players.iter_mut().find(|p| p.id == id) {
+            p.melee.weapon = weapon;
+            p.caster.holding[0] = crate::casting::Holding::Weapon;
+            if shield {
+                p.caster.holding[1] = crate::casting::Holding::Shield;
+            } else if weapon.stats().two_handed || p.caster.holding[1] == crate::casting::Holding::Shield {
+                p.caster.holding[1] = crate::casting::Holding::Empty;
+            }
+        }
+    }
+
+    /// A blow of `damage` lands on a player from `from`. Attacks pass through the first
+    /// moments of a sidestep; a block faced toward the blow takes most of it. What gets
+    /// through interrupts the hands, and a full charge smudges into its typo. Returns the
+    /// damage taken.
+    pub fn hurt_player(&mut self, id: PlayerId, damage: f32, from: Vec3) -> f32 {
+        let Some(p) = self.players.iter_mut().find(|p| p.id == id) else { return 0.0 };
+        if p.body.untouchable() {
+            return 0.0;
+        }
+        let shield = p.caster.holding[1] == crate::casting::Holding::Shield;
+        let through = p.melee.take(damage, from, p.body.feet, p.yaw, shield);
+        if through > damage * 0.5 {
+            self.strike(id);
+        }
+        through
+    }
+
     pub fn strike(&mut self, id: PlayerId) {
         let Some(p) = self.players.iter_mut().find(|p| p.id == id) else { return };
         let eye = p.body.feet + Vec3::Y * p.body.eye;
@@ -612,6 +669,8 @@ impl World {
                     // Holding on a text keeps reading it, though the eye wanders.
                     (Reading::Text(t), _) => Reading::Text(*t),
                     (Reading::None, Some(t)) => Reading::Text(t),
+                    // Close reading needs Stamina to hold.
+                    _ if p.melee.stamina <= 0.0 => Reading::None,
                     _ => Reading::Close,
                 }
             };
@@ -619,14 +678,30 @@ impl World {
         // In solo play, close reading slows time. In co-op the shared world never slows.
         self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close { CLOSE_READING_PACE } else { 1.0 };
         let dt = STEP_SECONDS * self.pace;
+        let solo = self.players.len() == 1;
         for (i, p) in self.players.iter_mut().enumerate() {
             let input = inputs.get(i).copied().unwrap_or_default();
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
+            // A sidestep costs Stamina, and needs it.
+            let mut input = input;
+            if !p.melee.can_spend(crate::melee::SIDESTEP_COST) {
+                input.buttons &= !buttons::SIDESTEP;
+            }
+            let was = p.body.sidestepping();
             p.body.step(&input, p.yaw, self.statics.as_deref(), &Around(self.ground.as_deref()), dt);
+            if p.body.sidestepping() && !was {
+                p.melee.spend(crate::melee::SIDESTEP_COST);
+            }
+            // Close reading drains Stamina, at the world's pace; half in co-op.
+            if p.reading == Reading::Close {
+                let share = if solo { 1.0 } else { 0.5 };
+                p.melee.spend(crate::melee::READING_DRAIN * share * STEP_SECONDS);
+            }
         }
         // Casting: the hands' taps and charges become words in flight, which land.
         self.landings.clear();
+        self.hits.clear();
         let mut hand_events = Vec::new();
         for (i, p) in self.players.iter_mut().enumerate() {
             let input = inputs.get(i).copied().unwrap_or_default();
@@ -699,6 +774,15 @@ impl World {
                 right,
                 &mut self.flights,
             );
+            // Steel: the weapon hand's taps and holds, and the free hand's guard.
+            let main_weapon = p.caster.holding[0] == crate::casting::Holding::Weapon && !throwing;
+            let off_held = input.held(buttons::ATTACK_OFF) && !reading;
+            let before = self.hits.len();
+            p.melee.step(p.id.0, &hand_events, main_weapon, p.caster.holding[1], off_held, eye, gaze, &mut self.creatures, dt, &mut self.hits);
+            // Hits give Ink.
+            for hit in &self.hits[before..] {
+                p.caster.ink = (p.caster.ink + crate::melee::ink_for(hit, p.melee.weapon)).min(crate::emendation::INK_MAX);
+            }
             crate::casting::refill(&mut p.caster, dt);
         }
         // Carried things are drawn before the eye; then the loose things move, and any
@@ -738,6 +822,7 @@ impl World {
                 }
             }
         }
+        crate::melee::recover(&mut self.creatures, dt);
         let landed_before = self.landings.len();
         crate::casting::fly(&mut self.flights, &mut self.targets, &self.rules, dt, self.seconds, &mut self.landings);
         // The chain: twice a second, fire spreads to what is near it.
@@ -873,6 +958,13 @@ impl World {
                     crate::casting::preview_for(&p.caster, &self.rules, &self.targets, crate::hands::Hand::Main),
                     crate::casting::preview_for(&p.caster, &self.rules, &self.targets, crate::hands::Hand::Off),
                 ],
+                health: p.melee.health,
+                stamina: p.melee.stamina,
+                weapon: p.melee.weapon,
+                swing: p.melee.swing.as_ref().map(|s| (s.kind, (s.t / s.length).min(1.0))),
+                drawing: p.melee.drawing,
+                blocking: p.melee.blocking,
+                staggered: p.melee.staggered > 0.0,
             })
             .collect();
         let views = self
@@ -910,6 +1002,8 @@ impl World {
                 })
                 .collect(),
             landings: self.landings.clone(),
+            hits: self.hits.clone(),
+            creatures: Arc::new(self.creatures.clone()),
         })
     }
 
@@ -932,6 +1026,8 @@ impl World {
             h.u32(p.id.0);
             p.body.hash(&mut h);
             h.f32(p.caster.ink);
+            h.f32(p.melee.health);
+            h.f32(p.melee.stamina);
             h.f32(p.yaw);
             h.f32(p.pitch);
         }

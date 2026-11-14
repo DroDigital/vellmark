@@ -78,7 +78,7 @@ fn the_bridge_is_drawn_broken_knitting_and_whole() {
     };
     let dt = 1.0 / STEP_HZ as f32;
     let mut seconds = 0.0f32;
-    let mut go = |world: &mut World, buttons: u32, steps: u32, seconds: &mut f32| {
+    let go = |world: &mut World, buttons: u32, steps: u32, seconds: &mut f32| {
         for _ in 0..steps {
             world.step(&[PlayerInput { buttons, ..Default::default() }]);
             *seconds += dt;

@@ -7,7 +7,7 @@
 
 **Branch:** `claude/charming-bardeen-5aqf5c`; pull request 7 holds S02.
 **S02:** every task done but S02-T10b (the wind that reads, legible only in motion on the owner's screen) and S02-T15 (the performance run on the owner's Mac). The gate's cloud parts pass: every S02 capture, the glyph-off comparison, and the shimmer check in every weather.
-**Current task:** S03-T09, melee and Stamina.
+**Current task:** S03-T10, words on the weapon, the bow, and sneak attacks.
 
 ## Lane: Render
 
@@ -31,6 +31,9 @@
 **Not yet:** rain does not know about roofs; it falls everywhere until there are buildings to stand under (S04, with a map of what is overhead). Rain falls only where there is terrain.
 
 ## Lane: Sim
+
+**Done:** S03-T09, steel (`crates/sim/src/melee.rs`): tap for a chain of three alternating swings (a tap during a swing follows it), hold for one heavy attack that costs Stamina and staggers, the free hand blocks (a hand holding a word does not), a shield blocks more and bashes once from a block; blows strike in the middle of a swing, once each, the nearest in reach and arc (a greatsword sweeps); sneak attacks on unaware creatures, highest with a dagger; poise and staggers; hits give Ink, a sword's most. Health and Stamina: the sidestep costs Stamina and needs it, close reading drains it (half in co-op) and ends when it is gone; blows on a player pass through a sidestep's first moments, are blocked when faced, and interrupt the hands. Six weapon types by moveset with their traits. Hit stop and a kick of the view, for the striker's view only. Health and Stamina in the HUD, in strokes, while not full. Tests: `crates/sim/tests/melee.rs`.
+**Not yet:** an axe's bleeding and a mace's crush need armour and creatures that keep them (S03-T12); weapons are drawn in S03-T11.
 
 **Done:** S03-T08, props, breaking, and the Mended Bridge (`crates/sim/src/props.rs`, `debris.rs`, `world.rs`): loose props are rapier rigid bodies on the same still things the body stands on, settled at load; Interact picks one of up to 40 kg up within 2.6 m and puts it down, the main hand throws it, and a breakable one jolted by more than 7.5 m/s falls to its letters. A breakable thing burning longer than 15 s falls too; one thing falls into at most 24,000 letters, a big one's scattered over its faces. A thing whose Inscription says `BROKEN` lies in letters from load; `WHOLE` sends each letter home along an arc, knitting outward from the writer's feet, and each piece is drawn and bears weight the moment its letters are home (the bake draws a marked structure piece by piece, `pieces: true`); then its Inscription says `WHOLE`, for good. `HOLE` knocks a whole thing down. The masons' crates and keg wait by the bridge road. Evidence: `docs/evidence/S03/mending.jpg` (broken, knitting, whole). Tests: `crates/sim/tests/bridge.rs`, `props.rs`; `crates/harness/tests/mending.rs`, `props.rs`.
 **Not yet:** props do not block the body or get pushed by it, and stand only on the ground and the scene's boxes, not on a mended bridge; a carried thing is not yet in the hands (S03-T11).

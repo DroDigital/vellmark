@@ -92,6 +92,25 @@ impl Hud<'_> {
                 self.shadowed(canvas, x, base, &style, &name);
             }
         }
+        // Health in the middle and Stamina beneath the main hand's side, each a row of
+        // strokes, shown only while they are not full.
+        let bar = |canvas: &mut Canvas, key: StringId, share: f32, colour: [f32; 4], centre_x: f32| {
+            if share >= 0.999 {
+                return;
+            }
+            let style = TextStyle { face: Face::Small, size: (12.0 * d).round(), colour };
+            let stroke = Shown::from_table(self.strings, key);
+            let step = Canvas::measure(self.atlas, &style, &stroke);
+            let filled = (share.clamp(0.0, 1.0) * 20.0).round() as usize;
+            let left = centre_x - step * 10.0;
+            for k in 0..20 {
+                let style = if k < filled { style } else { TextStyle { colour: FAINT, ..style } };
+                self.shadowed(canvas, left + k as f32 * step, base + 18.0 * d, &style, &stroke);
+            }
+        };
+        bar(canvas, sid!("ui.health.stroke"), player.health / vellmark_sim::melee::HEALTH_MAX, [0.86, 0.32, 0.26, 0.9], cx);
+        let stamina_x = w - 28.0 * d - 10.0 * (12.0 * d).round() * 0.6;
+        bar(canvas, sid!("ui.stamina.stroke"), player.stamina / vellmark_sim::melee::STAMINA_MAX, [0.55, 0.85, 0.45, 0.9], stamina_x);
         // Ink: a row of strokes beneath the off hand's word, as many as there is Ink.
         let strokes = ((player.ink / INK_MAX).clamp(0.0, 1.0) * 20.0).round() as usize;
         let ink_style = TextStyle { face: Face::Small, size: (12.0 * d).round(), colour: [0.62, 0.78, 1.0, 0.85] };

@@ -287,6 +287,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         .collect();
     let mut door_open: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
 
+    // Hit stop and the kick of a blow landing, in the first view.
+    let mut hit_stop = 0.0f32;
+    let mut held_view: Option<vellmark_sim::ViewSnap> = None;
+    let mut kick = 0.0f32;
+
     'frames: loop {
         let now = Instant::now();
         let frame_time = now.duration_since(last);
@@ -478,10 +483,35 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             world.step(&[input]);
             previous = current;
             current = world.snapshot();
+            // Hit stop: a blow that lands holds the striker's view a moment and kicks it.
+            // Only the view: the shared world never pauses.
+            if let Some(me) = current.players.first() {
+                for hit in current.hits.iter().filter(|h| h.player == me.id.0) {
+                    if hit.hit_stop > hit_stop {
+                        hit_stop = hit.hit_stop;
+                        held_view = Some(previous.lerp_view(&current, 0, plan.alpha));
+                    }
+                    kick = kick.max(if hit.hit_stop > vellmark_sim::melee::HIT_STOP { 1.0 } else { 0.55 });
+                }
+            }
         }
 
         let mut hour = world_hour_override.unwrap_or(current.time_of_day);
-        let mut camera = Camera::from_view(&previous.lerp_view(&current, 0, plan.alpha));
+        let mut camera = Camera::from_view(&match held_view {
+            Some(view) if hit_stop > 0.0 => view,
+            _ => previous.lerp_view(&current, 0, plan.alpha),
+        });
+        hit_stop = (hit_stop - frame_time.as_secs_f32()).max(0.0);
+        if hit_stop == 0.0 {
+            held_view = None;
+        }
+        // The kick: a small jolt of the view that dies away in a tenth of a second.
+        if kick > 0.0 {
+            let t = started.elapsed().as_secs_f32();
+            let jolt = kick * 0.006;
+            camera.rotation = camera.rotation * glam::Quat::from_euler(glam::EulerRot::YXZ, (t * 91.0).sin() * jolt, (t * 73.0).sin() * jolt - jolt, 0.0);
+            kick = (kick - frame_time.as_secs_f32() * 10.0).max(0.0);
+        }
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();

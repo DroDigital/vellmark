@@ -29,6 +29,7 @@ pub mod casting;
 mod hash;
 mod input;
 pub mod props;
+pub mod melee;
 mod snapshot;
 mod world;
 

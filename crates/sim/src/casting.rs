@@ -13,6 +13,8 @@ pub enum Holding {
     Empty,
     /// A one-handed weapon.
     Weapon,
+    /// A shield: it blocks, and bashes once from a block.
+    Shield,
     /// A word, by its index in the rules.
     Word(usize),
 }

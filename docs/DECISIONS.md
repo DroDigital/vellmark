@@ -2,6 +2,14 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-14: steel and Stamina (S03-T09)
+
+- **Numbers.** Health and Stamina 100. Stamina comes back at 28 a second once nothing has spent it for 0.8 s. A sidestep costs 18, a shield bash 16, a sword's heavy attack 24. Close reading drains 9 a second (4.5 in co-op). Sprinting is free: the brief names what Stamina pays for, and running is not among them.
+- **The chain** is three swings, right, left, right; a tap within 0.45 s of a swing ending carries it on, and a tap during a swing is kept for when it ends. A swing strikes between a third and three fifths of the way through. A heavy attack is drawn back while held and released on letting go; too tired for it, it is a light swing.
+- **Blocking** takes 60% of a blow faced within about 70 degrees with a weapon and 85% with a shield, at 0.9 Stamina a point kept; with too little Stamina the guard breaks and the player staggers 0.8 s. A blow on a player that gets more than half through interrupts the hands, as a blow did in S03-T07.
+- **Weapons by moveset.** Base numbers per type are in `melee.rs` until the loot generator of the full game gives each weapon its own; the trait of each is as `5d-loot.md` names it. A staggered creature takes a quarter more.
+- **Hit stop** holds the striker's view on the frame of the blow for 55 ms (110 ms for a heavy or sneak blow) and kicks it slightly; it is the app's, per view, and never the rules'.
+
 ## 2026-11-14: props, breaking, and the Mended Bridge (S03-T08)
 
 - **Letters are the pieces.** The brief pre-fractures breakable props into pieces that fall under physics and crumble into characters within seconds; here a broken thing goes straight to its letters, which already fall and settle with their own physics (`docs/PLAN_CHANGES.md`, 2026-11-11). A marked structure's pieces are its authored boxes, drawn one by one (`pieces: true` in a scene), so that `WHOLE` puts it back a piece at a time.

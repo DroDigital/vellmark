@@ -26,6 +26,13 @@ fn player(reading: ReadingSnap, in_focus: Option<u64>) -> PlayerSnap {
         holding: [vellmark_sim::casting::Holding::Weapon, vellmark_sim::casting::Holding::Empty],
         charge: [0.0; 3],
         preview: [None, None],
+        health: 100.0,
+        stamina: 100.0,
+        weapon: vellmark_sim::melee::WeaponKind::Sword,
+        swing: None,
+        drawing: None,
+        blocking: false,
+        staggered: false,
     }
 }
 
