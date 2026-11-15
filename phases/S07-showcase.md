@@ -29,7 +29,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S07-T04** [Shell] Add accessibility basics: subtitles, letter size, interface scale, reduced motion, reduced screen response, the photosensitivity option, and full remapping
 - [x] **S07-T05** [Shell] Finish the settings menu, the pause menu, and a clean first launch that picks a preset by itself
 - [ ] **S07-T06** [Sim] Run a soak of four hours of bot play and fix every crash, leak, and stuck state
-- [ ] **S07-T07** [Shell] Package for Windows, macOS, and Linux, run the license audit, and generate the notices and the AI disclosure
+- [x] **S07-T07** [Shell] Package for Windows, macOS, and Linux, run the license audit, and generate the notices and the AI disclosure
 - [ ] **S07-T08** [Shell] Capture the store kit in photo mode as the brief says the game is presented: key art, eight screenshots with three split frames, and the shots for a sixty second trailer
 - [ ] **S07-T09** [Shell] Write the demo page text, and push a private itch build for the owner to publish
 - [ ] **S07-T10** [Shell] Give a stranger's first-play checklist to the owner, collect what they report, and fix what it finds

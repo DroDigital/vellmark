@@ -107,3 +107,39 @@ jobs:
           name: vellmark-macos-${{ github.run_number }}
           path: build/macos
           if-no-files-found: error
+
+  packages:
+    name: Package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+            platform: linux
+          - name: Windows
+            os: windows-2022
+            platform: windows
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev \
+            libxtst-dev libxinerama-dev libxrender-dev libgl1-mesa-dev libegl1-mesa-dev libdrm-dev libgbm-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols
+      - uses: Swatinem/rust-cache@v2
+      - name: Package
+        shell: bash
+        run: scripts/package.sh ${{ matrix.platform }} "${{ github.run_number }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vellmark-${{ matrix.platform }}-${{ github.run_number }}
+          path: build/${{ matrix.platform }}
+          if-no-files-found: error
