@@ -35,6 +35,23 @@ impl<'a> Shown<'a> {
         Shown(Cow::Owned(self.0.chars().take(chars).collect()))
     }
 
+    /// As far as its first `letters` letters, not counting spaces: a Page as far as it
+    /// has written itself.
+    pub fn prefix_letters(&self, letters: usize) -> Shown<'static> {
+        let mut left = letters;
+        let mut end = 0;
+        for (i, c) in self.0.char_indices() {
+            if !c.is_whitespace() {
+                if left == 0 {
+                    break;
+                }
+                left -= 1;
+            }
+            end = i + c.len_utf8();
+        }
+        Shown(Cow::Owned(self.0[..end].trim_end().to_string()))
+    }
+
     /// Its first `chars` characters, followed by `tail` (itself from the table): for a line
     /// that will not fit its place.
     pub fn clipped(&self, chars: usize, tail: &Shown<'_>) -> Shown<'static> {

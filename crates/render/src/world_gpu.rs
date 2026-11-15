@@ -557,6 +557,19 @@ impl SurfaceResources {
         );
     }
 
+    /// Writes characters over a rectangle of the page sheet, row by row.
+    pub fn write_sheet(&self, gpu: &Gpu, x: u32, y: u32, width: u32, height: u32, chars: &[u8]) {
+        if width == 0 || height == 0 {
+            return;
+        }
+        gpu.queue.write_texture(
+            wgpu::TexelCopyTextureInfo { texture: &self.page_sheet, mip_level: 0, origin: wgpu::Origin3d { x, y, z: 0 }, aspect: wgpu::TextureAspect::All },
+            chars,
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(width), rows_per_image: Some(height) },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+    }
+
     /// Replaces the authored text with a scene's. Text travels with its scene, so this
     /// is called whenever the scene changes.
     pub fn set_pages(&self, gpu: &Gpu, pages: &TextPages) {

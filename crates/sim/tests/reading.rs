@@ -17,6 +17,7 @@ fn world() -> World {
         max: Vec3::new(1.0, 2.5, -2.8),
         hidden: vec![(71, 2), (72, 5)],
         teaches: String::new(),
+        writing: Vec::new(),
     }]);
     w
 }
@@ -31,12 +32,12 @@ fn a_text_in_focus_is_read_with_the_lines_perception_reaches() {
     w.step(&[PlayerInput::default()]);
     assert_eq!(w.snapshot().players[0].in_focus, Some(7), "the wall's text is in focus");
     w.step(&[read()]);
-    assert_eq!(w.snapshot().players[0].reading, ReadingSnap::Text { id: 7, text: 70, hidden: vec![] });
+    assert_eq!(w.snapshot().players[0].reading, ReadingSnap::Text { id: 7, text: 70, hidden: vec![], written: None });
     // A sharper reader sees the first hidden line, not the second.
     let id = w.snapshot().players[0].id;
     w.set_perception(id, 3);
     w.step(&[read()]);
-    assert_eq!(w.snapshot().players[0].reading, ReadingSnap::Text { id: 7, text: 70, hidden: vec![71] });
+    assert_eq!(w.snapshot().players[0].reading, ReadingSnap::Text { id: 7, text: 70, hidden: vec![71], written: None });
     // Letting go stops reading.
     w.step(&[PlayerInput::default()]);
     assert_eq!(w.snapshot().players[0].reading, ReadingSnap::None);

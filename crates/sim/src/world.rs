@@ -167,6 +167,8 @@ pub struct World {
     events: Vec<(u32, String)>,
     /// Words being given by Standing Pages.
     learning: Vec<crate::reading::Learning>,
+    /// Pages writing as they are watched.
+    pages: Vec<crate::reading::PageWriting>,
 }
 
 impl World {
@@ -222,6 +224,7 @@ impl World {
             light_said: Default::default(),
             events: Vec::new(),
             learning: Vec::new(),
+            pages: Vec::new(),
         }
     }
 
@@ -806,6 +809,7 @@ impl World {
         self.merchants = save.merchants.iter().map(|m| crate::merchant::Merchant { id: m.id, stock: m.stock.clone(), purse: m.purse, day: m.day }).collect();
         self.flags = save.flags.iter().cloned().collect();
         self.light_said = save.light_said.iter().cloned().collect();
+        self.settle_pages();
         for p in &mut self.players {
             p.talking = None;
         }
@@ -1075,6 +1079,57 @@ impl World {
     /// Gives the world the texts that can be read.
     pub fn set_readables(&mut self, texts: Vec<crate::reading::ReadableText>) {
         self.readables = Arc::new(texts);
+        self.settle_pages();
+    }
+
+    /// The Pages that write as they are watched, each as it stands: written as far as its
+    /// start, or wholly if the story's flags say it has finished.
+    fn settle_pages(&mut self) {
+        self.pages = self
+            .readables
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| !r.writing.is_empty())
+            .map(|(i, r)| {
+                let done = self.flags.contains(&crate::reading::written_flag(r.id));
+                let end = r.writing.iter().map(|c| c.upto).max().unwrap_or(0);
+                let start = if done { end } else { r.writing[0].upto };
+                crate::reading::PageWriting { readable: i, next: if done { r.writing.len() } else { 1 }, shown: start as f32, target: start, done_at: self.seconds }
+            })
+            .collect();
+    }
+
+    /// Each Page writing as it is watched: on to the end of its entry at the pace of a
+    /// careful hand, and, once that is done, the next entry when its cue is met.
+    fn write_pages(&mut self, dt: f32) {
+        let now = self.seconds;
+        for w in &mut self.pages {
+            let r = &self.readables[w.readable];
+            if w.shown < w.target as f32 {
+                w.shown = (w.shown + crate::reading::WRITE_RATE * dt).min(w.target as f32);
+                if w.shown >= w.target as f32 {
+                    w.done_at = now;
+                    if w.next >= r.writing.len() {
+                        self.flags.insert(crate::reading::written_flag(r.id));
+                    }
+                }
+                continue;
+            }
+            let Some(cue) = r.writing.get(w.next) else { continue };
+            let centre = (r.min + r.max) * 0.5;
+            let near = cue.near > 0.0 && self.players.iter().any(|p| Vec3::new(p.body.feet.x - centre.x, 0.0, p.body.feet.z - centre.z).length() < cue.near);
+            let after = cue.after > 0.0 && now - w.done_at >= cue.after as f64;
+            if near || after {
+                w.target = cue.upto;
+                w.next += 1;
+            }
+        }
+    }
+
+    /// Each Page that writes as it is watched, by its readable's ID, and how many of its
+    /// letters stand written.
+    pub fn pages_written(&self) -> Vec<(u64, u32)> {
+        self.pages.iter().map(|w| (self.readables[w.readable].id, w.shown as u32)).collect()
     }
 
     /// Sets how sharp a reader a player is.
@@ -1778,6 +1833,7 @@ impl World {
         self.deaths();
         crate::melee::recover(&mut self.creatures, dt);
         let landed_before = self.landings.len();
+        self.write_pages(dt);
         // A word given by a Page acts once on everything round it that it would change.
         for l in self.learning.iter_mut().filter(|l| !l.released && self.seconds - l.began >= crate::reading::LIFT + crate::reading::HOLD) {
             l.released = true;
@@ -1999,6 +2055,7 @@ impl World {
                             id: r.id,
                             text: r.text,
                             hidden: r.hidden.iter().filter(|(_, need)| p.perception >= *need).map(|(s, _)| *s).collect(),
+                            written: self.pages.iter().find(|w| w.readable == *t).filter(|w| !w.finished(&r.writing)).map(|w| w.shown as u32),
                         }
                     }
                 },
@@ -2118,6 +2175,7 @@ impl World {
                     released: l.released,
                 })
                 .collect(),
+            pages_written: self.pages_written(),
         })
     }
 
@@ -2126,6 +2184,10 @@ impl World {
     pub fn state_hash(&self) -> u64 {
         let mut h = Fnv64::new();
         h.u64(self.step);
+        for w in &self.pages {
+            h.f32(w.shown);
+            h.u64(w.next as u64);
+        }
         for l in &self.learning {
             h.u64(l.began.to_bits());
             h.u64(l.word as u64);

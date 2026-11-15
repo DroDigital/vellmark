@@ -27,7 +27,12 @@ impl ReadingView<'_> {
         let (w, h) = (self.size.0 as f32, self.size.1 as f32);
         let d = self.density.max(1.0);
         match &player.reading {
-            ReadingSnap::Text { text, hidden, .. } => {
+            ReadingSnap::Text { text, hidden, written, .. } => {
+                // A Page still writing shows only what stands written.
+                let main = || match written {
+                    Some(n) => Shown::from_table(self.strings, StringId(*text)).prefix_letters(*n as usize),
+                    None => Shown::from_table(self.strings, StringId(*text)).prefix(usize::MAX),
+                };
                 canvas.rect([0.0, 0.0, w, h], DIM);
                 let width = (760.0 * d).min(w * 0.82);
                 let x = (w - width) * 0.5;
@@ -37,7 +42,7 @@ impl ReadingView<'_> {
                 let fits = |size: f32| {
                     let body = TextStyle { face: vellmark_content::Face::Large, size, colour: INK };
                     let mut measure = Canvas::new();
-                    let mut height = measure.paragraph(self.atlas, 0.0, 0.0, width, &body, &Shown::from_table(self.strings, StringId(*text)));
+                    let mut height = measure.paragraph(self.atlas, 0.0, 0.0, width, &body, &main());
                     for line in hidden {
                         height += measure.paragraph(self.atlas, 0.0, 0.0, width, &body, &Shown::from_table(self.strings, StringId(*line))) + size * 0.6;
                     }
@@ -53,7 +58,7 @@ impl ReadingView<'_> {
                 let top = ((h - height) * 0.5 - pad).max(pad);
                 canvas.rect([x - pad, top, width + pad * 2.0, height + pad * 2.0], PAPER);
                 let mut y = top + pad;
-                y += canvas.paragraph(self.atlas, x, y, width, &body, &Shown::from_table(self.strings, StringId(*text)));
+                y += canvas.paragraph(self.atlas, x, y, width, &body, &main());
                 for line in hidden {
                     y += body.size * 0.6;
                     y += canvas.paragraph(self.atlas, x, y, width, &hidden_style, &Shown::from_table(self.strings, StringId(*line)));

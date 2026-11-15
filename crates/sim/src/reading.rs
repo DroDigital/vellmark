@@ -21,6 +21,38 @@ pub struct ReadableText {
     pub hidden: Vec<(u64, u32)>,
     /// A Standing Page: the word it gives whoever reads it, or empty.
     pub teaches: String,
+    /// A Page that writes as it is watched: what stands written, then each entry it
+    /// writes and what begins it. Empty for a text that is simply there.
+    pub writing: Vec<vellmark_content::WriteCue>,
+}
+
+/// Letters a Page writes each second: a careful hand.
+pub const WRITE_RATE: f32 = 11.0;
+
+/// A Page writing as it is watched.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PageWriting {
+    /// The readable, by index.
+    pub readable: usize,
+    /// The next cue to be met.
+    pub next: usize,
+    /// Letters written, and how many it is writing to.
+    pub shown: f32,
+    pub target: u32,
+    /// When the last entry was finished.
+    pub done_at: f64,
+}
+
+impl PageWriting {
+    pub fn finished(&self, cues: &[vellmark_content::WriteCue]) -> bool {
+        self.next >= cues.len() && self.shown >= self.target as f32
+    }
+}
+
+/// The flag a Page sets once it has written everything it writes, so that it stays
+/// written in a saved game.
+pub fn written_flag(id: u64) -> String {
+    format!("page.{id:016x}.written")
 }
 
 /// A word given by a Standing Page, as it is given: it lifts from the stone, the reader's
@@ -76,7 +108,8 @@ pub enum ReadingSnap {
     #[default]
     None,
     /// The text's string, and the hidden lines this reader sees.
-    Text { id: u64, text: u64, hidden: Vec<u64> },
+    /// For a Page still writing, `written` is how many of its letters stand written.
+    Text { id: u64, text: u64, hidden: Vec<u64>, written: Option<u32> },
     Close,
 }
 
@@ -133,7 +166,7 @@ mod tests {
     use super::*;
 
     fn wall() -> ReadableText {
-        ReadableText { id: 1, text: 2, min: Vec3::new(-1.0, 0.0, -3.0), max: Vec3::new(1.0, 2.5, -2.8), hidden: vec![(3, 2)], teaches: String::new() }
+        ReadableText { id: 1, text: 2, min: Vec3::new(-1.0, 0.0, -3.0), max: Vec3::new(1.0, 2.5, -2.8), hidden: vec![(3, 2)], teaches: String::new(), writing: Vec::new() }
     }
 
     #[test]

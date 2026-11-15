@@ -214,8 +214,13 @@
     ],
     // The Standing Pages: read them, and they give up the word they hold.
     texts: [
-        (string: "page.tithe_hill", level: 1, leading: 2, runs: [(tag: "tithe_stone", facing: South)], teaches: "OPEN"),
-        (string: "page.mended_bridge", level: 1, leading: 2, runs: [(tag: "bridge_page", facing: South)], teaches: "WHOLE"),
+        // The Pages write as they are watched (the script's climb): the Stone's newest
+        // line as a reader walks up, the next as their shadow crosses it, the last a
+        // moment after.
+        (string: "page.tithe_hill", level: 1, leading: 2, runs: [(tag: "tithe_stone", facing: South)], teaches: "OPEN",
+            writing: [(entry: 2, near: 20.0), (entry: 3, near: 3.0), (entry: 4, after: 3.0)]),
+        (string: "page.mended_bridge", level: 1, leading: 2, runs: [(tag: "bridge_page", facing: South)], teaches: "WHOLE",
+            writing: [(entry: 3, near: 20.0), (entry: 4, near: 4.0)]),
     ],
     // The grey-box Inklings, each in its yard, facing about.
     creatures: [

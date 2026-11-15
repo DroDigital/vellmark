@@ -263,6 +263,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             world.equip(me, index);
         }
     }
+    // The Pages that write as they are watched, and how far each stands written on its
+    // surface, so that a page is written again only when it changes.
+    let page_writing = vellmark_render::scene_page_writing(&base, &scene_key);
+    let mut page_shown: Vec<u32> = vec![u32::MAX; page_writing.len()];
     // Who says what.
     if let Some(table) = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::DIALOGUE_KEY)).and_then(|b| vellmark_content::DialogueTable::from_bytes(b).ok()) {
         world.set_dialogue(table);
@@ -711,6 +715,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
 
+        for (k, (id, pages)) in page_writing.iter().enumerate() {
+            if let Some(&(_, n)) = current.pages_written.iter().find(|(r, _)| r == id) {
+                if page_shown[k] != n {
+                    renderer.set_written(&gpu, pages, n);
+                    page_shown[k] = n;
+                }
+            }
+        }
         let mut hour = world_hour_override.unwrap_or(current.time_of_day);
         let mut camera = Camera::from_view(&match held_view {
             Some(view) if hit_stop > 0.0 => view,

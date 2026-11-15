@@ -180,6 +180,9 @@ pub struct Snapshot {
     pub creatures: std::sync::Arc<Vec<crate::melee::Creature>>,
     /// Words being given by Standing Pages.
     pub learning: Vec<LearningSnap>,
+    /// Pages that write as they are watched: each readable's ID, and how many of its
+    /// letters (not counting spaces) stand written.
+    pub pages_written: Vec<(u64, u32)>,
 }
 
 impl Snapshot {

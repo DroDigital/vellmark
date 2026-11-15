@@ -326,8 +326,19 @@ pub fn scene_readables(pack: &vellmark_content::Pack, scene_key: &str) -> Vec<ve
             max: t.max.into(),
             hidden: t.hidden.iter().map(|(s, p)| (s.0, *p)).collect(),
             teaches: t.teaches.clone(),
+            writing: t.writing.clone(),
         })
         .collect()
+}
+
+/// The Pages of a scene that write as they are watched: each readable's ID and the text
+/// pages it is set on.
+pub fn scene_page_writing(pack: &vellmark_content::Pack, scene_key: &str) -> Vec<(u64, Vec<u32>)> {
+    use vellmark_content::{readables_key, AssetId, AssetKind, Readables};
+    let Some(r) = pack.get(AssetKind::Table, AssetId::from_key(&readables_key(scene_key))).and_then(|b| Readables::from_bytes(b).ok()) else {
+        return Vec::new();
+    };
+    r.items.iter().filter(|t| !t.writing.is_empty()).map(|t| (t.id.0, t.pages.clone())).collect()
 }
 
 pub struct Renderer {
@@ -379,6 +390,31 @@ impl Renderer {
         // Setting the pages cleared the generated ones too: the bark starts afresh.
         self.bark = bark::Bark::new(&scene, &scene.records, &self.bark_words);
         self.scene = scene;
+    }
+
+    /// A Page writing as it is watched: of its pages' letters, in reading order, only the
+    /// first `letters` stand on the surface; the rest of its plate is blank until written.
+    pub fn set_written(&mut self, gpu: &Gpu, pages: &[u32], letters: u32) {
+        let sheet = self.scene.pages.sheet_size;
+        let mut left = letters;
+        for &p in pages {
+            let Some(e) = self.scene.pages.entries.get(p as usize).cloned() else { continue };
+            let mut chars = Vec::with_capacity((e.width * e.height) as usize);
+            for row in 0..e.height {
+                for col in 0..e.width {
+                    let c = self.scene.pages.sheet.get(((e.sheet_y + row) * sheet + e.sheet_x + col) as usize).copied().unwrap_or(0);
+                    chars.push(match c {
+                        0 | b' ' => c,
+                        _ if left > 0 => {
+                            left -= 1;
+                            c
+                        }
+                        _ => b' ',
+                    });
+                }
+            }
+            self.surface.write_sheet(gpu, e.sheet_x, e.sheet_y, e.width, e.height, &chars);
+        }
     }
 
     /// Chooses a preset. Safe in play: nothing is rebuilt that would stall.

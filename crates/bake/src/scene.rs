@@ -76,6 +76,30 @@ struct AuthoredText {
     /// A Standing Page: the word it gives whoever reads it.
     #[serde(default)]
     teaches: Option<String>,
+    /// A Page that writes as it is watched: which of its entries (each begins `ENTRY`,
+    /// counted from 1) it writes, and what begins each. Entries before the first stand
+    /// written.
+    #[serde(default)]
+    writing: Vec<AuthoredCue>,
+}
+
+#[derive(Deserialize)]
+struct AuthoredCue {
+    entry: u32,
+    #[serde(default)]
+    near: f32,
+    #[serde(default)]
+    after: f32,
+}
+
+/// Letters (not spaces) of `text` that stand before each entry's end: its entries begin
+/// at each `ENTRY`.
+fn entry_ends(text: &str) -> Vec<u32> {
+    let starts: Vec<usize> = text.match_indices("ENTRY ").map(|(i, _)| i).collect();
+    let letters = |upto: usize| text[..upto].chars().filter(|c| !c.is_whitespace()).count() as u32;
+    let mut ends: Vec<u32> = starts.iter().skip(1).map(|&s| letters(s)).collect();
+    ends.push(letters(text.len()));
+    ends
 }
 
 fn one_row() -> u32 {
@@ -378,9 +402,32 @@ fn inscribed_of(authored: &Authored, name: &str, file: &Path) -> Result<vellmark
 /// Every authored text of a scene as a thing to be read: the box round the boxes its
 /// runs are set on, in the world.
 fn readables_of(authored: &Authored, name: &str, strings: &BTreeMap<String, String>, file: &Path) -> Result<vellmark_content::Readables, BakeError> {
-    use vellmark_content::{Readable, StringId};
+    use vellmark_content::{Readable, StringId, WriteCue};
     let mut items = Vec::new();
+    // Each text's pages, one to a run, in the order the pages are laid out.
+    let mut next_page = 0u32;
     for text in &authored.texts {
+        let pages: Vec<u32> = (next_page..next_page + text.runs.len() as u32).collect();
+        next_page += text.runs.len() as u32;
+        let source = strings.get(&text.string).map(String::as_str).unwrap_or_default();
+        let ends = entry_ends(source);
+        let mut writing = Vec::new();
+        // First, what stands written at the start: every entry before the first cued.
+        if let Some(first) = text.writing.first() {
+            let standing = if first.entry >= 2 { ends.get(first.entry as usize - 2).copied().unwrap_or(0) } else { 0 };
+            writing.push(WriteCue { upto: standing, near: 0.0, after: 0.0 });
+        }
+        let mut last = 0;
+        for c in &text.writing {
+            let Some(&upto) = ends.get((c.entry as usize).wrapping_sub(1)) else {
+                return Err(BakeError(format!("{}: `{}` has no entry {}", file.display(), text.string, c.entry)));
+            };
+            if c.entry <= last || (c.near > 0.0) == (c.after > 0.0) {
+                return Err(BakeError(format!("{}: `{}`: each entry written in turn, begun by `near` or by `after`", file.display(), text.string)));
+            }
+            last = c.entry;
+            writing.push(WriteCue { upto, near: c.near, after: c.after });
+        }
         let mut lo = [f32::MAX; 3];
         let mut hi = [f32::MIN; 3];
         let mut grow = |p: [f32; 3]| {
@@ -433,6 +480,8 @@ fn readables_of(authored: &Authored, name: &str, strings: &BTreeMap<String, Stri
             max: hi,
             hidden: text.hidden.iter().map(|(k, p)| (StringId::from_key(k), *p)).collect(),
             teaches: text.teaches.clone().unwrap_or_default(),
+            pages,
+            writing,
         });
     }
     Ok(vellmark_content::Readables { items })
@@ -696,6 +745,12 @@ pub fn bake_all(dir: &Path, set: &MaterialSet, strings: &BTreeMap<String, String
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_pages_entries_end_where_the_next_begins_counted_in_letters() {
+        let text = "ENTRY 1. A crow. ENTRY 2. Wind from the north. ENTRY 3. Nobody.";
+        assert_eq!(super::entry_ends(text), vec![13, 37, 51]);
+    }
+
     use super::*;
 
     fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {

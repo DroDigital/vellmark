@@ -21,7 +21,7 @@ pub use camera_path::{CameraPath, Keyframe};
 pub use grade::{Grade, GradeKey};
 pub use levels::{MeshLevels, MESH_LEVELS_KEY};
 pub use records::{TreeRecord, TreeRecords, TREE_RECORDS_KEY};
-pub use readables::{readables_key, targets_key, InscribedThing, InscribedThings, Readable, Readables};
+pub use readables::{readables_key, targets_key, InscribedThing, InscribedThings, Readable, Readables, WriteCue};
 pub mod loot;
 pub mod dialogue;
 pub use dialogue::{Choice, Condition, DialogueTable, Line, Node, Speaker, Talk, DIALOGUE_KEY};

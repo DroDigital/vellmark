@@ -2,6 +2,13 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: Pages that write as they are watched (S06-T10b)
+
+- **A Page's entries are its `ENTRY` chunks**, the canon's own form for Standing Pages, so the scene names entries by number and the bake finds where each ends.
+- **Written letters are counted without spaces**, which is the same in the string and on the laid-out surface, so the surface and reading mode always agree without laying the text out again.
+- **The cues are the script's**: the newest line as the reader walks up (20 m), the next as their shadow crosses the stone (3 m), the last a moment after (3 s). The bridge's Page, new text, writes its last two entries as a reader comes within 20 m and then 4 m.
+- **A finished Page sets a story flag** (`page.<id>.written`), so a saved game needs no new format for it.
+
 ## 2026-11-15: the learning spectacle (S06-T10a)
 
 - **"Everything it would change" is everything whose Inscription holds another word of the word's class** and takes it at full charge: BROKEN things for WHOLE, LOCKED for OPEN, DARK for LIT, within 120 m of the Page, nearest first, at most 32. Things it would merely add to are left alone, so the spectacle always shows a real change.

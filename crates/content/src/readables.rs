@@ -4,7 +4,7 @@
 
 use crate::{AssetId, StringId};
 
-const MAGIC: &[u8; 8] = b"VLMKRDB2";
+const MAGIC: &[u8; 8] = b"VLMKRDB3";
 
 /// The asset key of a scene's readables.
 pub fn readables_key(scene: &str) -> String {
@@ -24,6 +24,22 @@ pub struct Readable {
     /// A Standing Page gives the word it holds to whoever reads it: the word's spelling,
     /// or empty.
     pub teaches: String,
+    /// The scene's text pages it is set on, by index into the table, in reading order.
+    pub pages: Vec<u32>,
+    /// A Standing Page writes as it is watched: each cue writes on to the end of an
+    /// entry when it is met. The first, with neither `near` nor `after`, is what stands
+    /// written at the start.
+    pub writing: Vec<WriteCue>,
+}
+
+/// One entry a Page writes as it is watched: how many letters of its text (not counting
+/// spaces) stand written once it is done, and what begins it: a reader coming within
+/// `near` metres, or `after` seconds once the entry before is written.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct WriteCue {
+    pub upto: u32,
+    pub near: f32,
+    pub after: f32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -48,6 +64,16 @@ impl Readables {
             }
             out.extend_from_slice(&(r.teaches.len() as u32).to_le_bytes());
             out.extend_from_slice(r.teaches.as_bytes());
+            out.extend_from_slice(&(r.pages.len() as u32).to_le_bytes());
+            for p in &r.pages {
+                out.extend_from_slice(&p.to_le_bytes());
+            }
+            out.extend_from_slice(&(r.writing.len() as u32).to_le_bytes());
+            for c in &r.writing {
+                out.extend_from_slice(&c.upto.to_le_bytes());
+                out.extend_from_slice(&c.near.to_le_bytes());
+                out.extend_from_slice(&c.after.to_le_bytes());
+            }
         }
         out
     }
@@ -80,7 +106,17 @@ impl Readables {
             }
             let k = u32_at(&mut at)? as usize;
             let teaches = String::from_utf8(take(&mut at, k)?.to_vec()).map_err(|_| "a taught word is not text".to_string())?;
-            items.push(Readable { id, text, min: [v[0], v[1], v[2]], max: [v[3], v[4], v[5]], hidden, teaches });
+            let n = u32_at(&mut at)? as usize;
+            let mut pages = Vec::with_capacity(n.min(64));
+            for _ in 0..n {
+                pages.push(u32_at(&mut at)?);
+            }
+            let n = u32_at(&mut at)? as usize;
+            let mut writing = Vec::with_capacity(n.min(64));
+            for _ in 0..n {
+                writing.push(WriteCue { upto: u32_at(&mut at)?, near: f32::from_bits(u32_at(&mut at)?), after: f32::from_bits(u32_at(&mut at)?) });
+            }
+            items.push(Readable { id, text, min: [v[0], v[1], v[2]], max: [v[3], v[4], v[5]], hidden, teaches, pages, writing });
         }
         Ok(Self { items })
     }
@@ -100,6 +136,8 @@ mod tests {
                 max: [3.0, 4.0, 5.0],
                 hidden: vec![(StringId(11), 2)],
                 teaches: "OPEN".into(),
+                pages: vec![2, 3],
+                writing: vec![WriteCue { upto: 40, near: 20.0, after: 0.0 }, WriteCue { upto: 90, near: 0.0, after: 4.0 }],
             }],
         };
         assert_eq!(Readables::from_bytes(&r.to_bytes()).unwrap(), r);

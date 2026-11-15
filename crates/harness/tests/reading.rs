@@ -60,7 +60,7 @@ fn reading_is_shown_as_a_prompt_and_as_the_text_on_paper() {
     };
     let shots = [
         ("prompt", player(ReadingSnap::None, Some(wall.id))),
-        ("reading", player(ReadingSnap::Text { id: wall.id, text: wall.text, hidden: vec![StringId::from_key("wall.yard.bench").0] }, Some(wall.id))),
+        ("reading", player(ReadingSnap::Text { id: wall.id, text: wall.text, hidden: vec![StringId::from_key("wall.yard.bench").0], written: None }, Some(wall.id))),
     ];
     let out = vellmark_harness::repo_root().join("build/captures/reading");
     std::fs::create_dir_all(&out).unwrap();
