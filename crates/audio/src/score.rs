@@ -196,7 +196,7 @@ impl Score {
             rng: Rng::new(seed),
             theme: [0; THEME_NOTES],
             queue: [None; QUEUE],
-            voices: std::array::from_fn(|k| Voice::new(seed ^ (k as u32 * 0x9e37_79b9))),
+            voices: std::array::from_fn(|k| Voice::new(seed ^ (k as u32).wrapping_mul(0x9e37_79b9))),
             beat: 0.0,
             composed: 0.0,
             // The first phrase comes after a short while, not at once.
