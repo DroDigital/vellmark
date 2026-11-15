@@ -17,6 +17,12 @@ pub struct Args {
     pub profiler: bool,
     /// The scene to start in, by name: `yard` or `valley`.
     pub scene: Option<String>,
+    /// Low, Medium, or High. Medium if not given.
+    pub preset: Option<String>,
+    /// Start from the saved game.
+    pub continue_game: bool,
+    /// Start without the title sequence.
+    pub no_title: bool,
 }
 
 impl Args {
@@ -27,6 +33,8 @@ impl Args {
             let mut value = |name: &str| it.next().ok_or(format!("{name} needs a value"));
             match arg.as_str() {
                 "--software" => args.software = true,
+                "--continue" => args.continue_game = true,
+                "--no-title" => args.no_title = true,
                 "--fullscreen" => args.fullscreen = true,
                 "--size" => {
                     let v = value("--size")?;
@@ -42,6 +50,7 @@ impl Args {
                 "--accept-refs" => args.accept_refs = true,
                 "--profiler" => args.profiler = true,
                 "--scene" => args.scene = Some(value("--scene")?),
+                "--preset" => args.preset = Some(value("--preset")?),
                 other => return Err(format!("unknown argument `{other}`")),
             }
         }

@@ -8,9 +8,17 @@ OUT="build/macos"
 APP="$OUT/Vellmark.app"
 
 # The owner's build carries the development tools (the F keys and the console) until
-# the Showcase is published; a published build is made without them.
-cargo build --release -p vellmark-app --features dev
+# the Showcase is published; PUBLISH=1 builds without them, for a build the owner
+# publishes.
+if [ "${PUBLISH:-0}" = "1" ]; then
+  cargo build --release -p vellmark-app --no-default-features
+else
+  cargo build --release -p vellmark-app --features dev
+fi
 cargo run --release -p vellmark-bake -- --out build/packs
+# The notices cover every platform's crates, so fetch them all, not only this one's.
+cargo fetch
+cargo run --release -p vellmark-bake --bin notices
 
 rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/packs"
@@ -23,6 +31,7 @@ chmod +x "$OUT/perf-run.command" "$OUT/valley.command"
 mkdir -p "$APP/Contents/Resources/licenses"
 cp third_party/fonts/tiny5/OFL.txt "$APP/Contents/Resources/licenses/Tiny5-OFL.txt"
 cp third_party/fonts/imfellenglish/OFL.txt "$APP/Contents/Resources/licenses/IMFellEnglish-OFL.txt"
+cp THIRD_PARTY_NOTICES.txt "$APP/Contents/Resources/licenses/"
 # An ad-hoc signature: Apple Silicon will not run an unsigned binary.
 codesign --force --deep --sign - "$APP"
 

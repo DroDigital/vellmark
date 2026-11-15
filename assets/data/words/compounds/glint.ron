@@ -1,0 +1,21 @@
+// Glint: SHARP and LIT on one target at once.
+(
+    name: "Glint",
+    words: ("SHARP", "LIT"),
+    caption: "caption.compound.glint",
+    targets: {
+        "door": Refuse("refuse.compound.glint"),
+        "container": Refuse("refuse.compound.glint"),
+        "lamp": Refuse("refuse.compound.glint"),
+        "fire": Refuse("refuse.compound.glint"),
+        "water": Refuse("refuse.compound.glint"),
+        "structure": Refuse("refuse.compound.glint"),
+        "plant": Refuse("refuse.compound.glint"),
+        "creature": Refuse("refuse.compound.glint"),
+        "inkling": Refuse("refuse.compound.glint"),
+        "person": Refuse("refuse.compound.glint"),
+        "weapon": Do(effect: "glint"),
+        "paper": Refuse("refuse.compound.glint"),
+        "stone": Do(effect: "glint"),
+    },
+)

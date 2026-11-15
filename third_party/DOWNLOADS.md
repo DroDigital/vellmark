@@ -36,6 +36,40 @@ allow and which the textures replace without any change to the renderer.
 | Bark | ambientCG or Poly Haven | Trees (S02) |
 | Thatch and roof tile | ambientCG or Poly Haven | Roofs (S02, S06) |
 
+## Sound the owner needs to fetch
+
+The Showcase's ambience is synthesized until these arrive (S02-T13); each recorded layer
+joins its synthesized one when it is in `third_party/inbox/`. Kenney's site refuses this
+machine, and Freesound needs the owner's account. All are CC0.
+
+| Put in | What | From | For |
+|---|---|---|---|
+| `third_party/inbox/kenney/rpg-audio/` | Kenney RPG Audio, the whole pack | https://kenney.nl/assets/rpg-audio | Footsteps, foley, weapons (S03, S04) |
+| `third_party/inbox/kenney/impact-sounds/` | Kenney Impact Sounds, the whole pack | https://kenney.nl/assets/impact-sounds | Hits and breaking (S03) |
+| `third_party/inbox/kenney/interface-sounds/` | Kenney Interface Sounds, the whole pack | https://kenney.nl/assets/interface-sounds | Menus and pages (S05) |
+| `third_party/inbox/freesound/` | CC0 only: a long wind through grass, a light rain on leaves, a shallow river over stones, a meadow at morning with birds; each 30 s or longer, 44.1 kHz or better | https://freesound.org (filter: Creative Commons 0) | Ambience beds under the synthesis (S02) |
+
+## Bodies and animation the owner needs to fetch (S04)
+
+Phase S04 builds people and creatures from these packs, all in the approved catalog
+(`full-game/docs/brief/1.1b-asset-catalog.md`) and all CC0. Each downloads through
+itch.io's "name your price" page (a price of 0 is fine), which is a checkout a session
+must not drive. Download each, unzip it, and put the folder in `third_party/inbox/` as
+named; a session then lists every file in `third_party/manifest.ron` and bakes them.
+
+| Put in | What | From | For |
+|---|---|---|---|
+| `third_party/inbox/quaternius/universal-base-characters/` | Universal Base Characters (glTF) | https://quaternius.itch.io/universal-base-characters | The people's bodies and hair (S04-T01) |
+| `third_party/inbox/quaternius/modular-outfits-fantasy/` | Modular Character Outfits: Fantasy | https://quaternius.com/packs/modularcharacteroutfitsfantasy.html | Clothing and armour (S04-T01) |
+| `third_party/inbox/quaternius/universal-animation-library/` | Universal Animation Library | https://quaternius.com/packs/universalanimationlibrary.html | The skeleton, locomotion, deaths (S04-T03) |
+| `third_party/inbox/quaternius/universal-animation-library-2/` | Universal Animation Library 2 | https://quaternius.com/packs/universalanimationlibrary2.html | Melee and work motions (S04-T03) |
+| `third_party/inbox/quaternius/ultimate-monsters/` | Ultimate Monsters | https://quaternius.com/packs/ultimatemonsters.html | The Shambling Entry, the Bone Clerk (S04-T09) |
+| `third_party/inbox/quaternius/ultimate-animated-animals/` | Ultimate Animated Animals | https://quaternius.com/packs/ultimateanimatedanimals.html | The Blot Hound and the Runt (S04-T08) |
+| `third_party/inbox/kaykit/skeletons/` | KayKit Skeletons (free) | https://kaylousberg.itch.io/kaykit-skeletons | The undead, if the monsters fall short (S04-T09) |
+
+Until they arrive, S04 builds what does not need them: enemy AI, annotations on every
+creature, ragdolls, and the rig families' procedural locomotion.
+
 ## What this machine can reach
 
 Checked on 2026-11-10 from a cloud session.
@@ -47,4 +81,5 @@ Checked on 2026-11-10 from a cloud session.
 | `ambientcg.com` | Reached |
 | `quaternius.com` | Reached |
 | `kenney.nl` | Refused (403). Files from Kenney will need the owner to add them to `third_party/inbox/` |
+| `quaternius.itch.io` | Reached on 2026-11-14, but its downloads go through itch.io's checkout page |
 | `kaylousberg.itch.io`, `freesound.org`, `sonniss.com`, `versilian-studios.com` | Not yet tried. Each needs a browser, an account, or a checkout |

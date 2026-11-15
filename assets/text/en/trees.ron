@@ -1,0 +1,12 @@
+// What a tree's bark records: generated truth, written from the tree's own data by the
+// renderer for the trees nearest the eye. `{kind}` is the kind's name below; `{years}`
+// is how long the tree has stood. The Ledger's voice, as the yard's bench keeps its
+// count: present tense of a plain fact, never angry. Keys are permanent: add, never
+// rename.
+{
+    "tree.bark.record": "{kind}. Stood {years} years.",
+    "tree.kind.oak": "Oak",
+    "tree.kind.ash": "Ash",
+    "tree.kind.apple": "Apple",
+    "tree.kind.hawthorn": "Hawthorn",
+}

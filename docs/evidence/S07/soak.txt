@@ -1,0 +1,7 @@
+The sim soak (crates/harness/tests/soak.rs), in the valley, with nothing rendered.
+Game time: 240 min (14400 s), run in 283 s of wall time.
+Saves made and loaded back: 240. Deaths, each back to the last save and away from the fight: 158.
+Creatures killed: 54. Words that landed: 1058.
+Most letters at once: 24002. Most items lying about: 9. Most arrows: 0.
+Longest stretch walking and going nowhere: 0 s (the bot turns round after 20 s).
+No number went bad, no one fell out of the world, nothing grew without end.

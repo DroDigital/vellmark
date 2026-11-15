@@ -1,0 +1,21 @@
+// Rime: SHARP and COLD on one target at once.
+(
+    name: "Rime",
+    words: ("SHARP", "COLD"),
+    caption: "caption.compound.rime",
+    targets: {
+        "door": Do(effect: "rime"),
+        "container": Do(effect: "rime"),
+        "lamp": Do(effect: "rime"),
+        "fire": Refuse("refuse.compound.rime"),
+        "water": Do(effect: "rime"),
+        "structure": Do(effect: "rime"),
+        "plant": Do(effect: "rime"),
+        "creature": Do(effect: "rime"),
+        "inkling": Do(effect: "rime"),
+        "person": Refuse("refuse.compound.rime"),
+        "weapon": Do(effect: "rime"),
+        "paper": Refuse("refuse.compound.rime"),
+        "stone": Do(effect: "rime"),
+    },
+)

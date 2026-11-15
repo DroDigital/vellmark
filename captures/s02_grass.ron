@@ -1,0 +1,17 @@
+// Phase S02, grass: the pasture on Tithe Hill and the barley below it. Heights are above
+// the ground. The meadow from standing height; blades at arm's length, where each is a
+// line of characters, and closer still, where the blade is nothing but them; the barley from inside the field; and the barley against a low sun.
+#![enable(implicit_some)]
+(
+    name: "s02_grass",
+    scene: "scene.valley",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "meadow", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -12.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "arm", from: (eye: (-100.0, 0.42, 116.0), yaw: 40.0, pitch: -14.0), hour: 10.0, above_ground: true, pair: true),
+        (name: "letters", from: (eye: (-104.0, 0.3, 112.0), yaw: 22.0, pitch: -6.0), hour: 10.0, above_ground: true, fov: 22.0, pair: true),
+        (name: "barley", from: (eye: (-50.0, 1.7, -20.0), yaw: 0.0, pitch: -10.0), hour: 13.0, above_ground: true, pair: true),
+        (name: "barley_low_sun", from: (eye: (-50.0, 1.7, -20.0), yaw: 270.0, pitch: -4.0), hour: 17.8, above_ground: true, pair: true),
+    ],
+)

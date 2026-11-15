@@ -21,6 +21,7 @@ Keys in this build
   F5                       light the lantern or put it out
   F6                       step through the close-up looks (living is the default)
   F7                       break the nearest breakable thing into its letters
-  `                        the console; type help. Try: heat door 0.9, break door 0.1
+  `                        the console; type help. Try: heat door 0.9, break door 0.1,
+                           rain 1, wind 0 (in the valley)
 
 What to check is listed in docs/PLAYTEST_CHECKLIST.md in the repository.

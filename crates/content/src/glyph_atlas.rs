@@ -98,6 +98,18 @@ impl GlyphAtlas {
         &self.faces[face as usize]
     }
 
+    /// Whether a glyph's ink covers a point of its cell, `u` across and `v` down, each 0
+    /// to 1: its true distance read at the largest level.
+    pub fn covers(&self, face: Face, c: char, u: f32, v: f32) -> bool {
+        let side = self.cell as usize;
+        if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) || side == 0 {
+            return false;
+        }
+        let (x, y) = ((u * side as f32) as usize, (v * side as f32) as usize);
+        let at = (Self::layer(face, c) as usize * side * side + y * side + x) * 4 + 3;
+        self.texels.get(at).is_some_and(|d| *d > 128)
+    }
+
     /// The byte range of one level, holding every layer back to back.
     pub fn level_range(&self, level: u32) -> std::ops::Range<usize> {
         let mut start = 0usize;

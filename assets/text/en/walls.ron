@@ -2,5 +2,9 @@
 // Stone speaks in the Ledger's voice: present tense, never angry.
 {
     "wall.yard.ledger": "ENTRY 4112.03.02.0711. THIS WALL STANDS. COURSE ELEVEN IS LEVEL. THE MASON IS PAID. ENTRY 4112.03.02.0712. A DOOR IS HUNG IN THE NORTH WALL. IT OPENS INWARD. NOBODY ASKS WHERE IT LEADS. ENTRY 4112.06.19.1408. RAIN, ONE HOUR. THE YARD HOLDS FOUR PUDDLES. ALL FOUR ARE COUNTED. ENTRY 4113.01.30.0655. FROST. A BENCH IS PLACED BY THE EAST WALL WITHOUT NOTICE. IT IS NOTED. ENTRY 4113.01.30.0656. THE LANTERN IS LIT. IT IS NOT YET DUSK. SOMEBODY IS EARLY. ENTRY 4114.09.02.1730. A STRANGER STANDS CLOSE TO THIS WALL AND READS IT. THE STRANGER IS THE FIRST. THIS IS NOTED WITHOUT COMMENT.",
+    // The Tithe Hill Stone, from the prologue's script.
+    "page.tithe_hill": "ENTRY 4112.11.08.3391. A crow alights upon the Stone. ENTRY 4112.11.08.3392. Wind from the north. ENTRY 4112.11.08.3393. The grass bends beneath no one. ENTRY 4112.11.08.3394. Nobody is here.",
+    // The Page at the head of the Mended Bridge. Its wording waits on the owner's ear.
+    "page.mended_bridge": "ENTRY 4112.04.17.0902. The bridge over the Quill is whole. ENTRY 4112.04.17.0903. The bridge over the Quill is not whole. ENTRY 4112.04.17.0904. Its planks are in the water. They are counted. ENTRY 4112.04.17.0905. Nobody crosses.",
     "wall.yard.bench": "Sat upon 3,114 times. Complaints: one. Withdrawn. Sat upon 3,115 times.",
 }

@@ -6,19 +6,51 @@
 
 mod clock;
 pub mod debris;
+pub mod line;
+pub mod weather;
 
 /// The ground the players walk on: its height at a point, if there is ground there.
 /// The world crate answers this from the terrain; the rules only ask.
 pub trait Ground: Send + Sync + std::fmt::Debug {
     fn height(&self, x: f32, z: f32) -> Option<f32>;
+    /// The height of the water's surface at a point, if there is water there.
+    fn water(&self, _x: f32, _z: f32) -> Option<f32> {
+        None
+    }
+    /// What the ground is at a point, as the terrain numbers it (grass, field, road,
+    /// earth, bank, bed, forest, Erasure), if there is ground there.
+    fn surface(&self, _x: f32, _z: f32) -> Option<u8> {
+        None
+    }
+    /// The ground as squares of heights, for the physics: the finest there is.
+    fn patches(&self) -> Vec<character::HeightPatch> {
+        Vec::new()
+    }
 }
+pub mod character;
+pub mod hands;
+pub mod reading;
+pub mod emendation;
+pub mod casting;
 mod hash;
 mod input;
+pub mod props;
+pub mod melee;
+pub mod inkling;
+pub mod ai;
+pub mod items;
+pub mod inventory;
+pub mod merchant;
+pub mod save;
+pub mod dialogue;
+pub mod redactor;
 mod snapshot;
 mod world;
 
 pub use clock::{FixedClock, StepPlan, STEP_HZ, STEP_SECONDS};
 pub use hash::Fnv64;
 pub use input::{buttons, PlayerInput};
-pub use snapshot::{LetterSnap, PlayerSnap, Snapshot, ViewSnap};
+pub use snapshot::{Heard, LetterSnap, LearningSnap, PlayerSnap, RedactorSnap, Snapshot, TalkSnap, TargetSnap, ViewSnap};
+pub use weather::Weather;
 pub use world::{BreakableThing, PlayerId, World, WorldConfig, EYE_HEIGHT};
+pub use character::{Body, HeightPatch, Trunk};

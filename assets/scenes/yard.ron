@@ -89,4 +89,9 @@
     lights: [
         (key: "lantern", position: (-1.4, 2.15, -5.65), colour: (1.0, 0.58, 0.24), strength: 14.0, radius: 11.0, casts_shadow: true),
     ],
+    // What can be written on: the door, locked, and the lantern, lit.
+    inscribed: [
+        (thing: "door", class: "door", words: [("LOCKED", "Access")]),
+        (thing: "lantern", class: "lamp", words: [("LIT", "Light")]),
+    ],
 )

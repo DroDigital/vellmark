@@ -1,0 +1,13 @@
+// Phase S02, rain on a wall: the yard's north wall soaked, at two metres and at half a
+// metre, where the rain running down it is written as columns of `|`.
+#![enable(implicit_some)]
+(
+    name: "s02_rain_wall",
+    scene: "scene.yard",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "wall_2m", from: (eye: (3.0, 1.68, -4.0), yaw: 0.0, pitch: 0.0), hour: 15.0, rain: 0.8, pair: true),
+        (name: "wall_50cm", from: (eye: (3.0, 1.68, -5.5), yaw: 0.0, pitch: 0.0), hour: 15.0, rain: 0.8, pair: true),
+    ],
+)

@@ -1,0 +1,16 @@
+// Phase S02, rain. Heights are above the ground. The road down from Tithe Hill in
+// rain; the road at the feet, where puddles ring and splashes are written as `'`; the
+// river in rain; and the hill after the rain, wet and still.
+#![enable(implicit_some)]
+(
+    name: "s02_rain",
+    scene: "scene.valley",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "road", from: (eye: (-60.0, 1.7, 44.0), yaw: 50.0, pitch: -6.0), hour: 11.0, above_ground: true, rain: 0.9, pair: true),
+        (name: "feet", from: (eye: (-61.0, 1.0, 38.0), yaw: 47.0, pitch: -50.0), hour: 11.0, above_ground: true, rain: 0.9, fov: 50.0, pair: true),
+        (name: "river", from: (eye: (0.0, 1.7, -100.0), yaw: 0.0, pitch: -14.0), hour: 15.0, above_ground: true, rain: 0.7, pair: true),
+        (name: "after", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -8.0), hour: 16.0, above_ground: true, rain: 0.0, wetness: 1.0, pair: true),
+    ],
+)

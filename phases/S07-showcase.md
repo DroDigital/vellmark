@@ -24,10 +24,14 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S07-T01** [Render] Run the performance run across the whole tour on the owner's Mac, and fix every pass over its share and every frame over 33 ms
 - [ ] **S07-T02** [Render] Tune the governor until its steps cannot be seen, and tune Low and High
 - [ ] **S07-T03** [Render] Build photo mode: the free camera, the player's character with poses, text view, the split frame, and saving to PNG
-- [ ] **S07-T04** [Shell] Add accessibility basics: subtitles, letter size, interface scale, reduced motion, reduced screen response, the photosensitivity option, and full remapping
-- [ ] **S07-T05** [Shell] Finish the settings menu, the pause menu, and a clean first launch that picks a preset by itself
+  - [x] **S07-T03a** The free camera, field of view, tilt, exposure, the hands shown or hidden, text view, the split frame with its divider moved and turned, and saving to PNG
+  - [ ] **S07-T03b** The player's character with poses (**after** S04-T01, the bodies), and depth of field
+- [x] **S07-T04** [Shell] Add accessibility basics: subtitles, letter size, interface scale, reduced motion, reduced screen response, the photosensitivity option, and full remapping
+- [x] **S07-T05** [Shell] Finish the settings menu, the pause menu, and a clean first launch that picks a preset by itself
 - [ ] **S07-T06** [Sim] Run a soak of four hours of bot play and fix every crash, leak, and stuck state
-- [ ] **S07-T07** [Shell] Package for Windows, macOS, and Linux, run the license audit, and generate the notices and the AI disclosure
+  - [x] **S07-T06a** The sim soak: four hours of bot play in the valley, saving and loading every minute, fighting, writing words, and dying
+  - [ ] **S07-T06b** The rendered soak of the whole tour (**after** S06-T16, the bot that plays the tour)
+- [x] **S07-T07** [Shell] Package for Windows, macOS, and Linux, run the license audit, and generate the notices and the AI disclosure
 - [ ] **S07-T08** [Shell] Capture the store kit in photo mode as the brief says the game is presented: key art, eight screenshots with three split frames, and the shots for a sixty second trailer
 - [ ] **S07-T09** [Shell] Write the demo page text, and push a private itch build for the owner to publish
 - [ ] **S07-T10** [Shell] Give a stranger's first-play checklist to the owner, collect what they report, and fix what it finds

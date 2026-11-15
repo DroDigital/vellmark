@@ -1,0 +1,310 @@
+//! The player's input settings: how fast the view turns, which way is up, how much aim
+//! assist, and which buttons do what. Kept in the user's settings file, read at start
+//! and written when changed. Only what differs from the defaults is remapped.
+
+use serde::{Deserialize, Serialize};
+
+use crate::actions::{Action, Bindings, Key, MouseButton, PadButton};
+
+/// Multipliers on the defaults, so that a later change of default carries through.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InputSettings {
+    /// 0.2 to 4: how fast the mouse turns the view.
+    pub mouse_sensitivity: f32,
+    /// 0.2 to 4: how fast a full stick turns it.
+    pub stick_sensitivity: f32,
+    pub invert_y: bool,
+    /// 0 off to 1 strong: how much a controller's aim is drawn onto targets.
+    pub aim_assist: f32,
+    /// Remapped buttons: each action named here is moved to the button given.
+    pub keys: Vec<(Action, Key)>,
+    pub mouse: Vec<(Action, MouseButton)>,
+    pub pad: Vec<(Action, PadButton)>,
+}
+
+impl Default for InputSettings {
+    fn default() -> Self {
+        Self { mouse_sensitivity: 1.0, stick_sensitivity: 1.0, invert_y: false, aim_assist: 0.5, keys: Vec::new(), mouse: Vec::new(), pad: Vec::new() }
+    }
+}
+
+impl InputSettings {
+    /// Reads the settings, or gives the defaults if there are none or they cannot be read.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        ron::from_str(text).map_err(|e| e.to_string())
+    }
+
+    pub fn to_text(&self) -> String {
+        ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default()).unwrap_or_default()
+    }
+
+    /// The bindings these settings make from the defaults.
+    pub fn bindings(&self) -> Bindings {
+        let mut b = Bindings::default();
+        b.mouse_sensitivity *= self.mouse_sensitivity.clamp(0.2, 4.0);
+        b.stick_turn_rate *= self.stick_sensitivity.clamp(0.2, 4.0);
+        b.invert_y = self.invert_y;
+        for &(action, key) in &self.keys {
+            b.rebind_key(action, key);
+        }
+        for &(action, button) in &self.mouse {
+            b.rebind_mouse(action, button);
+        }
+        for &(action, button) in &self.pad {
+            b.rebind_pad(action, button);
+        }
+        b
+    }
+
+    /// Moves an action to a key, remembering it.
+    pub fn remap_key(&mut self, action: Action, key: Key) {
+        self.keys.retain(|(a, _)| *a != action);
+        self.keys.push((action, key));
+    }
+
+    pub fn remap_mouse(&mut self, action: Action, button: MouseButton) {
+        self.mouse.retain(|(a, _)| *a != action);
+        self.mouse.push((action, button));
+    }
+
+    pub fn remap_pad(&mut self, action: Action, button: PadButton) {
+        self.pad.retain(|(a, _)| *a != action);
+        self.pad.push((action, button));
+    }
+}
+
+/// Everything the player sets: input, the quality preset, loudness, the interface's size,
+/// and the accessibility options. Kept in the user's `settings.ron`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Settings {
+    pub input: InputSettings,
+    /// `low`, `medium`, or `high`; none until the first launch picks one.
+    pub preset: Option<String>,
+    /// Loudness, each 0 to 1.
+    pub master_volume: f32,
+    pub effects_volume: f32,
+    pub ambience_volume: f32,
+    pub music_volume: f32,
+    /// 0.75 to 1.5: the size of everything on the interface.
+    pub interface_scale: f32,
+    /// No sway of the hands as you walk, no jolt when a blow lands; dives become fades.
+    pub reduced_motion: bool,
+    /// The view never holds or shakes when a blow lands.
+    pub reduced_screen_response: bool,
+    /// Flashes of light are dimmer and slower, and fire does not flicker.
+    pub fewer_flashes: bool,
+    /// Captions for the sounds that matter: each word's motif and the sounds not to miss.
+    pub captions: bool,
+    /// Close reading slows time in solo play.
+    pub close_reading_slows: bool,
+    /// The state of the creature in the gaze, said in words beside its name.
+    pub creature_states: bool,
+    /// Read is pressed once to begin reading and again to stop, rather than held.
+    pub read_toggle: bool,
+    /// Colours safe for colour blindness, for what colours mean.
+    pub safe_colours: bool,
+    /// Black fields and white letters on every screen.
+    pub high_contrast: bool,
+    /// 1 to 1.5: interface letters set larger, apart from the interface's size.
+    pub letter_size: f32,
+    /// Where photo mode saves its pictures; none for the user's pictures folder.
+    pub picture_folder: Option<String>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            input: InputSettings::default(),
+            preset: None,
+            master_volume: 1.0,
+            effects_volume: 1.0,
+            ambience_volume: 1.0,
+            music_volume: 0.8,
+            interface_scale: 1.0,
+            reduced_motion: false,
+            reduced_screen_response: false,
+            fewer_flashes: false,
+            captions: true,
+            close_reading_slows: true,
+            creature_states: false,
+            high_contrast: false,
+            read_toggle: false,
+            safe_colours: false,
+            letter_size: 1.0,
+            picture_folder: None,
+        }
+    }
+}
+
+impl Settings {
+    /// Reads the settings. A file from before there were more than input settings is read
+    /// as those.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        if text.contains("input:") {
+            ron::from_str(text).map_err(|e| e.to_string())
+        } else {
+            Ok(Self { input: InputSettings::parse(text)?, ..Default::default() })
+        }
+    }
+
+    pub fn to_text(&self) -> String {
+        ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default()).unwrap_or_default()
+    }
+
+    pub fn interface_scale(&self) -> f32 {
+        self.interface_scale.clamp(0.75, 1.5)
+    }
+}
+
+impl Bindings {
+    /// Puts `action` on `key`. Whatever was on that key moves to where `action` was, so
+    /// that no action is left without a button.
+    pub fn rebind_key(&mut self, action: Action, key: Key) {
+        // A movement key: whatever was on the new key takes the old one.
+        let moves = [Action::MoveForward, Action::MoveBack, Action::MoveLeft, Action::MoveRight];
+        if let Some(i) = moves.iter().position(|a| *a == action) {
+            let old = self.move_keys[i];
+            if let Some(j) = self.move_keys.iter().position(|k| *k == key) {
+                self.move_keys[j] = old;
+            }
+            if let Some(slot) = self.keys.iter_mut().find(|(k, _)| *k == key) {
+                slot.0 = old;
+            }
+            self.move_keys[i] = key;
+            return;
+        }
+        // An action moved onto a movement key gives that key's movement its old key.
+        if let Some(j) = self.move_keys.iter().position(|k| *k == key) {
+            if let Some(old) = self.key_for(action) {
+                self.move_keys[j] = old;
+            }
+        }
+        let old = self.keys.iter().find(|(_, a)| *a == action).map(|(k, _)| *k);
+        let displaced = self.keys.iter().find(|(k, _)| *k == key).map(|(_, a)| *a);
+        self.keys.retain(|(k, a)| *a != action && *k != key);
+        self.keys.push((key, action));
+        if let (Some(old), Some(other)) = (old, displaced) {
+            if other != action {
+                self.keys.push((old, other));
+            }
+        }
+    }
+
+    pub fn rebind_mouse(&mut self, action: Action, button: MouseButton) {
+        let old = self.mouse.iter().find(|(_, a)| *a == action).map(|(b, _)| *b);
+        let displaced = self.mouse.iter().find(|(b, _)| *b == button).map(|(_, a)| *a);
+        self.mouse.retain(|(b, a)| *a != action && *b != button);
+        self.mouse.push((button, action));
+        if let (Some(old), Some(other)) = (old, displaced) {
+            if other != action {
+                self.mouse.push((old, other));
+            }
+        }
+    }
+
+    pub fn rebind_pad(&mut self, action: Action, button: PadButton) {
+        let old = self.pad.iter().find(|(_, a)| *a == action).map(|(b, _)| *b);
+        let displaced = self.pad.iter().find(|(b, _)| *b == button).map(|(_, a)| *a);
+        self.pad.retain(|(b, a)| *a != action && *b != button);
+        self.pad.push((button, action));
+        if let (Some(old), Some(other)) = (old, displaced) {
+            if other != action {
+                self.pad.push((old, other));
+            }
+        }
+    }
+
+    /// The key an action is on, if any.
+    pub fn key_for(&self, action: Action) -> Option<Key> {
+        let moves = [Action::MoveForward, Action::MoveBack, Action::MoveLeft, Action::MoveRight];
+        if let Some(i) = moves.iter().position(|a| *a == action) {
+            return Some(self.move_keys[i]);
+        }
+        self.keys.iter().find(|(_, a)| *a == action).map(|(k, _)| *k)
+    }
+
+    pub fn mouse_for(&self, action: Action) -> Option<MouseButton> {
+        self.mouse.iter().find(|(_, a)| *a == action).map(|(b, _)| *b)
+    }
+
+    pub fn pad_for(&self, action: Action) -> Option<PadButton> {
+        self.pad.iter().find(|(_, a)| *a == action).map(|(b, _)| *b)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn movement_keys_move_and_nothing_is_lost() {
+        let mut s = InputSettings::default();
+        s.remap_key(Action::MoveForward, Key::Up);
+        let b = s.bindings();
+        assert_eq!(b.move_keys[0], Key::Up);
+        assert_eq!(b.key_for(Action::MoveForward), Some(Key::Up));
+        // Jump onto S, which moved back: moving back takes Space.
+        s.remap_key(Action::Jump, Key::S);
+        let b = s.bindings();
+        assert_eq!(b.key_for(Action::Jump), Some(Key::S));
+        assert_eq!(b.move_keys[1], Key::Space);
+        // Moving left onto E, Interact's: Interact takes A.
+        s.remap_key(Action::MoveLeft, Key::E);
+        let b = s.bindings();
+        assert_eq!(b.move_keys[2], Key::E);
+        assert_eq!(b.key_for(Action::Interact), Some(Key::A));
+    }
+
+    #[test]
+    fn settings_round_trip_and_old_files_still_load() {
+        let mut s = Settings { preset: Some("high".into()), master_volume: 0.4, reduced_motion: true, ..Default::default() };
+        s.input.invert_y = true;
+        assert_eq!(Settings::parse(&s.to_text()).unwrap(), s);
+        let old = InputSettings { mouse_sensitivity: 2.0, ..Default::default() }.to_text();
+        let read = Settings::parse(&old).unwrap();
+        assert_eq!(read.input.mouse_sensitivity, 2.0);
+        assert_eq!(read.preset, None);
+    }
+
+    #[test]
+    fn settings_round_trip_and_unknown_fields_fall_back() {
+        let mut s = InputSettings { mouse_sensitivity: 1.5, invert_y: true, ..Default::default() };
+        s.remap_key(Action::Jump, Key::C);
+        let back = InputSettings::parse(&s.to_text()).unwrap();
+        assert_eq!(back, s);
+        // A file that names only some settings keeps the defaults for the rest.
+        let partial = InputSettings::parse("(invert_y: true)").unwrap();
+        assert!(partial.invert_y && partial.mouse_sensitivity == 1.0);
+    }
+
+    #[test]
+    fn remapping_swaps_so_nothing_is_lost() {
+        let mut s = InputSettings::default();
+        // Jump onto Left Ctrl, where Sneak was: Sneak moves to Space.
+        s.remap_key(Action::Jump, Key::LeftCtrl);
+        let b = s.bindings();
+        assert_eq!(b.key_for(Action::Jump), Some(Key::LeftCtrl));
+        assert_eq!(b.key_for(Action::Sneak), Some(Key::Space));
+        // The sidestep onto the pad's south button, where Jump was.
+        s.remap_pad(Action::Sidestep, PadButton::South);
+        let b = s.bindings();
+        assert_eq!(b.pad_for(Action::Sidestep), Some(PadButton::South));
+        assert_eq!(b.pad_for(Action::Jump), Some(PadButton::East));
+        // The hands swap mouse buttons.
+        s.remap_mouse(Action::MainHand, MouseButton::Right);
+        let b = s.bindings();
+        assert_eq!(b.mouse_for(Action::MainHand), Some(MouseButton::Right));
+        assert_eq!(b.mouse_for(Action::OffHand), Some(MouseButton::Left));
+    }
+
+    #[test]
+    fn sensitivity_and_invert_reach_the_bindings() {
+        let d = Bindings::default();
+        let b = InputSettings { mouse_sensitivity: 2.0, stick_sensitivity: 0.5, invert_y: true, ..Default::default() }.bindings();
+        assert!((b.mouse_sensitivity - d.mouse_sensitivity * 2.0).abs() < 1e-6);
+        assert!((b.stick_turn_rate - d.stick_turn_rate * 0.5).abs() < 1e-6);
+        assert!(b.invert_y);
+    }
+}

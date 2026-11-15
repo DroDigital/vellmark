@@ -1,0 +1,84 @@
+// The Showcase's loot table: small enough to tune by hand, rich enough to show what loot
+// is in this game. `full-game/docs/brief/5d-loot.md` says what each part is; the names
+// are string keys in `assets/text/en/items.ron`. Stats stay few: damage, armour, speed,
+// reach, and weight, as multiples of the type's own; everything else is an effect.
+//
+// The makers and clauses are written for the Showcase; the full game's twenty and thirty
+// are written in its Phase 07. Their names wait on the owner's ear.
+(
+    materials: [
+        // Honest: no trait, and the cheapest to forge and improve.
+        (key: "iron", damage: 1.0, armour: 1.0, weight: 1.0, value: 1.0, trait: "honest"),
+        // Keen: heavy attacks stagger more easily.
+        (key: "marcher_steel", damage: 1.2, armour: 1.2, weight: 1.05, value: 2.2, trait: "keen"),
+        // Living: light, and Ink refills faster while it is held.
+        (key: "rootwood", damage: 0.9, armour: 0.85, weight: 0.7, value: 1.8, trait: "living"),
+    ],
+    // What can be found: the seven weapon types, the armour of the light and heavy sets
+    // and the village's clothes, and trinkets. Base value in Marks.
+    types: [
+        (key: "sword", slot: "main", damage: 12.0, armour: 0.0, weight: 3.0, value: 30),
+        (key: "axe", slot: "main", damage: 13.0, armour: 0.0, weight: 3.5, value: 28),
+        (key: "mace", slot: "main", damage: 13.0, armour: 0.0, weight: 4.0, value: 26),
+        (key: "dagger", slot: "main", damage: 8.0, armour: 0.0, weight: 1.2, value: 18),
+        (key: "bow", slot: "both", damage: 32.0, armour: 0.0, weight: 2.0, value: 34),
+        (key: "staff", slot: "both", damage: 9.0, armour: 0.0, weight: 2.5, value: 40),
+        (key: "shield", slot: "off", damage: 2.0, armour: 14.0, weight: 5.0, value: 26),
+        (key: "light_coat", slot: "body", damage: 0.0, armour: 10.0, weight: 4.0, value: 30),
+        (key: "light_hood", slot: "head", damage: 0.0, armour: 4.0, weight: 1.0, value: 12),
+        (key: "heavy_coat", slot: "body", damage: 0.0, armour: 22.0, weight: 14.0, value: 70),
+        (key: "heavy_helm", slot: "head", damage: 0.0, armour: 9.0, weight: 4.0, value: 30),
+        (key: "village_shirt", slot: "body", damage: 0.0, armour: 2.0, weight: 1.0, value: 4),
+        (key: "ring", slot: "trinket", damage: 0.0, armour: 0.0, weight: 0.1, value: 40),
+        (key: "amulet", slot: "trinket", damage: 0.0, armour: 0.0, weight: 0.2, value: 45),
+        (key: "charm", slot: "trinket", damage: 0.0, armour: 0.0, weight: 0.1, value: 25),
+        (key: "brooch", slot: "trinket", damage: 0.0, armour: 0.0, weight: 0.1, value: 35),
+    ],
+    // Bonuses: each a maker, whose name becomes the item's prefix. A third serve blade
+    // and word.
+    bonuses: [
+        (key: "tally", effect: "damage", amount: 0.10),
+        (key: "rook", effect: "speed", amount: 0.10),
+        (key: "pell", effect: "reach", amount: 0.15),
+        (key: "ashby", effect: "stamina", amount: -0.20),
+        (key: "marrow", effect: "stagger", amount: 0.25),
+        (key: "vellum", effect: "ink_per_hit", amount: 0.40),
+        (key: "scrope", effect: "word_cost", amount: -0.12),
+        (key: "ledgard", effect: "word_on_weapon", amount: 0.50),
+    ],
+    // Clauses: this world's enchantments, each with one effect, named in legal language
+    // as the item's suffix.
+    clauses: [
+        (key: "prior_claim", effect: "first_blow", amount: 0.50),
+        (key: "perpetuity", effect: "ink_refill", amount: 0.25),
+        (key: "reasonable_doubt", effect: "staggered_damage", amount: 0.25),
+        (key: "due_process", effect: "block_cost", amount: -0.30),
+        (key: "escrow", effect: "ink_per_kill", amount: 15.0),
+        (key: "fair_copy", effect: "unaware_damage", amount: 0.30),
+    ],
+    // Word clauses, found only on Illuminated items: each changes what one word does.
+    word_clauses: [
+        // BURNING written on this weapon stays until the weapon is put away.
+        (key: "notwithstanding", word: "BURNING", effect: "word_stays"),
+        // A COLD you write passes on to the next foe this weapon strikes.
+        (key: "without_prejudice", word: "COLD", effect: "word_passes"),
+    ],
+    // The Canonical items of the Showcase, never rolled: each has its one authored source.
+    canonical: [
+        // Slain foes bury themselves; loot is automatic. The Bone Clerk keeps it.
+        (key: "wicks_spade", type: "axe", material: "marcher_steel", effect: "buries"),
+        // Permanently LIT, and warns of Inklings.
+        (key: "promised_lamp", type: "charm", material: "iron", effect: "lit"),
+    ],
+    // Where loot comes from: the chance of each tier, Plain to Illuminated, and what it
+    // may be, each with a weight.
+    sources: [
+        (key: "chest", tiers: (0.50, 0.28, 0.14, 0.065, 0.015), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("shield", 2), ("light_coat", 2), ("light_hood", 2), ("heavy_coat", 1), ("heavy_helm", 1), ("ring", 2), ("amulet", 1), ("charm", 1), ("brooch", 1)], materials: [("iron", 5), ("marcher_steel", 2), ("rootwood", 2)]),
+        (key: "enemy", tiers: (0.62, 0.32, 0.06, 0.0, 0.0), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 3), ("bow", 1), ("light_hood", 2)], materials: [("iron", 6), ("marcher_steel", 1), ("rootwood", 1)]),
+        (key: "annotated", tiers: (0.0, 0.0, 0.60, 0.35, 0.05), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("shield", 2), ("ring", 2), ("amulet", 2), ("charm", 1), ("brooch", 1)], materials: [("iron", 3), ("marcher_steel", 3), ("rootwood", 2)]),
+        // The chest in the cellar under the mill: the best loot in the Showcase.
+        (key: "cellar", tiers: (0.0, 0.0, 0.15, 0.70, 0.15), types: [("sword", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("staff", 1), ("amulet", 1), ("ring", 1)], materials: [("marcher_steel", 3), ("rootwood", 2)]),
+        (key: "boss", tiers: (0.0, 0.0, 0.0, 0.0, 1.0), types: [("sword", 2), ("mace", 2), ("staff", 2), ("bow", 1), ("heavy_coat", 1), ("amulet", 1)], materials: [("iron", 1), ("marcher_steel", 3), ("rootwood", 2)]),
+        (key: "merchant", tiers: (0.60, 0.32, 0.08, 0.0, 0.0), types: [("sword", 3), ("axe", 2), ("mace", 2), ("dagger", 2), ("bow", 2), ("shield", 2), ("light_coat", 2), ("light_hood", 2), ("heavy_coat", 1), ("heavy_helm", 1), ("village_shirt", 3), ("ring", 1)], materials: [("iron", 5), ("marcher_steel", 2), ("rootwood", 2)]),
+    ],
+)

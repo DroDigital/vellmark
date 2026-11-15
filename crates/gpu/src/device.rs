@@ -150,6 +150,11 @@ impl Gpu {
 
     /// True for a software renderer. Reports written on one are marked as not being
     /// performance evidence.
+    /// A GPU of its own, apart from the processor's.
+    pub fn is_discrete(&self) -> bool {
+        self.info.device_type == wgpu::DeviceType::DiscreteGpu
+    }
+
     pub fn is_software(&self) -> bool {
         self.info.device_type == wgpu::DeviceType::Cpu
     }

@@ -12,7 +12,7 @@ use vellmark_gpu::{wgpu, Gpu, GpuOptions, PassTimers, PipelineRegistry, WindowHa
 use vellmark_platform::{
     Action, ActionState, Bindings, InputSource, Platform, PlatformEvent, RawInput, Window, WindowOptions,
 };
-use vellmark_render::{Camera, FrameInput, Renderer, ShaderLibrary, View};
+use vellmark_render::{Camera, FrameInput, Governor, Preset, Renderer, ShaderLibrary, View};
 use vellmark_ui::Canvas;
 use vellmark_sim::{buttons, FixedClock, PlayerInput, Snapshot, World, WorldConfig};
 
@@ -89,12 +89,15 @@ fn player_input(actions: &ActionState, bindings: &Bindings, dt: f32, first_step:
         (Action::Read, buttons::READ),
         (Action::MainHand, buttons::ATTACK_MAIN),
         (Action::OffHand, buttons::ATTACK_OFF),
+        (Action::Sidestep, buttons::SIDESTEP),
+        (Action::NextWord, buttons::NEXT_WORD),
+        (Action::PreviousWord, buttons::PREVIOUS_WORD),
     ] {
         if actions.held(action) {
             held |= bit;
         }
     }
-    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held }
+    PlayerInput { move_x, move_y, look_yaw, look_pitch, buttons: held, typed: 0, favourite: 0, say: 0 }
 }
 
 // `strings` is reloaded here and read once the interface shows text (Phase S03).
@@ -166,6 +169,29 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         Ok(r) => r,
         Err(detail) => return fail(sid!("sys.gpu.failed"), &detail),
     };
+    // The player's settings, if they have saved any.
+    let settings_path = crate::paths::user_data_dir().join("settings.ron");
+    let mut settings = match std::fs::read_to_string(&settings_path) {
+        Ok(text) => vellmark_platform::Settings::parse(&text).unwrap_or_else(|e| {
+            log::line(&format!("the settings could not be read, so the defaults are used: {e}"));
+            Default::default()
+        }),
+        Err(_) => Default::default(),
+    };
+    // The preset: as asked on the command line, else as set, else picked by the first
+    // launch from the graphics hardware and kept.
+    let mut preset = match args.preset.as_deref().and_then(Preset::parse).or_else(|| settings.preset.as_deref().and_then(Preset::parse)) {
+        Some(p) => p,
+        None => {
+            let p = Preset::first_launch(gpu.is_software(), gpu.is_discrete());
+            settings.preset = Some(p.name().into());
+            if let Err(e) = crate::paths::write_atomically(&settings_path, settings.to_text().as_bytes()) {
+                log::line(&format!("the settings could not be saved: {e}"));
+            }
+            log::line(&format!("first launch: the {p:?} preset, from {}", gpu.describe()));
+            p
+        }
+    };
     let scene_key = format!("scene.{}", args.scene.as_deref().unwrap_or(START_SCENE));
     let scene = match vellmark_render::load_scene(&gpu, &base, &scene_key) {
         Ok((scene, on_gpu)) => {
@@ -191,7 +217,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     }
     registry.seal();
     log::line(&format!("renderer ready, presenting {:?} as {:?}", screen.config.format, screen.config.present_mode));
-    let mut timers = PassTimers::new(&gpu, cfg!(feature = "dev") || args.perf_run);
+    // Always on where the GPU can time its passes: the governor reads them.
+    let mut timers = PassTimers::new(&gpu, true);
 
     #[cfg(feature = "dev")]
     let mut dev_tools = crate::dev::DevTools::new(args.profiler);
@@ -213,16 +240,60 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     #[cfg_attr(not(feature = "dev"), allow(unused_variables))]
     let breakable_places: Vec<(u64, Vec3)> = breakables.iter().map(|b| (b.id, Vec3::from(b.to_world.translation))).collect();
     world.set_scene(solids, breakables);
+    world.set_trunks(vellmark_render::tree_trunks(&base, &scene));
+    world.set_readables(vellmark_render::scene_readables(&base, &scene_key));
+    let rules = vellmark_render::word_rules(&base);
+    world.set_targets(vellmark_render::scene_targets(&base, &scene_key, &rules));
+    world.set_word_rules(rules);
     // The simulation holds the feet; the scene's spawn is given as an eye.
     let spawn = scene.spawn;
     world.add_player(Vec3::new(spawn[0], spawn[1] - vellmark_sim::EYE_HEIGHT, spawn[2]), spawn[3]);
     if let Some(t) = &terrain {
         world.set_ground(t.clone());
     }
+    for c in vellmark_render::scene_creatures(&scene) {
+        world.add_creature(c);
+    }
+    // The loot table, and the plain iron sword a player starts with.
+    if let Some(loot) = base.get(vellmark_content::AssetKind::Table, vellmark_content::AssetId::from_key(vellmark_content::LOOT_KEY)).and_then(|b| vellmark_content::LootTable::from_bytes(b).ok()) {
+        let sword = vellmark_sim::items::Item::plain(&loot, "sword", "iron", 1);
+        world.set_loot(loot);
+        let me = world.snapshot().players[0].id;
+        if let Some(index) = sword.and_then(|s| world.give_item(me, s)) {
+            world.equip(me, index);
+        }
+    }
+    // The Pages that write as they are watched, and how far each stands written on its
+    // surface, so that a page is written again only when it changes.
+    let page_writing = vellmark_render::scene_page_writing(&base, &scene_key);
+    let mut page_shown: Vec<u32> = vec![u32::MAX; page_writing.len()];
+    // Who says what.
+    if let Some(table) = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::DIALOGUE_KEY)).and_then(|b| vellmark_content::DialogueTable::from_bytes(b).ok()) {
+        world.set_dialogue(table);
+    }
+    // The Line comes down the road from the hill to the village, flown low over it.
+    if let (Some(roads), Some(t)) = (base.get(AssetKind::Table, AssetId::from_key(vellmark_content::ROADS_KEY)).and_then(|b| vellmark_content::RoadTable::from_bytes(b).ok()), &terrain) {
+        if let Some(road) = roads.road("penance_road") {
+            world.set_line_road(vellmark_sim::line::road_over(&road.points, |x, z| t.height_at(x, z)));
+        }
+    }
+    // The world as it begins, for starting again from the end card or the pause menu.
+    let beginning = world.save();
+    // The game is saved apart from the settings; `--continue` starts from it.
+    let save_path = crate::paths::user_data_dir().join(format!("{}.vsave", scene_key.trim_start_matches("scene.")));
+    if args.continue_game {
+        match std::fs::read(&save_path).map_err(|e| e.to_string()).and_then(|b| vellmark_sim::save::SaveGame::from_bytes(&b)) {
+            Ok(save) => {
+                world.load(&save);
+                log::line("the saved game is loaded");
+            }
+            Err(e) => log::line(&format!("no saved game to continue: {e}")),
+        }
+    }
     let mut previous: Arc<Snapshot> = world.snapshot();
     let mut current: Arc<Snapshot> = previous.clone();
 
-    let bindings = Bindings::default();
+    let mut bindings = settings.input.bindings();
     let mut actions = ActionState::default();
     let mut raw: Vec<RawInput> = Vec::new();
     let mut clock = FixedClock::new();
@@ -232,6 +303,26 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut glyph_layer = true;
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
     let mut world_hour_override: Option<f32> = None;
+    // A gust a tool asked for: which sentence, and when it began, in seconds since start.
+    #[allow(unused_mut)]
+    let mut forced_gust: Option<(u32, f32)> = None;
+    // The title sequence, where the scene has a camera path for it: the world holds still
+    // and the camera follows the path until a button is pressed with the title up.
+    let title_path = base.get(AssetKind::CameraPath, AssetId::from_key(&format!("path.title_{}", scene_key.trim_start_matches("scene.")))).and_then(|b| CameraPath::from_bytes(b).ok());
+    let mut title = match &title_path {
+        Some(path) if !args.no_title && perf.is_none() && args.frames.is_none() => {
+            // The game begins at the hour the title leaves off, unless a save says otherwise.
+            if !args.continue_game {
+                if let Some(last) = path.keys.last() {
+                    world.set_time_of_day(last.hour);
+                    previous = world.snapshot();
+                    current = previous.clone();
+                }
+            }
+            Some(vellmark_ui::title::Title::new(&assets.glyphs, &strings, settings.reduced_motion))
+        }
+        _ => None,
+    };
     let mut canvas = Canvas::new();
     let mut close_reading = 0.0f32;
     let mut lamps_lit = true;
@@ -239,6 +330,92 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     #[cfg_attr(not(feature = "dev"), allow(unused_mut))]
     let mut tuning = vellmark_render::GlyphTuning::default();
     let started = Instant::now();
+    renderer.set_quality(preset.quality());
+    // The one governor: it holds the frame time, and logs every step it takes.
+    let mut governor = Governor::new(1000.0 / 60.0);
+    let mut relief = vellmark_render::Relief::default();
+    log::line(&format!("preset {preset:?}"));
+
+    let mut sound = crate::sound::Sound::start(&platform, &scene);
+    if let Some(table) = base.get(vellmark_content::AssetKind::Table, vellmark_content::AssetId::from_key(vellmark_content::WORDS_KEY)).and_then(|b| vellmark_content::WordTable::from_bytes(b).ok()) {
+        sound.set_words(&table);
+    }
+    if let Some(table) = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::VOICES_KEY)).and_then(|b| vellmark_content::VoiceTable::from_bytes(b).ok()) {
+        sound.set_voices(table);
+    }
+    // The line last murmured, so that each is murmured once as it begins.
+    let mut murmured: Option<(u64, u64)> = None;
+    // Letters typed while a word charges, waiting for the next step.
+    let mut typing = false;
+    let mut typed = String::new();
+    // Doors that words have opened swing on their hinges: each door's place as built, and
+    // how far open it is now, 0 to 1.
+    let door_places: Vec<(vellmark_content::AssetId, glam::Mat4)> = scene
+        .objects
+        .iter()
+        .map(|o| {
+            let t = o.transform;
+            (o.key, glam::Mat4::from_cols_array(&[t[0], t[4], t[8], 0.0, t[1], t[5], t[9], 0.0, t[2], t[6], t[10], 0.0, t[3], t[7], t[11], 1.0]))
+        })
+        .collect();
+    let mut door_open: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
+
+    let mut view_model = vellmark_render::viewmodel::ViewModel::default();
+    // Hit stop and the kick of a blow landing, in the first view.
+    let mut hit_stop = 0.0f32;
+    let mut held_view: Option<vellmark_sim::ViewSnap> = None;
+    let mut kick = 0.0f32;
+    // The pack, while it is open: its focus, and the repeat of a held direction. In solo
+    // play the world holds still while it is open.
+    let mut pack: Option<vellmark_ui::kit::Focus> = None;
+    let mut pack_nav = vellmark_ui::kit::NavRepeat::default();
+    let mut pack_nav_repeat = vellmark_ui::menu::MenuRepeat::default();
+    // The favourites wheel while its button is held; the pairing chosen, for the next
+    // step; and the pack's note after a pairing is kept or forgotten, with its time left.
+    let mut wheel: Option<vellmark_ui::favourites_view::Wheel> = None;
+    let mut favourite_pick: u8 = 0;
+    let mut pack_note: Option<(vellmark_content::StringId, f32)> = None;
+    // The pause menu and the settings, while open. The world holds still in solo play.
+    let mut menu: Option<vellmark_ui::pages::Menu> = None;
+    // A conversation: the choice the focus rests on, the choice taken this frame, the line
+    // whose writing a press hurried to its end, and Interact held from that press, so that
+    // it does not also go on to the next line.
+    let mut talk_focus = vellmark_ui::kit::Focus::default();
+    let mut talk_repeat = vellmark_ui::menu::MenuRepeat::default();
+    let mut say: u8 = 0;
+    let mut hurried: Option<u64> = None;
+    let mut hold_interact = false;
+    // A click that closed a menu is not a blow: the main hand waits for its release.
+    let mut hold_main = false;
+    // Photo mode, while open, and how long its "Picture saved." has left to show.
+    let mut photo: Option<vellmark_ui::photo::Photo> = None;
+    let mut photo_note = 0.0f32;
+    let mut take_picture = false;
+    // The credits, while they roll: how far they have come.
+    let credits_table = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::CREDITS_KEY)).and_then(|b| vellmark_content::Credits::from_bytes(b).ok()).unwrap_or_default();
+    let mut credits: Option<f32> = None;
+    // Trade with a merchant, while it is open; and the last person spoken to, whose stock
+    // a conversation's `trade` opens.
+    let mut trade: Option<vellmark_ui::trade_view::Trade> = None;
+    let mut last_talker: Option<u64> = None;
+    // The end card while it is up, and a start again asked for this frame.
+    let mut end_card: Option<vellmark_ui::end_card::EndCard> = None;
+    // The world's events from every step of the last frame, so none is missed when a
+    // frame runs several steps.
+    let mut heard_events: Vec<String> = Vec::new();
+    let mut start_again = false;
+    // Captions for the sounds that matter, and whether a Redactor's approach is captioned.
+    let mut captions = vellmark_ui::captions::Captions::default();
+    let mut redactor_heard = false;
+    let mut birds_hushed = false;
+    // Reading by a press rather than a hold: whether Read is latched on.
+    let mut read_latch = false;
+    world.set_close_reading_slows(settings.close_reading_slows);
+    vellmark_ui::kit::set_high_contrast(settings.high_contrast);
+    vellmark_ui::set_letter_scale(settings.letter_size);
+    vellmark_ui::kit::set_safe_colours(settings.safe_colours);
+    renderer.set_fewer_flashes(settings.fewer_flashes);
+    sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume, settings.music_volume);
 
     'frames: loop {
         let now = Instant::now();
@@ -264,16 +441,208 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 PlatformEvent::FocusGained => {}
             }
         }
-        if actions.pressed(Action::Pause) {
-            // Until the pause menu exists, Pause frees the mouse, and again leaves.
-            if mouse_captured {
-                mouse_captured = false;
-                platform.capture_mouse(&window, false);
-            } else {
-                break 'frames;
+        let menu_was_open = menu.is_some();
+        let title_was_up = title.is_some();
+        let mut menu_opened = false;
+        // The title: any button hurries it, or once it is up, begins the game.
+        if let Some(t) = title.as_mut() {
+            if raw.iter().any(|r| matches!(r, RawInput::Key { down: true, .. } | RawInput::MouseButton { down: true, .. } | RawInput::PadButton { down: true, .. })) {
+                t.press();
+            }
+            if t.update(frame_time.as_secs_f32()) == vellmark_ui::title::TitleState::Done {
+                title = None;
+                log::line("the title is over");
             }
         }
-        if !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0) {
+        // While a menu is open, it has the input.
+        // The credits roll; up and down move them, back closes them.
+        if let Some(scroll) = credits.as_mut() {
+            let input = vellmark_ui::menu::MenuInput::from_keys(&raw);
+            let d = window.pixel_density() * settings.interface_scale();
+            let view = vellmark_ui::credits_view::CreditsView { atlas: &assets.glyphs, strings: &strings, credits: &credits_table, size: screen.size(), density: d };
+            *scroll = (*scroll + (vellmark_ui::credits_view::ROLL * d) * frame_time.as_secs_f32() + input.step as f32 * 60.0 * d).max(0.0);
+            if *scroll > view.height() + screen.size().1 as f32 {
+                *scroll = 0.0;
+            }
+            if input.back || actions.pressed(Action::Pause) {
+                credits = None;
+            }
+        }
+        // A conversation's `trade` opens its speaker's stock.
+        if let Some(t) = current.players.first().and_then(|p| p.talking.as_ref()) {
+            last_talker = Some(t.talker);
+        }
+        let events = std::mem::take(&mut heard_events);
+        if events.iter().any(|e| e == vellmark_sim::line::END_EVENT) {
+            end_card = Some(Default::default());
+        }
+        if events.iter().any(|e| e == "trade") {
+            if let Some(m) = last_talker.filter(|m| world.merchant(*m).is_some()) {
+                trade = Some(vellmark_ui::trade_view::Trade { merchant: m, ..Default::default() });
+            }
+        }
+        // Trading: up and down move along a side, left and right change sides, a press buys
+        // or sells, and back leaves.
+        if let (Some(t), Some(me)) = (trade.as_mut(), current.players.first().map(|p| p.id)) {
+            let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut pack_nav_repeat, frame_time.as_secs_f32());
+            let none = vellmark_content::LootTable::default();
+            let view = vellmark_ui::trade_view::TradeView { atlas: &assets.glyphs, strings: &strings, loot: world.loot().unwrap_or(&none), size: screen.size(), density: window.pixel_density() * settings.interface_scale() };
+            let rows = view.rows();
+            use vellmark_ui::trade_view::Side;
+            if input.change != 0 {
+                t.side = if input.change < 0 { Side::Theirs } else { Side::Yours };
+            }
+            let theirs = world.merchant(t.merchant).map_or(0, |m| m.stock.len());
+            let yours = world.inventory(me).map_or(0, |i| i.items.len());
+            match t.side {
+                Side::Theirs => t.theirs.step(input.step, theirs, rows),
+                Side::Yours => t.yours.step(input.step, yours, rows),
+            }
+            if input.confirm {
+                let done = match t.side {
+                    Side::Theirs => world.buy(me, t.merchant, t.theirs.at),
+                    Side::Yours => world.sell(me, t.merchant, t.yours.at),
+                };
+                t.refused = done.err();
+                let (theirs, yours) = (world.merchant(t.merchant).map_or(0, |m| m.stock.len()), world.inventory(me).map_or(0, |i| i.items.len()));
+                t.theirs.step(0, theirs, rows);
+                t.yours.step(0, yours, rows);
+            }
+            if input.back || actions.pressed(Action::Inventory) {
+                trade = None;
+            }
+        }
+        // The end card: its choices, and a link opened only when it is chosen.
+        if let Some(card) = end_card.as_mut() {
+            use vellmark_ui::end_card::EndOutcome;
+            let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut pack_nav_repeat, frame_time.as_secs_f32());
+            match card.update(input, &strings, frame_time.as_secs_f32()) {
+                EndOutcome::None => {}
+                EndOutcome::Close => end_card = None,
+                EndOutcome::Open(url) => card.note = Some(if platform.open_url(&url) { sid!("end.opened") } else { sid!("end.no_browser") }),
+                EndOutcome::StartAgain => {
+                    end_card = None;
+                    start_again = true;
+                }
+            }
+        }
+        // Back to the beginning: the world as it began, at the title's hour, and the title.
+        if std::mem::take(&mut start_again) {
+            world.load(&beginning);
+            if let Some(last) = title_path.as_ref().and_then(|p| p.keys.last()) {
+                world.set_time_of_day(last.hour);
+                title = Some(vellmark_ui::title::Title::new(&assets.glyphs, &strings, settings.reduced_motion));
+            }
+            previous = world.snapshot();
+            current = previous.clone();
+            (pack, trade, wheel, photo, credits) = (None, None, None, None, None);
+            page_shown.iter_mut().for_each(|p| *p = u32::MAX);
+            log::line("started again from the beginning");
+        }
+        if title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() || wheel.is_some() || end_card.is_some() {
+        } else if menu.is_some() {
+        } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
+            pack = None;
+            pack_note = None;
+        } else if pack.is_some() && actions.pressed(Action::Favourites) {
+            if let Some(kept) = current.players.first().and_then(|p| world.keep_hands(p.id)) {
+                pack_note = Some((if kept { sid!("ui.favourites.kept") } else { sid!("ui.favourites.forgotten") }, 2.5));
+            }
+        } else if pack.is_none() && actions.pressed(Action::Favourites) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None && p.talking.is_none()) {
+            wheel = Some(Default::default());
+        } else if actions.pressed(Action::Inventory) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None && p.talking.is_none()) {
+            pack = Some(Default::default());
+            pack_nav = Default::default();
+        } else if actions.pressed(Action::PhotoMode) && current.players.first().is_some_and(|p| p.talking.is_none()) {
+            if let Some(p) = current.players.first() {
+                photo = Some(vellmark_ui::photo::Photo::open(p.yaw, p.pitch));
+            }
+        } else if actions.pressed(Action::Pause) && menu.is_none() {
+            menu = Some(vellmark_ui::pages::Menu::open());
+            menu_opened = true;
+        }
+        // Photo mode: the panel by its fixed keys, the camera by the movement and look.
+        if let (Some(ph), Some(view)) = (photo.as_mut(), current.views.first()) {
+            let keys: Vec<RawInput> = raw.iter().filter(|r| !matches!(r, RawInput::Key { key: vellmark_platform::Key::Space | vellmark_platform::Key::E, .. })).copied().collect();
+            if actions.pressed(Action::Inventory) {
+                ph.panel = !ph.panel;
+            }
+            match ph.update(vellmark_ui::menu::MenuInput::from_keys(&keys)) {
+                vellmark_ui::photo::PhotoOutcome::None => {}
+                vellmark_ui::photo::PhotoOutcome::Save => take_picture = true,
+                vellmark_ui::photo::PhotoOutcome::Leave => {
+                    photo = None;
+                    renderer.set_split(None);
+                    renderer.set_exposure_scale(1.0);
+                }
+            }
+            if let Some(ph) = photo.as_mut() {
+                let (x, z) = actions.movement();
+                let rise = actions.held(Action::Jump) as i32 as f32 - actions.held(Action::Sneak) as i32 as f32;
+                let eye = view.eye;
+                let ground = terrain.clone();
+                ph.fly(Vec3::new(x, rise, z), actions.look(&bindings, frame_time.as_secs_f32()), frame_time.as_secs_f32(), &|at| {
+                    ground.as_ref().and_then(|t| t.height_at(eye.x + at.x, eye.z + at.z)).map_or(f32::MIN, |g| g - eye.y)
+                });
+            }
+        }
+        let mut settings_changed = false;
+        if let (Some(m), false) = (menu.as_mut(), menu_opened) {
+            use vellmark_ui::pages::Outcome;
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            let outcome = if m.capturing() {
+                m.capture(&raw, &mut settings)
+            } else {
+                let len = m.entries(&settings, &bindings, actions.last_device, style).len();
+                let view = vellmark_ui::menu::MenuView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() };
+                let focus = m.focus();
+                let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut m.repeat, frame_time.as_secs_f32()).with_pointer(&raw, &actions, window.pixel_density(), |p| view.row_at(len, focus, p));
+                m.update(input, &mut settings, len, view.rows(len, &assets.glyphs))
+            };
+            match outcome {
+                Outcome::None => {}
+                Outcome::Resume => menu = None,
+                Outcome::Changed => settings_changed = true,
+                Outcome::Quit => break 'frames,
+                Outcome::StartAgain => {
+                    menu = None;
+                    start_again = true;
+                }
+                Outcome::Credits => {
+                    menu = None;
+                    credits = Some(0.0);
+                }
+                Outcome::Photo => {
+                    menu = None;
+                    if let Some(p) = current.players.first() {
+                        photo = Some(vellmark_ui::photo::Photo::open(p.yaw, p.pitch));
+                    }
+                }
+                Outcome::Save => match crate::paths::write_atomically(&save_path, &world.save().to_bytes()) {
+                    Ok(()) => {
+                        log::line("the game is saved");
+                        menu = None;
+                    }
+                    Err(e) => log::line(&format!("the game could not be saved: {e}")),
+                },
+                Outcome::Load => match std::fs::read(&save_path).map_err(|e| e.to_string()).and_then(|b| vellmark_sim::save::SaveGame::from_bytes(&b)) {
+                    Ok(save) => {
+                        world.load(&save);
+                        previous = world.snapshot();
+                        current = previous.clone();
+                        log::line("the saved game is loaded");
+                        menu = None;
+                    }
+                    Err(e) => log::line(&format!("no saved game: {e}")),
+                },
+            }
+        }
+        // The mouse is free while a menu is open, and taken again when it closes.
+        if menu.is_some() && photo.is_none() && mouse_captured {
+            mouse_captured = false;
+            platform.capture_mouse(&window, false);
+        }
+        if (menu.is_none() || photo.is_some()) && title.is_none() && !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0 || menu_was_open || title_was_up) {
             mouse_captured = true;
             platform.capture_mouse(&window, true);
         }
@@ -286,6 +655,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 let open = dev_tools.toggle_console();
                 platform.text_entry(&window, open);
             }
+            let settings_before = settings.clone();
             for command in dev_tools.take_commands() {
                 use crate::dev::Command;
                 match command {
@@ -306,8 +676,127 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                             None => log::line(&format!("nothing called `{name}` is left to break")),
                         }
                     }
+                    Command::Rain(r) => world.set_rain(r),
+                    Command::Fog(f) => world.set_fog(f),
+                    Command::Preset(p) => {
+                        preset = p;
+                        renderer.set_quality(p.quality());
+                        log::line(&format!("preset {p:?}"));
+                    }
+                    Command::Wind(n) => forced_gust = Some((n, started.elapsed().as_secs_f32())),
+                    Command::Learn(word) => {
+                        let id = current.players[0].id;
+                        let all: Vec<String> = world.word_rules().words.iter().map(|w| w.spelling.clone()).collect();
+                        let words = if word == "ALL" { all } else { vec![word] };
+                        for w in words {
+                            if world.learn(id, &w) {
+                                log::line(&format!("learned {w}"));
+                            } else {
+                                log::line(&format!("no word {w}"));
+                            }
+                        }
+                    }
+                    Command::Save => match crate::paths::write_atomically(&save_path, &world.save().to_bytes()) {
+                        Ok(()) => log::line("the game is saved"),
+                        Err(e) => log::line(&format!("the game could not be saved: {e}")),
+                    },
+                    Command::Load => match std::fs::read(&save_path).map_err(|e| e.to_string()).and_then(|b| vellmark_sim::save::SaveGame::from_bytes(&b)) {
+                        Ok(save) => {
+                            world.load(&save);
+                            previous = world.snapshot();
+                            current = previous.clone();
+                            log::line("the saved game is loaded");
+                        }
+                        Err(e) => log::line(&format!("no saved game: {e}")),
+                    },
+                    Command::Goto(x, z) => {
+                        let id = current.players[0].id;
+                        world.place_player(id, Vec3::new(x, 0.0, z), current.players[0].yaw);
+                        log::line(&format!("went to {x} {z}"));
+                    }
+                    Command::Obelus(high) => {
+                        let p = &current.players[0];
+                        let ahead = Vec3::new(p.yaw.sin(), 0.0, -p.yaw.cos());
+                        let side = Vec3::new(ahead.z, 0.0, -ahead.x);
+                        let ground = |at: Vec3| terrain.as_ref().and_then(|t| t.height_at(at.x, at.z)).unwrap_or(p.feet.y);
+                        let path: Vec<Vec3> = if high {
+                            // Far off and high, crossing the view once.
+                            let mid = p.feet + ahead * 900.0;
+                            (0..=8).map(|k| mid + side * (k as f32 - 4.0) * 150.0 + Vec3::Y * 160.0).collect()
+                        } else {
+                            // Down the view from behind, low, a little to the side.
+                            (0..=16).map(|k| p.feet + side * 2.5 + ahead * (k as f32 * 12.0 - 60.0)).map(|at| Vec3::new(at.x, ground(at) + 1.4, at.z)).collect()
+                        };
+                        world.add_redactor(vellmark_sim::redactor::Redactor { id: 1, path, speed: if high { 60.0 } else { 14.0 }, flown: 0.0, strike: (!high).then_some((2.4, 2.2)), caught: Vec::new() });
+                        log::line(if high { "Obelus crosses the far sky" } else { "Obelus comes down the view" });
+                    }
+                    Command::EndCard => end_card = Some(Default::default()),
+                    Command::Line => {
+                        world.begin_line();
+                        log::line("the Line comes down the road");
+                    }
+                    Command::Trade => {
+                        const MERCHANT: u64 = 0x70b1;
+                        if world.merchant(MERCHANT).is_none() {
+                            world.add_merchant(MERCHANT);
+                        }
+                        trade = Some(vellmark_ui::trade_view::Trade { merchant: MERCHANT, ..Default::default() });
+                    }
+                    Command::Talk(speaker) => {
+                        let p = &current.players[0];
+                        let ahead = Vec3::new(p.yaw.sin(), 0.0, -p.yaw.cos()) * 2.0;
+                        world.add_talker(vellmark_sim::dialogue::Talker { id: 0x7a1c, speaker: speaker.clone(), feet: p.feet + ahead, height: 1.75 });
+                        log::line(&format!("{speaker} stands ahead"));
+                    }
+                    Command::Respawn => {
+                        world.remove_creatures();
+                        for c in vellmark_render::scene_creatures(&scene) {
+                            world.add_creature(c);
+                        }
+                        log::line("the scene's creatures stand again");
+                    }
+                    Command::Sensitivity(n) => settings.input.mouse_sensitivity = n,
+                    Command::InvertY(on) => settings.input.invert_y = on,
+                    Command::Bind(action, button) => {
+                        use vellmark_platform::prompts::{action_named, key_named, mouse_button_named, pad_button_named};
+                        match action_named(&action) {
+                            None => log::line(&format!("no action called `{action}`")),
+                            Some(a) => {
+                                if let Some(k) = key_named(&button) {
+                                    settings.input.remap_key(a, k);
+                                } else if let Some(m) = mouse_button_named(&button) {
+                                    settings.input.remap_mouse(a, m);
+                                } else if let Some(p) = pad_button_named(&button) {
+                                    settings.input.remap_pad(a, p);
+                                } else {
+                                    log::line(&format!("no button called `{button}`"));
+                                }
+                            }
+                        }
+                    }
                     Command::Quit => break 'frames,
                 }
+            }
+            if settings != settings_before {
+                settings_changed = true;
+            }
+        }
+        if settings_changed {
+            bindings = settings.input.bindings();
+            if let Some(p) = settings.preset.as_deref().and_then(Preset::parse).filter(|p| *p != preset) {
+                preset = p;
+                renderer.set_quality(p.quality());
+                log::line(&format!("preset {p:?}"));
+            }
+            renderer.set_fewer_flashes(settings.fewer_flashes);
+            sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume, settings.music_volume);
+            world.set_close_reading_slows(settings.close_reading_slows);
+            vellmark_ui::kit::set_high_contrast(settings.high_contrast);
+            vellmark_ui::set_letter_scale(settings.letter_size);
+            vellmark_ui::kit::set_safe_colours(settings.safe_colours);
+            match crate::paths::write_atomically(&settings_path, settings.to_text().as_bytes()) {
+                Ok(()) => log::line("settings saved"),
+                Err(e) => log::line(&format!("the settings could not be saved: {e}")),
             }
         }
 
@@ -329,7 +818,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         #[cfg(feature = "dev")]
         dev_tools.tune(&mut tuning, &actions);
         // Holding Read eases from the realistic frame into the text frame, and back.
-        let wanted = if actions.held(Action::Read) { 1.0 } else { 0.0 };
+        // Close reading is the rules' to decide: Read with no text in focus.
+        let wanted = if current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::Close) { 1.0 } else { 0.0 };
         let ease = (frame_time.as_secs_f32() / 0.35).min(1.0);
         close_reading += (wanted - close_reading).clamp(-ease, ease);
         #[cfg(feature = "dev")]
@@ -357,25 +847,319 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         let lamp_ease = (frame_time.as_secs_f32() / 0.6).min(1.0);
         lamps += (if lamps_lit { 1.0 } else { 0.0 } - lamps).clamp(-lamp_ease, lamp_ease);
 
-        // Simulation: whole fixed steps, then draw between the last two snapshots.
-        let plan = clock.advance(frame_time.as_nanos() as u64);
-        for step in 0..plan.steps {
-            let input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
-            world.step(&[input]);
-            previous = current;
-            current = world.snapshot();
+        // While a word charges, letters typed are read by the rules: the word for a
+        // bonus, or its typo on purpose.
+        let charging = current.players.first().is_some_and(|p| p.charge.iter().any(|&c| c > 0.0));
+        #[cfg(feature = "dev")]
+        let charging = charging && !dev_tools.console_open();
+        if charging != typing {
+            typing = charging;
+            platform.text_entry(&window, typing);
+            typed.clear();
+        }
+        if typing {
+            typed.extend(raw.iter().filter_map(|r| match r {
+                RawInput::Text(c) if c.is_ascii_alphabetic() => Some(*c),
+                _ => None,
+            }));
         }
 
+        // The murmur: each line as it begins, in its speaker's voice; hushed when done.
+        match current.players.first().and_then(|p| p.talking.as_ref()) {
+            Some(t) => {
+                if let Some(line) = t.line {
+                    let key = (line, t.since.to_bits());
+                    if murmured != Some(key) && t.choices.is_empty() {
+                        murmured = Some(key);
+                        sound.murmur(&t.by, &strings.text(vellmark_content::StringId(line)));
+                    }
+                }
+            }
+            None if murmured.is_some() => {
+                murmured = None;
+                sound.hush();
+            }
+            None => {}
+        }
+        // A conversation: choices are taken with the menu keys; a press on a line still
+        // being written writes it out at once.
+        if let (Some(t), None) = (current.players.first().and_then(|p| p.talking.as_ref()), &menu) {
+            if t.choices.is_empty() {
+                talk_focus = Default::default();
+                let done = vellmark_ui::dialogue_view::written(&strings, t, current.seconds) || hurried == Some(t.since.to_bits());
+                if actions.pressed(Action::Interact) && !done {
+                    hurried = Some(t.since.to_bits());
+                    hold_interact = true;
+                }
+            } else {
+                let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut talk_repeat, frame_time.as_secs_f32());
+                let rows = vellmark_ui::dialogue_view::DialogueView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }.rows();
+                talk_focus.step(input.step, t.choices.len(), rows);
+                if input.confirm {
+                    say = talk_focus.at as u8 + 1;
+                }
+            }
+        }
+        if !actions.held(Action::Interact) {
+            hold_interact = false;
+        }
+        if menu_was_open && menu.is_none() && actions.held(Action::MainHand) {
+            hold_main = true;
+        }
+        if !actions.held(Action::MainHand) {
+            hold_main = false;
+        }
+
+        // The favourites wheel: aimed by the mouse or either stick, and let go to take the
+        // pairing aimed at; Escape lets it go without one.
+        if let (Some(wh), Some(me)) = (wheel.as_mut(), current.players.first().map(|p| p.id)) {
+            let (dx, dy) = actions.mouse_motion();
+            wh.mouse(dx, dy);
+            let (left, right) = actions.sticks();
+            wh.stick(left.0, left.1);
+            wh.stick(right.0, right.1);
+            if actions.pressed(Action::Pause) {
+                wheel = None;
+            } else if !actions.held(Action::Favourites) {
+                let count = world.inventory(me).map_or(0, |i| i.favourites.len().min(vellmark_ui::favourites_view::SLOTS));
+                if let Some(k) = wh.slot(count) {
+                    favourite_pick = k as u8 + 1;
+                }
+                wheel = None;
+            }
+        }
+        if let Some((_, left)) = pack_note.as_mut() {
+            *left -= frame_time.as_secs_f32();
+            if *left <= 0.0 {
+                pack_note = None;
+            }
+        }
+
+        // The pack: move the focus, and equip what it rests on.
+        if let (Some(focus), Some(me)) = (pack.as_mut(), current.players.first().map(|p| p.id)) {
+            let len = world.inventory(me).map_or(0, |i| i.items.len());
+            let rows = vellmark_ui::inventory_view::rows_shown(&assets.glyphs, screen.size(), window.pixel_density() * settings.interface_scale());
+            focus.step(pack_nav.step(actions.movement().1, frame_time.as_secs_f32()), len, rows);
+            if actions.pressed(Action::Interact) && focus.at < len {
+                world.equip(me, focus.at);
+            }
+        }
+
+        if settings.read_toggle && menu.is_none() && photo.is_none() && actions.pressed(Action::Read) {
+            read_latch = !read_latch;
+        }
+        if !settings.read_toggle {
+            read_latch = false;
+        }
+        // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
+        // play the world holds still while the pack or a menu is open.
+        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() || wheel.is_some() || end_card.is_some() { 0 } else { frame_time.as_nanos() as u64 });
+        for step in 0..plan.steps {
+            let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
+            if step == 0 {
+                input.say = std::mem::take(&mut say);
+                input.favourite = std::mem::take(&mut favourite_pick);
+            }
+            if settings.read_toggle {
+                input.buttons = (input.buttons & !vellmark_sim::buttons::READ) | if read_latch { vellmark_sim::buttons::READ } else { 0 };
+            }
+            if hold_interact {
+                input.buttons &= !vellmark_sim::buttons::INTERACT;
+            }
+            if hold_main {
+                input.buttons &= !vellmark_sim::buttons::ATTACK_MAIN;
+            }
+            let take: String = typed.drain(..typed.len().min(4)).collect();
+            input.typed = PlayerInput::pack_typed(&take);
+            world.step(&[input]);
+            heard_events.extend(world.events().iter().map(|(_, e)| e.clone()));
+            previous = current;
+            current = world.snapshot();
+            sound.heard(&current);
+            sound.set_danger(&current);
+            // Captions: each word written by its motif, and the sounds not to miss.
+            if settings.captions {
+                use vellmark_sim::Heard;
+                let word = |w: &str| vellmark_content::StringId::from_key(&format!("caption.word.{}", w.to_ascii_lowercase()));
+                for l in &current.landings {
+                    let key = if l.typo { sid!("caption.sound.motif_wrong") } else { sid!("caption.sound.motif") };
+                    captions.heard(key, Some(word(&l.word)));
+                }
+                for h in &current.heard {
+                    match h {
+                        Heard::Learned { word: w, .. } => {
+                            if let Some(rule) = world.word_rules().words.get(*w) {
+                                captions.heard(sid!("caption.sound.learned"), Some(word(&rule.spelling)));
+                            }
+                        }
+                        Heard::Gather { .. } => captions.heard(sid!("caption.sound.gather"), None),
+                        Heard::Call { .. } => captions.heard(sid!("caption.sound.call"), None),
+                        Heard::Break { .. } => captions.heard(sid!("caption.sound.break"), None),
+                        Heard::Mend { .. } => captions.heard(sid!("caption.sound.mend"), None),
+                        _ => {}
+                    }
+                }
+                let near = current.players.first().is_some_and(|p| current.redactors.iter().any(|r| r.at.distance(p.feet) < 200.0));
+                if near && !redactor_heard {
+                    captions.heard(sid!("caption.sound.redactor"), None);
+                }
+                redactor_heard = near;
+                // By day the birds stop first, as the sound does.
+                let hush = (6.0..20.0).contains(&current.time_of_day) && current.players.first().is_some_and(|p| current.redactors.iter().any(|r| r.at.distance(p.feet) < 240.0));
+                if hush && !birds_hushed {
+                    captions.heard(sid!("caption.sound.birds_stop"), None);
+                }
+                birds_hushed = hush;
+            }
+            // Hit stop: a blow that lands holds the striker's view a moment and kicks it.
+            // Only the view: the shared world never pauses. Reduced screen response and
+            // reduced motion leave the view alone.
+            let response = !(settings.reduced_screen_response || settings.reduced_motion);
+            if let (Some(me), true) = (current.players.first(), response) {
+                for hit in current.hits.iter().filter(|h| h.player == me.id.0) {
+                    if hit.hit_stop > hit_stop {
+                        hit_stop = hit.hit_stop;
+                        held_view = Some(previous.lerp_view(&current, 0, plan.alpha));
+                    }
+                    kick = kick.max(if hit.hit_stop > vellmark_sim::melee::HIT_STOP { 1.0 } else { 0.55 });
+                }
+            }
+        }
+
+        for (k, (id, pages)) in page_writing.iter().enumerate() {
+            if let Some(&(_, n)) = current.pages_written.iter().find(|(r, _)| r == id) {
+                if page_shown[k] != n {
+                    renderer.set_written(&gpu, pages, n);
+                    page_shown[k] = n;
+                }
+            }
+        }
         let mut hour = world_hour_override.unwrap_or(current.time_of_day);
-        let mut camera = Camera::from_view(&previous.lerp_view(&current, 0, plan.alpha));
+        let mut camera = Camera::from_view(&match held_view {
+            Some(view) if hit_stop > 0.0 => view,
+            _ => previous.lerp_view(&current, 0, plan.alpha),
+        });
+        hit_stop = (hit_stop - frame_time.as_secs_f32()).max(0.0);
+        if hit_stop == 0.0 {
+            held_view = None;
+        }
+        // The kick: a small jolt of the view that dies away in a tenth of a second.
+        if kick > 0.0 {
+            let t = started.elapsed().as_secs_f32();
+            let jolt = kick * 0.006;
+            camera.rotation = camera.rotation * glam::Quat::from_euler(glam::EulerRot::YXZ, (t * 91.0).sin() * jolt, (t * 73.0).sin() * jolt - jolt, 0.0);
+            kick = (kick - frame_time.as_secs_f32() * 10.0).max(0.0);
+        }
+        // Redactors: the body where each flies, hidden while none does; what they struck
+        // stands as its rules.
+        let obelus = AssetId::from_key(&format!("{scene_key}.obelus"));
+        match current.redactors.first() {
+            Some(r) => renderer.scene_mut().place_kit(obelus, Some(vellmark_render::redactor_transform(r, started.elapsed().as_secs_f32()))),
+            None => renderer.scene_mut().place_kit(obelus, None),
+        }
+        renderer.set_struck(&current.struck);
+        // In photo mode, its own camera, near the player's eye; its split, exposure, and lens.
+        if let (Some(ph), Some(view)) = (&photo, current.views.first()) {
+            camera = Camera { eye: view.eye + ph.offset, rotation: ph.rotation(), fov_y: ph.fov.to_radians(), near: Camera::DEFAULT_NEAR };
+            renderer.set_split(ph.split(screen.size()));
+            renderer.set_exposure_scale(2f32.powf(ph.stops));
+        }
+        // Under the title, the camera follows its path, at the path's hour.
+        if let (Some(t), Some(path)) = (&title, &title_path) {
+            if let Some(key) = path.at(t.seconds()) {
+                camera = Camera::looking(key.eye.into(), key.yaw, key.pitch);
+                hour = key.hour;
+            }
+        }
+        view_model.still = settings.reduced_motion;
+        // The hands and what they hold, placed for this frame from the first player's view;
+        // none under the title.
+        if let Some(player) = current.players.first() {
+            for (key, place) in view_model.place(player, camera.eye, camera.rotation, &current.arrows, started.elapsed().as_secs_f32(), frame_time.as_secs_f32()) {
+                let hidden = title.is_some() || photo.as_ref().is_some_and(|p| !p.hands);
+                renderer.scene_mut().place_kit(key, if hidden { None } else { place });
+            }
+        }
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
+        if let (Some(t), Some(player), Some(loot)) = (&trade, current.players.first(), world.loot()) {
+            if let (Some(m), Some(inv)) = (world.merchant(t.merchant), world.inventory(player.id)) {
+                let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+                let (confirm, back) = vellmark_ui::pages::Menu::hint_keys(actions.last_device, style);
+                vellmark_ui::trade_view::TradeView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
+                    .draw(&mut canvas, t, m, inv, (Some(&confirm), Some(&back)));
+            }
+        } else if let Some(card) = &end_card {
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            let (confirm, back) = vellmark_ui::pages::Menu::hint_keys(actions.last_device, style);
+            let key = |k: &str| vellmark_ui::Part::Shown(vellmark_ui::Shown::from_table(&strings, vellmark_content::StringId::from_key(k)));
+            let hint = vellmark_ui::Shown::filled(&strings, sid!("ui.menu.hint"), &[("confirm", key(&confirm)), ("back", key(&back))]);
+            vellmark_ui::end_card::EndCardView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }.draw(&mut canvas, card, Some(hint));
+        } else if let Some(scroll) = credits {
+            let d = window.pixel_density() * settings.interface_scale();
+            vellmark_ui::credits_view::CreditsView { atlas: &assets.glyphs, strings: &strings, credits: &credits_table, size: screen.size(), density: d }.draw(&mut canvas, scroll);
+        } else if let Some(ph) = &photo {
+            let density = window.pixel_density() * settings.interface_scale();
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            let hint = vellmark_platform::prompts::prompt_key(Action::Inventory, actions.last_device, style, &bindings)
+                .map(|k| vellmark_ui::Shown::filled(&strings, sid!("ui.photo.hint"), &[("hide", vellmark_ui::Part::Shown(vellmark_ui::Shown::from_table(&strings, vellmark_content::StringId::from_key(&k))))]));
+            let note = if photo_note > 0.0 { Some(vellmark_ui::Shown::from_table(&strings, sid!("ui.photo.saved"))) } else { hint };
+            ph.draw(&mut canvas, &assets.glyphs, &strings, screen.size(), density, note);
+            photo_note = (photo_note - frame_time.as_secs_f32()).max(0.0);
+        } else if let Some(t) = &title {
+            t.draw(&mut canvas, &assets.glyphs, &strings, screen.size(), window.pixel_density() * settings.interface_scale());
+        } else if let Some(player) = current.players.first() {
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
+                .draw(&mut canvas, player, &actions, &bindings, style);
+            let ui_density = window.pixel_density() * settings.interface_scale();
+            let talk_view = vellmark_ui::dialogue_view::DialogueView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: ui_density };
+            if let Some(t) = &player.talking {
+                let now = if hurried == Some(t.since.to_bits()) { f64::MAX / 4.0 } else { current.seconds };
+                let key = match (actions.last_device, t.choices.is_empty()) {
+                    (vellmark_platform::DeviceKind::Pad, false) => Some(format!("prompt.pad.{}.south", vellmark_platform::prompts::style_name(style))),
+                    _ => vellmark_platform::prompts::prompt_key(Action::Interact, actions.last_device, style, &bindings),
+                };
+                talk_view.draw(&mut canvas, t, now, talk_focus, key.as_deref());
+            } else if let (Some(speaker), true) = (&player.talker_in_gaze, player.reading == vellmark_sim::reading::ReadingSnap::None && pack.is_none()) {
+                if let Some(key) = vellmark_platform::prompts::prompt_key(Action::Interact, actions.last_device, style, &bindings) {
+                    talk_view.draw_offer(&mut canvas, speaker, &key);
+                }
+            }
+            if player.reading == vellmark_sim::reading::ReadingSnap::None && pack.is_none() && player.talking.is_none() {
+                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot: world.loot(), size: screen.size(), density: window.pixel_density() * settings.interface_scale(), states: settings.creature_states }.draw(&mut canvas, player);
+            }
+            // Captions over play, below the menus.
+            captions.update(frame_time.as_secs_f32());
+            if settings.captions && menu.is_none() && pack.is_none() {
+                captions.draw(&mut canvas, &assets.glyphs, &strings, screen.size(), window.pixel_density() * settings.interface_scale());
+            }
+            if let (Some(focus), Some(inv), Some(loot)) = (pack, world.inventory(player.id), world.loot()) {
+                let key = |action| vellmark_platform::prompts::prompt_key(action, actions.last_device, style, &bindings);
+                let (equip, close, keep) = (key(Action::Interact), key(Action::Inventory), key(Action::Favourites));
+                vellmark_ui::inventory_view::InventoryView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale(), note: pack_note.map(|n| n.0) }
+                    .draw(&mut canvas, inv, focus, (equip.as_deref(), close.as_deref(), keep.as_deref()));
+            }
+            if let (Some(wh), Some(inv), Some(loot)) = (wheel, world.inventory(player.id), world.loot()) {
+                let keep = vellmark_platform::prompts::prompt_key(Action::Favourites, actions.last_device, style, &bindings);
+                vellmark_ui::favourites_view::FavouritesView { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
+                    .draw(&mut canvas, &wh, inv, keep.as_deref());
+            }
+            if let Some(m) = &menu {
+                let entries = m.entries(&settings, &bindings, actions.last_device, style);
+                let (confirm, back) = vellmark_ui::pages::Menu::hint_keys(actions.last_device, style);
+                let key = |k: &str| vellmark_ui::Part::Shown(vellmark_ui::Shown::from_table(&strings, vellmark_content::StringId::from_key(k)));
+                let hint = vellmark_ui::Shown::filled(&strings, sid!("ui.menu.hint"), &[("confirm", key(&confirm)), ("back", key(&back))]);
+                vellmark_ui::menu::MenuView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
+                    .draw(&mut canvas, m.title(), &entries, m.focus(), Some(hint));
+            }
+        }
         #[cfg(feature = "dev")]
         dev_tools.draw(&mut canvas, &assets.glyphs, screen.size(), window.pixel_density(), frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), &registry, &tuning);
 
         if let Some(run) = perf.as_mut() {
-            match run.frame(frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), 1.0) {
+            match run.frame(frame_time, &vellmark_gpu::PassTiming::grouped(timers.latest()), relief.scene_scale()) {
                 PerfStep::Camera { eye, yaw, pitch, hour: h } => {
                     camera = Camera::looking(eye.into(), yaw, pitch);
                     hour = h;
@@ -387,6 +1171,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         screen.size(),
                         &format!("{:?}", screen.config.present_mode),
                         registry.created_during_play(),
+                        &format!("{preset:?}"),
+                        &governor.log,
                     );
                     log::line(&format!("performance report written to {}", path.display()));
                     break 'frames;
@@ -394,6 +1180,39 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
 
+        sound.update(camera.eye, &current.weather, hour, terrain.as_deref(), &current.redactors);
+        // Open doors swing, eased; closed ones swing back.
+        for t in current.targets.iter() {
+            let Some((key, place)) = door_places.iter().find(|(k, _)| k.0 == t.id) else { continue };
+            let want = if t.effects.iter().any(|e| e == "open") { 1.0 } else { 0.0 };
+            let now = door_open.entry(t.id).or_insert(0.0);
+            if *now != want {
+                *now += (want - *now).clamp(-frame_time.as_secs_f32() * 1.5, frame_time.as_secs_f32() * 1.5);
+                let eased = *now * *now * (3.0 - 2.0 * *now);
+                renderer.scene_mut().set_transform(*key, *place * glam::Mat4::from_rotation_y(-eased * 95f32.to_radians()));
+            }
+        }
+
+        // Loose things stand where the rules put them, between the last two steps.
+        if !std::sync::Arc::ptr_eq(&previous.props, &current.props) || plan.alpha > 0.0 {
+            for (id, now) in current.props.iter() {
+                let before = previous
+                    .props
+                    .iter()
+                    .find(|(p, _)| p == id)
+                    .map_or(*now, |(_, p)| *p);
+                let (_, r0, t0) = before.to_scale_rotation_translation();
+                let (_, r1, t1) = now.to_scale_rotation_translation();
+                let place = glam::Mat4::from_rotation_translation(
+                    r0.slerp(r1, plan.alpha),
+                    t0.lerp(t1, plan.alpha),
+                );
+                renderer
+                    .scene_mut()
+                    .set_transform(vellmark_content::AssetId(*id), place);
+            }
+        }
+        renderer.observe(&current, started.elapsed().as_secs_f32());
         if let Some(frame) = screen.acquire(&gpu) {
             let target = frame.texture.create_view(&Default::default());
             let views = [View::full(camera)];
@@ -402,7 +1221,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 time_of_day: hour,
                 seconds: started.elapsed().as_secs_f32(),
                 glyph_layer,
-                close_reading: close_reading * close_reading * (3.0 - 2.0 * close_reading),
+                close_reading: if photo.as_ref().is_some_and(|p| p.view == vellmark_ui::photo::View::Text) { 1.0 } else { close_reading * close_reading * (3.0 - 2.0 * close_reading) },
                 dive: 0.0,
                 lamps,
                 tuning,
@@ -411,11 +1230,28 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 letters_step: current.letters_step,
                 broken: &current.broken,
                 heat: &current.heat,
+                weather: current.weather,
+                wind_gust: forced_gust.and_then(|(n, at)| {
+                    let progress = (started.elapsed().as_secs_f32() - at) / 3.2;
+                    (progress < 1.0).then_some((n, progress))
+                }),
+                relief,
                 ui: Some(&canvas),
             };
             let mut encoder = gpu.device.create_command_encoder(&Default::default());
             timers.begin_frame();
             renderer.render(&gpu, &mut encoder, &target, screen.size(), &input, &mut timers);
+            // The picture: the same frame without the panel, saved before this one shows.
+            if std::mem::take(&mut take_picture) {
+                let folder = settings.picture_folder.as_ref().map(std::path::PathBuf::from).unwrap_or_else(crate::picture::default_folder);
+                match crate::picture::save(&gpu, &mut renderer, &input, screen.size(), &folder) {
+                    Ok(path) => {
+                        log::line(&format!("picture saved: {}", path.display()));
+                        photo_note = 2.5;
+                    }
+                    Err(e) => log::line(&format!("the picture could not be saved: {e}")),
+                }
+            }
             timers.end_frame(&gpu, &mut encoder);
             gpu.queue.submit([encoder.finish()]);
             timers.after_submit();
@@ -426,6 +1262,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
         let _ = gpu.device.poll(wgpu::PollType::Poll);
         timers.collect();
+        // The frame's GPU time where the timers can say, its wall time where they cannot.
+        let gpu_ms: f32 = timers.latest().iter().map(|p| p.milliseconds).sum();
+        let frame_ms = if timers.active() && gpu_ms > 0.0 { gpu_ms } else { frame_time.as_secs_f32() * 1000.0 };
+        let logged = governor.log.len();
+        relief = governor.frame(frame_ms, frame_time.as_secs_f32(), started.elapsed().as_secs_f32(), close_reading > 0.0);
+        for line in &governor.log[logged..] {
+            log::line(&format!("governor: {line}"));
+        }
 
         if frame_index == 0 {
             log::line("first frame drawn");
@@ -436,6 +1280,13 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
     }
 
+    // The game is saved on the way out.
+    if !args.perf_run && args.capture.is_none() {
+        match crate::paths::write_atomically(&save_path, &world.save().to_bytes()) {
+            Ok(()) => log::line("the game is saved"),
+            Err(e) => log::line(&format!("the game could not be saved: {e}")),
+        }
+    }
     if registry.created_during_play() > 0 {
         log::line(&format!(
             "fault: {} pipeline(s) were created during play: {:?}",

@@ -1,0 +1,6 @@
+// The owner's links for the end card, one for each language's store. Each must begin
+// with https://, or it is not offered. Left empty until the owner gives them (S06-T17).
+{
+    "end.link.wishlist": "",
+    "end.link.feedback": "",
+}

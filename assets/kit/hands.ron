@@ -1,0 +1,100 @@
+// The first-person kit: the arms, the hands, and what they hold, built of boxes in the
+// hand's own space, metres. Every scene carries one of each, drawn only in first person
+// and placed each frame by the view model (crates/render/src/viewmodel.rs).
+//
+// A held thing's space: its grip at the origin, along +Y, its face toward -Z.
+// An arm's space: the wrist at the origin, the elbow toward +Z.
+// An open hand's space: the wrist at the origin, the fingers toward -Z, the palm down.
+// `string` is a unit length along +Y, stretched by its placing; so are the arrows.
+(
+    parts: {
+        "forearm": [
+            (material: "cloth", min: (-0.042, -0.042, 0.02), max: (0.042, 0.042, 0.30)),
+            (material: "leather", min: (-0.047, -0.047, 0.0), max: (0.047, 0.047, 0.10)),
+        ],
+        "fist": [
+            (material: "skin", min: (-0.044, -0.048, -0.034), max: (0.044, 0.048, 0.042)),
+            (material: "skin", min: (-0.062, 0.0, -0.028), max: (-0.040, 0.044, 0.018)),
+            (material: "skin", min: (-0.040, -0.040, 0.042), max: (0.040, 0.040, 0.075)),
+        ],
+        "hand_open": [
+            (material: "skin", min: (-0.044, -0.012, -0.095), max: (0.044, 0.014, 0.0)),
+            (material: "skin", min: (-0.044, -0.010, -0.180), max: (-0.026, 0.008, -0.095)),
+            (material: "skin", min: (-0.024, -0.030, -0.140), max: (0.044, -0.004, -0.095)),
+            (material: "skin", min: (-0.066, -0.016, -0.090), max: (-0.044, 0.006, -0.030)),
+        ],
+        "sword": [
+            (material: "leather", min: (-0.016, -0.065, -0.016), max: (0.016, 0.065, 0.016)),
+            (material: "iron", min: (-0.024, -0.100, -0.024), max: (0.024, -0.065, 0.024)),
+            (material: "iron", min: (-0.090, 0.065, -0.018), max: (0.090, 0.090, 0.018)),
+            (material: "steel", min: (-0.024, 0.090, -0.004), max: (0.024, 0.700, 0.004)),
+            (material: "steel", min: (-0.016, 0.700, -0.004), max: (0.016, 0.800, 0.004)),
+            (material: "steel", min: (-0.007, 0.800, -0.003), max: (0.007, 0.840, 0.003)),
+        ],
+        "dagger": [
+            (material: "leather", min: (-0.014, -0.050, -0.014), max: (0.014, 0.050, 0.014)),
+            (material: "iron", min: (-0.018, -0.070, -0.018), max: (0.018, -0.050, 0.018)),
+            (material: "iron", min: (-0.050, 0.050, -0.014), max: (0.050, 0.066, 0.014)),
+            (material: "steel", min: (-0.016, 0.066, -0.003), max: (0.016, 0.270, 0.003)),
+            (material: "steel", min: (-0.006, 0.270, -0.002), max: (0.006, 0.300, 0.002)),
+        ],
+        "axe": [
+            (material: "timber", min: (-0.016, -0.120, -0.016), max: (0.016, 0.520, 0.016)),
+            (material: "iron", min: (-0.012, 0.380, -0.130), max: (0.012, 0.500, 0.016)),
+            (material: "steel", min: (-0.006, 0.340, -0.165), max: (0.006, 0.560, -0.130)),
+        ],
+        "mace": [
+            (material: "timber", min: (-0.017, -0.120, -0.017), max: (0.017, 0.440, 0.017)),
+            (material: "iron", min: (-0.045, 0.420, -0.045), max: (0.045, 0.540, 0.045)),
+            (material: "iron", min: (-0.068, 0.440, -0.012), max: (0.068, 0.520, 0.012)),
+            (material: "iron", min: (-0.012, 0.440, -0.068), max: (0.012, 0.520, 0.068)),
+        ],
+        "staff": [
+            (material: "timber", min: (-0.018, -0.800, -0.018), max: (0.018, 0.900, 0.018)),
+            (material: "iron", min: (-0.024, 0.900, -0.024), max: (0.024, 0.960, 0.024)),
+        ],
+        "shield": [
+            (material: "leather", min: (-0.020, -0.050, -0.020), max: (0.020, 0.050, 0.010)),
+            (material: "timber", min: (-0.260, -0.130, -0.085), max: (0.260, 0.130, -0.060)),
+            (material: "timber", min: (-0.215, -0.215, -0.085), max: (0.215, 0.215, -0.060)),
+            (material: "timber", min: (-0.130, -0.260, -0.085), max: (0.130, 0.260, -0.060)),
+            (material: "iron", min: (-0.060, -0.060, -0.115), max: (0.060, 0.060, -0.085)),
+            (material: "iron", min: (-0.270, -0.020, -0.090), max: (0.270, 0.020, -0.082)),
+        ],
+        "bow": [
+            (material: "leather", min: (-0.018, -0.060, -0.020), max: (0.018, 0.060, 0.020)),
+            (material: "timber", min: (-0.014, 0.060, -0.016), max: (0.014, 0.250, 0.014)),
+            (material: "timber", min: (-0.012, 0.250, -0.004), max: (0.012, 0.420, 0.024)),
+            (material: "timber", min: (-0.010, 0.420, 0.016), max: (0.010, 0.560, 0.044)),
+            (material: "timber", min: (-0.014, -0.250, -0.016), max: (0.014, -0.060, 0.014)),
+            (material: "timber", min: (-0.012, -0.420, -0.004), max: (0.012, -0.250, 0.024)),
+            (material: "timber", min: (-0.010, -0.560, 0.016), max: (0.010, -0.420, 0.044)),
+        ],
+        "string": [
+            (material: "leather", min: (-0.0015, 0.0, -0.0015), max: (0.0015, 1.0, 0.0015)),
+        ],
+        "arrow": [
+            (material: "timber", min: (-0.004, 0.0, -0.004), max: (0.004, 0.700, 0.004)),
+            (material: "iron", min: (-0.009, 0.700, -0.002), max: (0.009, 0.740, 0.002)),
+            (material: "iron", min: (-0.004, 0.740, -0.002), max: (0.004, 0.760, 0.002)),
+            (material: "cloth", min: (-0.013, 0.020, -0.001), max: (0.013, 0.130, 0.001)),
+            (material: "cloth", min: (-0.001, 0.020, -0.013), max: (0.001, 0.130, 0.013)),
+        ],
+    },
+    // The things placed from each part: two arms and two of each hand, one of each held
+    // thing, two string halves, and arrows enough for a quiver's worth in the world.
+    placed: {
+        "forearm": ["main", "off"],
+        "fist": ["main", "off"],
+        "hand_open": ["main", "off"],
+        "sword": ["main"],
+        "dagger": ["main"],
+        "axe": ["main"],
+        "mace": ["main"],
+        "staff": ["main"],
+        "shield": ["off"],
+        "bow": ["off"],
+        "string": ["0", "1"],
+        "arrow": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"],
+    },
+)

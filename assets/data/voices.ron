@@ -1,0 +1,73 @@
+// The murmur's voices: the ten bases of full-game/docs/voice/cast-and-budget.md and the
+// character presets taken from its table (pitch in semitones, formant in percent, rate in
+// percent), so that the murmur uses the same pitch, formant, and pacing as the voices.
+// A base's numbers are the murmur's reading of its description: its pitch in hertz,
+// the size of its voice (formants, 1 an adult's middle), syllables a second, breath, and
+// gravel. The speakers say who speaks with which preset; one with `offset` is a crowd
+// voice moved by its own fixed offset, as the cast file has it.
+(
+    bases: {
+        "B1": (pitch: 195.0, size: 1.1, rate: 4.2, breath: 0.25, gravel: 0.05), // The Reader
+        "B2": (pitch: 205.0, size: 1.08, rate: 4.4, breath: 0.15, gravel: 0.0), // The Hearth
+        "B3": (pitch: 180.0, size: 1.06, rate: 3.8, breath: 0.12, gravel: 0.0), // The Stillness
+        "B4": (pitch: 235.0, size: 1.14, rate: 5.0, breath: 0.1, gravel: 0.0), // The Spark
+        "B5": (pitch: 108.0, size: 0.94, rate: 3.6, breath: 0.12, gravel: 0.35), // The Gravel
+        "B6": (pitch: 118.0, size: 0.95, rate: 4.0, breath: 0.08, gravel: 0.05), // The Minister
+        "B7": (pitch: 185.0, size: 1.04, rate: 4.4, breath: 0.05, gravel: 0.05), // The Bell
+        "B8": (pitch: 145.0, size: 0.98, rate: 5.4, breath: 0.1, gravel: 0.05), // The Nib
+        "B9": (pitch: 82.0, size: 0.86, rate: 3.2, breath: 0.08, gravel: 0.25), // The Ox
+        "B10": (pitch: 150.0, size: 1.0, rate: 4.4, breath: 0.05, gravel: 0.0), // The Fair Copy
+    },
+    presets: {
+        "ODILE": (base: "B1", pitch: 0, formant: 0, rate: 100),
+        "ILSE": (base: "B1", pitch: -1, formant: 3, rate: 72),
+        "MIMI": (base: "B1", pitch: 1, formant: -5, rate: 90),
+        "MABEL": (base: "B2", pitch: 0, formant: 0, rate: 100),
+        "TACE": (base: "B2", pitch: -3, formant: -8, rate: 108),
+        "NELL": (base: "B2", pitch: 2, formant: 2, rate: 116),
+        "ANNE": (base: "B2", pitch: 1, formant: 3, rate: 88),
+        "DROWNED_PARISHIONER": (base: "B2", pitch: -7, formant: -14, rate: 70),
+        "YSOLDE": (base: "B3", pitch: 0, formant: 0, rate: 96),
+        "RUE": (base: "B3", pitch: 2, formant: 5, rate: 84),
+        "TAMSIN": (base: "B4", pitch: 5, formant: 18, rate: 104),
+        "TAMSIN_IMPRESSION": (base: "B4", pitch: 5, formant: 18, rate: 92),
+        "TAMSIN_REVERSED": (base: "B4", pitch: 5, formant: 18, rate: 100),
+        "SORREL": (base: "B4", pitch: -2, formant: -3, rate: 80),
+        "ELLERY": (base: "B4", pitch: -1, formant: 0, rate: 118),
+        "LULU": (base: "B4", pitch: -3, formant: -6, rate: 88),
+        "INTER": (base: "B4", pitch: -4, formant: -9, rate: 112),
+        "WICK": (base: "B5", pitch: 0, formant: 0, rate: 100),
+        "PETER": (base: "B5", pitch: -2, formant: -5, rate: 82),
+        "STIG": (base: "B5", pitch: 2, formant: 6, rate: 76),
+        "ASHBY": (base: "B5", pitch: 3, formant: 8, rate: 90),
+        "JORY": (base: "B5", pitch: 5, formant: 10, rate: 120),
+        "THALE": (base: "B6", pitch: 0, formant: 0, rate: 96),
+        "VEXLEY": (base: "B6", pitch: 3, formant: 7, rate: 112),
+        "QUILLON": (base: "B7", pitch: 0, formant: 0, rate: 104),
+        "ANVIL": (base: "B7", pitch: -2, formant: -7, rate: 106),
+        "BRYN": (base: "B7", pitch: -3, formant: -2, rate: 84),
+        "NAN": (base: "B7", pitch: 3, formant: 6, rate: 112),
+        "EDMUND": (base: "B8", pitch: 0, formant: 0, rate: 112),
+        "SABLE": (base: "B8", pitch: -4, formant: -8, rate: 90),
+        "SOUR": (base: "B8", pitch: -2, formant: 4, rate: 96),
+        "QUENTIN": (base: "B8", pitch: -5, formant: -10, rate: 92),
+        "SAINT_SLIP": (base: "B8", pitch: 4, formant: 9, rate: 124),
+        "LULL": (base: "B8", pitch: -1, formant: 2, rate: 76),
+        "HASK": (base: "B9", pitch: 0, formant: 0, rate: 94),
+        "HOB": (base: "B9", pitch: 3, formant: 3, rate: 108),
+        "ANSELM": (base: "B9", pitch: -1, formant: 2, rate: 90),
+        "GERRIT": (base: "B9", pitch: 5, formant: 9, rate: 100),
+        "SHAMBLING_ENTRY": (base: "B9", pitch: -6, formant: -12, rate: 72),
+        "SECOND_EDITION": (base: "B10", pitch: 0, formant: 0, rate: 100),
+        "CLERK": (base: "B10", pitch: 0, formant: 0, rate: 98),
+        "OFFSET_MAN": (base: "B10", pitch: 2, formant: 5, rate: 110),
+        "INDEXER": (base: "B10", pitch: -3, formant: -5, rate: 100),
+    },
+    speakers: {
+        "wick": (preset: "WICK"),
+        "mabel": (preset: "MABEL"),
+        "tamsin": (preset: "TAMSIN"),
+        "gerrit": (preset: "WICK", offset: true),
+        "tobit": (preset: "NELL", offset: true),
+    },
+)

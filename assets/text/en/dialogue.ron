@@ -1,0 +1,34 @@
+// Dialogue: who speaks, and what is said. Lines from the script are keyed by their
+// voice-line ids and copied from full-game/docs/voice/voice_lines.tsv exactly; a test
+// holds them to it. Player choices are the script's, without their quotation marks.
+// Keys are permanent: add, never rename.
+{
+    "speaker.wick": "Wick",
+    "line.q1_001": "Now that is a poor way to start the day.",
+    "line.q1_002": "Are you dead? Take your time. I get paid either way, or I would, if the form had a box for you.",
+    "line.q1_003": "In a hole I dug for a Mister Bell. Mister Bell is running late.",
+    "line.q1_004": "Wick. Gravedigger. Sole proprietor. Who are you?",
+    "line.q1_005": "Then you're ahead of most. Come on, up.",
+    "line.q1_006": "Hm. Let's have a look at you, then.",
+    "line.q1_007": "Well, you look like somebody. That's a start. Name?",
+    "line.q1_008": "Say again?",
+    "line.q1_009": "No. See, that's a problem.",
+    "line.q1_010": "In forty years I've buried two bishops and a man who was mostly a horse. Never had the pencil refuse.",
+    "line.q1_011": "Tell you what. The stone on top of the hill writes down every blessed thing that happens up here. Go and see what it says about you. Mind the dog.",
+    "line.q1_012": "And there's two of you. Lovely. I've only the one hole.",
+    "line.q1_014": "Well?",
+    "line.q1_015": "Does it. And here's you, holding my shovel.",
+    "line.q1_016": "Grass has always been a gossip.",
+    "line.q1_017": "That's what we don't talk about. Keeps the rates down.",
+    "line.q1_018": "You want a clerk. Ambry, down the road, there's a fellow does nothing but small matters. If you can't be written down there, you can't be written down at all.",
+    "line.q1_019": "Stop off at Little Penance on your way. Mabel Oake's owed a headstone refund. Give her this, and have something to eat.",
+    "line.q1_020": "And mind how you go. Whatever you are.",
+    "choice.q1.where": "Where am I?",
+    "choice.q1.who": "Who are you?",
+    "choice.q1.remember": "I can't remember anything.",
+    // The script's direction: the player tries to say a name, and it fades as it is typed.
+    "choice.q1.name": "(Say your name.)",
+    "choice.q1.nobody": "It says nobody's here.",
+    "choice.q1.grass": "It wrote that the grass bent under no one.",
+    "choice.q1.white": "What's the white in the north?",
+}

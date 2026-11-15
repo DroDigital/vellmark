@@ -37,6 +37,46 @@ struct ViewUniform {
     // x: how much of the sky is cloud, 0 to 1. y: the mist's density per metre at its
     // floor. z: the height of its floor. w: the metres in which it thins to a third.
     sky: vec4<f32>,
+    // x: rain, 0 to 1. y: how wet the world is. z: the wind's strength.
+    weather: vec4<f32>,
+    // xy: the wind's direction over the ground.
+    wind: vec4<f32>,
+    // The wind's sentence on the ground: xy where its line starts, zw the way it runs.
+    sentence: vec4<f32>,
+    // x: how far the gust has come, 0 to 1, or less than 0 for none. y: which sentence.
+    // z: the width of a letter, in metres. w: its depth, away from the eye.
+    gust: vec4<f32>,
+    // The finest terrain tiles around the eye: corner x and z, layer, and 1 if present.
+    ground_tiles: array<vec4<f32>, 4>,
+    // What the governor has left: x the share of grass beyond 30 m, y contact
+    // occlusion's strength, z the fog grid's share of its full size, w the share of
+    // particles drawn.
+    quality: vec4<f32>,
+    // Magic: x how many rewrite waves, y how many particle emitters.
+    magic_counts: vec4<u32>,
+    // Each rewrite wave: [0] xyz where it began, w when (seconds); [1] rgb its colour, w
+    // the instance it runs over, counted from 1 (0 for any surface); [2] x its speed in
+    // metres a second, y how far it runs, z its strength.
+    waves: array<array<vec4<f32>, 3>, 8>,
+    // Each emitter: [0] xyz where it is, w its kind (0 a hand's charge, 1 a word in
+    // flight, 2 an impact); [1] xyz which way it goes, w when it began; [2] rgb its
+    // colour, w its brightness; [3] x how many particles, y their size in metres, z a
+    // seed, w how far along it is, 0 to 1.
+    emitters: array<array<vec4<f32>, 4>, 32>,
+    // Each emitter's characters: four bytes to a word, sixteen at most, 0 ending them.
+    emitter_text: array<vec4<u32>, 32>,
+}
+
+const MAX_WAVES: u32 = 8u;
+const MAX_EMITTERS: u32 = 32u;
+// Particles one emitter may draw at most.
+const PARTICLES_PER_EMITTER: u32 = 160u;
+
+// The fog grid at its full size, and the part of it in use.
+const FOG_GRID_MAX: vec3<u32> = vec3<u32>(160u, 90u, 64u);
+
+fn fog_grid(view_quality: f32) -> vec3<u32> {
+    return max(vec3<u32>(1u), vec3<u32>(round(vec3<f32>(FOG_GRID_MAX) * view_quality)));
 }
 
 // ---- the atmosphere: the same model as `crates/render/src/sky.rs` ----

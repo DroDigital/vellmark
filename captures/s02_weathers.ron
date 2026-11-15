@@ -1,0 +1,27 @@
+// Phase S02's exit captures: the valley from Tithe Hill at dawn, noon, dusk, and night,
+// in rain, and in fog; and the shimmer check, a slow sideways move of a small part of a
+// pixel a frame: across the barley from inside the field (the road's hedges stand where
+// it was first taken from) in clear air, at dusk, in rain, and in fog; and across the
+// pasture seen almost edge on, alone, in front of the east wood, and at dusk. Every shot is also a glyph-off comparison.
+#![enable(implicit_some)]
+(
+    name: "s02_weathers",
+    scene: "scene.valley",
+    width: 960,
+    height: 540,
+    shots: [
+        (name: "dawn", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 6.4, above_ground: true, pair: true),
+        (name: "noon", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 12.5, above_ground: true, pair: true),
+        (name: "dusk", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 17.8, above_ground: true, pair: true),
+        (name: "night", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 23.0, above_ground: true, pair: true),
+        (name: "rain", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 14.0, above_ground: true, rain: 0.8, pair: true),
+        (name: "fog", from: (eye: (-104.0, 1.7, 112.0), yaw: 22.0, pitch: -5.0), hour: 8.0, above_ground: true, fog: 0.5, pair: true),
+        (name: "shimmer_barley", from: (eye: (-50.0, 1.7, -20.0), yaw: 50.0, pitch: -6.0), to: (eye: (-49.988, 1.7, -20.0), yaw: 50.0, pitch: -6.0), hour: 12.5, above_ground: true, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_barley_dusk", from: (eye: (-50.0, 1.7, -20.0), yaw: 50.0, pitch: -6.0), to: (eye: (-49.988, 1.7, -20.0), yaw: 50.0, pitch: -6.0), hour: 17.8, above_ground: true, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_barley_rain", from: (eye: (-50.0, 1.7, -20.0), yaw: 50.0, pitch: -6.0), to: (eye: (-49.988, 1.7, -20.0), yaw: 50.0, pitch: -6.0), hour: 14.0, above_ground: true, rain: 0.8, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_barley_fog", from: (eye: (-50.0, 1.7, -20.0), yaw: 50.0, pitch: -6.0), to: (eye: (-49.988, 1.7, -20.0), yaw: 50.0, pitch: -6.0), hour: 8.0, above_ground: true, fog: 0.5, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_pasture_grazing", from: (eye: (160.0, 1.7, 120.0), yaw: 270.0, pitch: 9.0), to: (eye: (160.0, 1.7, 119.988), yaw: 270.0, pitch: 9.0), hour: 10.0, above_ground: true, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_pasture_wood", from: (eye: (160.0, 1.7, 120.0), yaw: 90.0, pitch: 9.0), to: (eye: (160.0, 1.7, 120.012), yaw: 90.0, pitch: 9.0), hour: 10.0, above_ground: true, frames: 24, shimmer: true, pair: true),
+        (name: "shimmer_pasture_dusk", from: (eye: (160.0, 1.7, 120.0), yaw: 270.0, pitch: 9.0), to: (eye: (160.0, 1.7, 119.988), yaw: 270.0, pitch: 9.0), hour: 17.8, above_ground: true, frames: 24, shimmer: true, pair: true),
+    ],
+)

@@ -28,14 +28,19 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S02-T04** [Render] Add froxel fog, god rays, and aerial perspective
 - [x] **S02-T05** [Content] Bake sky visibility for every surface, and use it for ambient light with contact occlusion at half resolution
 - [x] **S02-T06** [Render] Add GPU culling and instancing through one instance buffer, with the depth pyramid from the last frame
-- [ ] **S02-T07** [Render] Add grass as instanced blades that sway and bend around a moving point, with each blade a line of characters up close
-- [ ] **S02-T08** [Content] Generate trees with bark that carries text and leaf cards, with levels of detail and far forms that crossfade
-- [ ] **S02-T09** [Render] Add water for the river and pond: flow, reflection, refraction, foam, and ripples that resolve into characters at the edge
-- [ ] **S02-T10** [Render] Add rain with its close-up characters, wet surfaces, and the wind that reads, from a pool of six sentences
-- [ ] **S02-T11** [Render] Cache the far shadow cascades and ration shadowed lights
-- [ ] **S02-T12** [Render] Build the governor and the Low, Medium, and High presets
-- [ ] **S02-T13** [Shell] Add wind, water, rain, and birdsong ambience by synthesis and approved samples
-- [ ] **S02-T14** [Render] Capture the valley at dawn, noon, dusk, night, rain, and fog, and pass the shimmer check across the barley
+- [x] **S02-T07** [Render] Add grass as instanced blades that sway and bend around a moving point, with each blade a line of characters up close
+- [x] **S02-T07b** [Render] Grass seen almost edge on passes the shimmer check: the pasture east from x 160, z 120 at pitch 9, with and without the wood behind it (found in T08c)
+- [x] **S02-T08a** [Content] Generate tree meshes in the bake: trunks and branches in bark, leaf cards, three levels of detail and a far form, for a few kinds
+- [x] **S02-T08b** [Content] Place the woods, the orchard, and hedgerow trees in the valley as instances with permanent IDs
+- [x] **S02-T08c** [Render] Draw trees through the instance buffer, the level chosen in culling and crossfaded; leaf cards cut out, their leaves written as `^ A v` at arm's length (after T08a)
+- [x] **S02-T08d** [Content] Bark that records each tree's age, as generated truth (after T08b)
+- [x] **S02-T09** [Render] Add water for the river and pond: flow, reflection, refraction, foam, and ripples that resolve into characters at the edge
+- [x] **S02-T10a** [Render] Add rain with its close-up characters and wet surfaces
+- [ ] **S02-T10b** [Render] Add the wind that reads, from a pool of six sentences, legible in motion on the owner's screen
+- [x] **S02-T11** [Render] Cache the far shadow cascades and ration shadowed lights
+- [x] **S02-T12** [Render] Build the governor and the Low, Medium, and High presets
+- [x] **S02-T13** [Shell] Add wind, water, rain, and birdsong ambience by synthesis and approved samples
+- [x] **S02-T14** [Render] Capture the valley at dawn, noon, dusk, night, rain, and fog, and pass the shimmer check across the barley
 - [ ] **S02-T15** [Shell] Run the performance run on the owner's Mac along the tour's camera path, bring every pass inside its share, and save the evidence
 
 ## Exit gate

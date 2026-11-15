@@ -2,6 +2,21 @@
 
 Newest first. Record every change to scope, design, order, or tools here. The full-game plan keeps its own history in `full-game/docs/PLAN_CHANGES.md`.
 
+## 2026-11-13: the phases go on while the owner gates wait
+
+Owner's direction: carry on through every remaining phase without stopping, as
+efficiently as quality allows.
+
+- Each phase's exit gate is run as far as a cloud session can run it. What only the
+  owner's Mac can prove (frame time, look, feel) is added to `docs/PLAYTEST_CHECKLIST.md`
+  and the phase is marked **Gate waiting on owner** in `docs/STATE.md`, not passed.
+- The next phase starts at once on work that does not depend on the waiting gate's
+  answer. A later answer that changes earlier work is taken up as it comes.
+- Downloads the session cannot reach (Kenney and Freesound sounds, model packs) are
+  listed in `third_party/DOWNLOADS.md`; the work goes on with what can be synthesized or
+  generated in the bake, and swaps the files in when they appear in `third_party/inbox/`.
+- Nothing is published, and no voice credits are spent, without the owner.
+
 ## 2026-11-11: the living lattice is built and made the default; every material has its words
 
 Owner's direction, given while the living lattice was being built. Seeing into things up close is the game's key selling point.

@@ -1,0 +1,181 @@
+//! Reading. Holding Read with a text in focus reads it: the text, and those of its
+//! hidden lines the reader's Perception reaches. Holding Read with nothing in focus is
+//! close reading: the whole view becomes text, and in solo play time slows to a third.
+
+use glam::Vec3;
+
+/// A text is in focus within this distance of the eye.
+pub const READ_REACH: f32 = 2.6;
+/// Close reading slows the world to this share of its pace, in solo play.
+pub const CLOSE_READING_PACE: f32 = 1.0 / 3.0;
+
+/// A text that can be read, where it is set.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ReadableText {
+    pub id: u64,
+    /// Its string's ID in the string tables.
+    pub text: u64,
+    pub min: Vec3,
+    pub max: Vec3,
+    /// Hidden lines: each string's ID and the Perception it takes.
+    pub hidden: Vec<(u64, u32)>,
+    /// A Standing Page: the word it gives whoever reads it, or empty.
+    pub teaches: String,
+    /// A Page that writes as it is watched: what stands written, then each entry it
+    /// writes and what begins it. Empty for a text that is simply there.
+    pub writing: Vec<vellmark_content::WriteCue>,
+}
+
+/// Letters a Page writes each second: a careful hand.
+pub const WRITE_RATE: f32 = 11.0;
+
+/// A Page writing as it is watched.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PageWriting {
+    /// The readable, by index.
+    pub readable: usize,
+    /// The next cue to be met.
+    pub next: usize,
+    /// Letters written, and how many it is writing to.
+    pub shown: f32,
+    pub target: u32,
+    /// When the last entry was finished.
+    pub done_at: f64,
+}
+
+impl PageWriting {
+    pub fn finished(&self, cues: &[vellmark_content::WriteCue]) -> bool {
+        self.next >= cues.len() && self.shown >= self.target as f32
+    }
+}
+
+/// The flag a Page sets once it has written everything it writes, so that it stays
+/// written in a saved game.
+pub fn written_flag(id: u64) -> String {
+    format!("page.{id:016x}.written")
+}
+
+/// A word given by a Standing Page, as it is given: it lifts from the stone, the reader's
+/// view holds on it, and then it acts once on everything round the Page that it would
+/// change, flying to each, so that the player leaves having seen what it does.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Learning {
+    pub player: u32,
+    pub word: usize,
+    /// The middle of the Page's face, where the word lifts from.
+    pub page: glam::Vec3,
+    /// Where it hangs while the view holds on it: before the stone, towards the reader.
+    pub hover: glam::Vec3,
+    pub began: f64,
+    pub released: bool,
+    /// The nearest thing it changes: the view turns there once it goes out, to watch.
+    pub sight: Option<glam::Vec3>,
+}
+
+/// Seconds the word takes to lift, and how long the view holds on it before it acts.
+pub const LIFT: f64 = 1.2;
+pub const HOLD: f64 = 1.6;
+/// Seconds from the start until the reader may move again: long enough to watch the
+/// word land on the nearest thing it changes.
+pub const SPECTACLE: f64 = 5.0;
+/// How far round the Page the word acts, and on how many things at most.
+pub const SPECTACLE_REACH: f32 = 120.0;
+pub const SPECTACLE_MOST: usize = 32;
+
+impl Learning {
+    /// Where the word is, `age` seconds in.
+    pub fn at(&self, age: f64) -> glam::Vec3 {
+        let t = (age / LIFT).clamp(0.0, 1.0) as f32;
+        let s = t * t * (3.0 - 2.0 * t);
+        self.page + (self.hover - self.page) * s
+    }
+}
+
+/// What a player is doing with Read.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Reading {
+    #[default]
+    None,
+    /// Reading a text: its index among the world's readables.
+    Text(usize),
+    /// The whole view as text.
+    Close,
+}
+
+/// What a player is reading, as drawn.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum ReadingSnap {
+    #[default]
+    None,
+    /// The text's string, and the hidden lines this reader sees.
+    /// For a Page still writing, `written` is how many of its letters stand written.
+    Text { id: u64, text: u64, hidden: Vec<u64>, written: Option<u32> },
+    Close,
+}
+
+/// Where a ray from `from` along `dir` (of length 1) enters a box, if it does within `reach`.
+pub fn ray_box(from: Vec3, dir: Vec3, min: Vec3, max: Vec3, reach: f32) -> Option<f32> {
+    let mut near = 0.0f32;
+    let mut far = reach;
+    for i in 0..3 {
+        let d = dir[i];
+        if d.abs() < 1.0e-8 {
+            if from[i] < min[i] || from[i] > max[i] {
+                return None;
+            }
+            continue;
+        }
+        let (mut a, mut b) = ((min[i] - from[i]) / d, (max[i] - from[i]) / d);
+        if a > b {
+            std::mem::swap(&mut a, &mut b);
+        }
+        near = near.max(a);
+        far = far.min(b);
+        if near > far {
+            return None;
+        }
+    }
+    Some(near)
+}
+
+/// The text the eye is on: the nearest whose box the gaze meets within reach, and that
+/// nothing solid stands in front of.
+pub fn focus(eye: Vec3, gaze: Vec3, texts: &[ReadableText], statics: Option<&crate::character::Statics>) -> Option<usize> {
+    let mut best: Option<(f32, usize)> = None;
+    for (i, t) in texts.iter().enumerate() {
+        // A little room about the surface, so that the eye need not hit it exactly.
+        let pad = Vec3::splat(0.05);
+        if let Some(d) = ray_box(eye, gaze, t.min - pad, t.max + pad, READ_REACH) {
+            if best.is_none_or(|(b, _)| d < b) {
+                best = Some((d, i));
+            }
+        }
+    }
+    let (d, i) = best?;
+    // Something nearer than the text's surface, other than the text's own wall, hides it.
+    if let Some((hit, _)) = statics.and_then(|s| s.ray(eye, gaze, d)) {
+        if hit < d - 0.1 {
+            return None;
+        }
+    }
+    Some(i)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wall() -> ReadableText {
+        ReadableText { id: 1, text: 2, min: Vec3::new(-1.0, 0.0, -3.0), max: Vec3::new(1.0, 2.5, -2.8), hidden: vec![(3, 2)], teaches: String::new(), writing: Vec::new() }
+    }
+
+    #[test]
+    fn the_text_ahead_within_reach_is_in_focus() {
+        let texts = [wall()];
+        let eye = Vec3::new(0.0, 1.6, -0.5);
+        assert_eq!(focus(eye, -Vec3::Z, &texts, None), Some(0));
+        // Looking away, or from too far, nothing is.
+        assert_eq!(focus(eye, Vec3::Z, &texts, None), None);
+        assert_eq!(focus(Vec3::new(0.0, 1.6, 2.0), -Vec3::Z, &texts, None), None);
+    }
+}

@@ -1,6 +1,6 @@
 /// Keys the game can bind. Named by position on the keyboard, not by the letter
 /// printed on it, so that the defaults sit under the same fingers on every layout.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Key {
     W, A, S, D, Q, E, R, F, C, X, Z, V, T, G, B, I, M, P,
     Num1, Num2, Num3, Num4, Num5, Num6, Num7,
@@ -9,14 +9,14 @@ pub enum Key {
     F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum MouseButton {
     Left,
     Right,
     Middle,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PadButton {
     South, East, West, North,
     LeftShoulder, RightShoulder,
@@ -40,6 +40,8 @@ pub enum PadAxis {
 pub enum RawInput {
     Key { key: Key, down: bool },
     MouseMove { dx: f32, dy: f32 },
+    /// Where the cursor is in the window, in the window's points, while it is free.
+    Pointer { x: f32, y: f32 },
     MouseButton { button: MouseButton, down: bool },
     MouseWheel { dy: f32 },
     /// `pad` identifies the controller for as long as it stays plugged in.
@@ -53,7 +55,7 @@ pub enum RawInput {
 }
 
 /// Everything the game can be asked to do with a button.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum Action {
     /// The main hand: tap to strike, hold for a heavy attack.
@@ -72,6 +74,13 @@ pub enum Action {
     NextWord,
     PreviousWord,
     PhotoMode,
+    /// Hold for the favourites wheel; in the pack, keep what the hands hold as a favourite.
+    Favourites,
+    /// The movement keys, so that they can be moved to other keys. A stick moves as it is.
+    MoveForward,
+    MoveBack,
+    MoveLeft,
+    MoveRight,
     /// Development builds only.
     DevConsole,
     DevFreeCamera,
@@ -131,6 +140,7 @@ impl Default for Bindings {
                 (Key::Q, PreviousWord),
                 (Key::F, NextWord),
                 (Key::P, PhotoMode),
+                (Key::C, Favourites),
                 (Key::Grave, DevConsole),
                 (Key::F1, DevProfiler),
                 (Key::F2, DevFreeCamera),
@@ -156,6 +166,7 @@ impl Default for Bindings {
                 (PadButton::Start, Pause),
                 (PadButton::Back, Inventory),
                 (PadButton::DPadUp, PhotoMode),
+                (PadButton::DPadDown, Favourites),
             ],
             left_trigger: OffHand,
             right_trigger: MainHand,
@@ -181,6 +192,8 @@ pub struct ActionState {
     mouse_look: (f32, f32),
     triggers: (bool, bool),
     pub last_device: DeviceKind,
+    pointer: Option<(f32, f32)>,
+    pointer_moved: bool,
     /// The controller this player holds, if any. Input from other controllers is
     /// ignored, so a second controller never moves the first player.
     pub pad: Option<u32>,
@@ -204,6 +217,17 @@ impl ActionState {
         self.pressed = 0;
         self.released = 0;
         self.mouse_look = (0.0, 0.0);
+        self.pointer_moved = false;
+    }
+
+    /// Where the cursor is, in the window's points, once it has moved; and whether it
+    /// moved this frame.
+    pub fn pointer(&self) -> Option<(f32, f32)> {
+        self.pointer
+    }
+
+    pub fn pointer_moved(&self) -> bool {
+        self.pointer_moved
     }
 
     fn set(&mut self, action: Action, down: bool) {
@@ -232,6 +256,11 @@ impl ActionState {
                 self.last_device = DeviceKind::KeyboardMouse;
                 self.mouse_look.0 += dx;
                 self.mouse_look.1 += dy;
+            }
+            RawInput::Pointer { x, y } => {
+                self.last_device = DeviceKind::KeyboardMouse;
+                self.pointer = Some((x, y));
+                self.pointer_moved = true;
             }
             RawInput::MouseButton { button, down } => {
                 self.last_device = DeviceKind::KeyboardMouse;
@@ -331,6 +360,18 @@ impl ActionState {
         let x = (keys.0 + self.stick_move.0).clamp(-1.0, 1.0);
         let y = (keys.1 - self.stick_move.1).clamp(-1.0, 1.0);
         (x, y)
+    }
+
+    /// This frame's mouse movement in counts, right and down positive, for aiming on the
+    /// interface rather than turning.
+    pub fn mouse_motion(&self) -> (f32, f32) {
+        self.mouse_look
+    }
+
+    /// Where the two sticks point, each -1 to 1, right and down positive: the moving
+    /// stick and the looking stick.
+    pub fn sticks(&self) -> ((f32, f32), (f32, f32)) {
+        (self.stick_move, self.stick_look)
     }
 
     /// Turn and tilt for a frame of `dt` seconds, in radians. Right and up are positive.
