@@ -16,6 +16,8 @@ else
   cargo build --release -p vellmark-app --features dev
 fi
 cargo run --release -p vellmark-bake -- --out build/packs
+# The notices cover every platform's crates, so fetch them all, not only this one's.
+cargo fetch
 cargo run --release -p vellmark-bake --bin notices
 
 rm -rf "build/$PLATFORM"
