@@ -18,6 +18,34 @@ fn high() -> bool {
     HIGH_CONTRAST.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+static SAFE_COLOURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// A palette safe for colour blindness (Okabe and Ito's) for the colours that mean
+/// something: tiers. Tiers never rely on colour alone: each carries its marks.
+pub fn set_safe_colours(on: bool) {
+    SAFE_COLOURS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The colour an item's name is set in: plain ink for the lowest tier, then by tier.
+pub fn tier_colour(tier: u8) -> [f32; 4] {
+    if SAFE_COLOURS.load(std::sync::atomic::Ordering::Relaxed) {
+        return match tier {
+            0 => ink(),
+            1 => [0.34, 0.71, 0.91, 1.0],
+            2 | 3 => [0.94, 0.89, 0.26, 1.0],
+            4 => [0.90, 0.62, 0.0, 1.0],
+            _ => [0.80, 0.47, 0.65, 1.0],
+        };
+    }
+    match tier {
+        0 => ink(),
+        1 => [0.72, 0.86, 0.68, 1.0],
+        2 | 3 => gold(),
+        4 => [1.0, 0.62, 0.32, 1.0],
+        _ => [0.62, 0.78, 1.0, 1.0],
+    }
+}
+
 /// The colours every screen is set in.
 pub fn paper() -> [f32; 4] {
     if high() { [0.0, 0.0, 0.0, 0.97] } else { [0.05, 0.045, 0.04, 0.9] }

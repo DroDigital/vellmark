@@ -101,6 +101,10 @@ pub struct Settings {
     pub close_reading_slows: bool,
     /// The state of the creature in the gaze, said in words beside its name.
     pub creature_states: bool,
+    /// Read is pressed once to begin reading and again to stop, rather than held.
+    pub read_toggle: bool,
+    /// Colours safe for colour blindness, for what colours mean.
+    pub safe_colours: bool,
     /// Black fields and white letters on every screen.
     pub high_contrast: bool,
     /// 1 to 1.5: interface letters set larger, apart from the interface's size.
@@ -126,6 +130,8 @@ impl Default for Settings {
             close_reading_slows: true,
             creature_states: false,
             high_contrast: false,
+            read_toggle: false,
+            safe_colours: false,
             letter_size: 1.0,
             picture_folder: None,
         }
@@ -156,6 +162,25 @@ impl Bindings {
     /// Puts `action` on `key`. Whatever was on that key moves to where `action` was, so
     /// that no action is left without a button.
     pub fn rebind_key(&mut self, action: Action, key: Key) {
+        // A movement key: whatever was on the new key takes the old one.
+        let moves = [Action::MoveForward, Action::MoveBack, Action::MoveLeft, Action::MoveRight];
+        if let Some(i) = moves.iter().position(|a| *a == action) {
+            let old = self.move_keys[i];
+            if let Some(j) = self.move_keys.iter().position(|k| *k == key) {
+                self.move_keys[j] = old;
+            }
+            if let Some(slot) = self.keys.iter_mut().find(|(k, _)| *k == key) {
+                slot.0 = old;
+            }
+            self.move_keys[i] = key;
+            return;
+        }
+        // An action moved onto a movement key gives that key's movement its old key.
+        if let Some(j) = self.move_keys.iter().position(|k| *k == key) {
+            if let Some(old) = self.key_for(action) {
+                self.move_keys[j] = old;
+            }
+        }
         let old = self.keys.iter().find(|(_, a)| *a == action).map(|(k, _)| *k);
         let displaced = self.keys.iter().find(|(k, _)| *k == key).map(|(_, a)| *a);
         self.keys.retain(|(k, a)| *a != action && *k != key);
@@ -193,6 +218,10 @@ impl Bindings {
 
     /// The key an action is on, if any.
     pub fn key_for(&self, action: Action) -> Option<Key> {
+        let moves = [Action::MoveForward, Action::MoveBack, Action::MoveLeft, Action::MoveRight];
+        if let Some(i) = moves.iter().position(|a| *a == action) {
+            return Some(self.move_keys[i]);
+        }
         self.keys.iter().find(|(_, a)| *a == action).map(|(k, _)| *k)
     }
 
@@ -208,6 +237,25 @@ impl Bindings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn movement_keys_move_and_nothing_is_lost() {
+        let mut s = InputSettings::default();
+        s.remap_key(Action::MoveForward, Key::Up);
+        let b = s.bindings();
+        assert_eq!(b.move_keys[0], Key::Up);
+        assert_eq!(b.key_for(Action::MoveForward), Some(Key::Up));
+        // Jump onto S, which moved back: moving back takes Space.
+        s.remap_key(Action::Jump, Key::S);
+        let b = s.bindings();
+        assert_eq!(b.key_for(Action::Jump), Some(Key::S));
+        assert_eq!(b.move_keys[1], Key::Space);
+        // Moving left onto E, Interact's: Interact takes A.
+        s.remap_key(Action::MoveLeft, Key::E);
+        let b = s.bindings();
+        assert_eq!(b.move_keys[2], Key::E);
+        assert_eq!(b.key_for(Action::Interact), Some(Key::A));
+    }
 
     #[test]
     fn settings_round_trip_and_old_files_still_load() {

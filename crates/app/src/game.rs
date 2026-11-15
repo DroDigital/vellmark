@@ -373,9 +373,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     // Captions for the sounds that matter, and whether a Redactor's approach is captioned.
     let mut captions = vellmark_ui::captions::Captions::default();
     let mut redactor_heard = false;
+    // Reading by a press rather than a hold: whether Read is latched on.
+    let mut read_latch = false;
     world.set_close_reading_slows(settings.close_reading_slows);
     vellmark_ui::kit::set_high_contrast(settings.high_contrast);
     vellmark_ui::set_letter_scale(settings.letter_size);
+    vellmark_ui::kit::set_safe_colours(settings.safe_colours);
     renderer.set_fewer_flashes(settings.fewer_flashes);
     sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume, settings.music_volume);
 
@@ -643,6 +646,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             world.set_close_reading_slows(settings.close_reading_slows);
             vellmark_ui::kit::set_high_contrast(settings.high_contrast);
             vellmark_ui::set_letter_scale(settings.letter_size);
+            vellmark_ui::kit::set_safe_colours(settings.safe_colours);
             match crate::paths::write_atomically(&settings_path, settings.to_text().as_bytes()) {
                 Ok(()) => log::line("settings saved"),
                 Err(e) => log::line(&format!("the settings could not be saved: {e}")),
@@ -746,6 +750,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
 
+        if settings.read_toggle && menu.is_none() && photo.is_none() && actions.pressed(Action::Read) {
+            read_latch = !read_latch;
+        }
+        if !settings.read_toggle {
+            read_latch = false;
+        }
         // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
         // play the world holds still while the pack or a menu is open.
         let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() { 0 } else { frame_time.as_nanos() as u64 });
@@ -753,6 +763,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             if step == 0 {
                 input.say = std::mem::take(&mut say);
+            }
+            if settings.read_toggle {
+                input.buttons = (input.buttons & !vellmark_sim::buttons::READ) | if read_latch { vellmark_sim::buttons::READ } else { 0 };
             }
             if hold_interact {
                 input.buttons &= !vellmark_sim::buttons::INTERACT;

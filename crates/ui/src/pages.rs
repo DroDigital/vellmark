@@ -34,7 +34,7 @@ pub enum Outcome {
 }
 
 /// The actions a player may move to another button, in the order the page lists them.
-pub const REMAPPABLE: [Action; 11] = [
+pub const REMAPPABLE: [Action; 15] = [
     Action::MainHand,
     Action::OffHand,
     Action::Interact,
@@ -46,6 +46,10 @@ pub const REMAPPABLE: [Action; 11] = [
     Action::PreviousWord,
     Action::NextWord,
     Action::Inventory,
+    Action::MoveForward,
+    Action::MoveBack,
+    Action::MoveLeft,
+    Action::MoveRight,
 ];
 
 fn action_label(action: Action) -> StringId {
@@ -60,6 +64,10 @@ fn action_label(action: Action) -> StringId {
         Action::Sidestep => sid!("ui.action.sidestep"),
         Action::PreviousWord => sid!("ui.action.previous_word"),
         Action::NextWord => sid!("ui.action.next_word"),
+        Action::MoveForward => sid!("ui.action.move_forward"),
+        Action::MoveBack => sid!("ui.action.move_back"),
+        Action::MoveLeft => sid!("ui.action.move_left"),
+        Action::MoveRight => sid!("ui.action.move_right"),
         _ => sid!("ui.action.inventory"),
     }
 }
@@ -155,6 +163,8 @@ impl Menu {
                 e(sid!("ui.setting.creature_states"), Value::Switch(s.creature_states)),
                 e(sid!("ui.setting.high_contrast"), Value::Switch(s.high_contrast)),
                 e(sid!("ui.setting.letter_size"), pct(s.letter_size, 1.0, 1.5)),
+                e(sid!("ui.setting.read_toggle"), Value::Switch(s.read_toggle)),
+                e(sid!("ui.setting.safe_colours"), Value::Switch(s.safe_colours)),
             ],
         }
     }
@@ -184,6 +194,8 @@ impl Menu {
                     self.capturing = None;
                     return Outcome::Changed;
                 }
+                // Movement is moved only to keys: a stick moves as it is.
+                RawInput::MouseButton { .. } | RawInput::PadButton { .. } if matches!(action, Action::MoveForward | Action::MoveBack | Action::MoveLeft | Action::MoveRight) => {}
                 RawInput::MouseButton { button, down: true } => {
                     s.input.remap_mouse(action, button);
                     self.capturing = None;
@@ -290,7 +302,9 @@ impl Menu {
                     3 => &mut s.captions,
                     4 => &mut s.close_reading_slows,
                     5 => &mut s.creature_states,
-                    _ => &mut s.high_contrast,
+                    6 => &mut s.high_contrast,
+                    8 => &mut s.read_toggle,
+                    _ => &mut s.safe_colours,
                 };
                 *flag = !*flag;
                 true

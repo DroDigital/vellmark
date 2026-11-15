@@ -129,11 +129,5 @@ impl InventoryView<'_> {
 /// The colour an item's name is set in: plain ink for the lower tiers, gold from Rare, and
 /// the colour of fresh ink for Unique things.
 fn tier_colour(tier: u8) -> [f32; 4] {
-    match tier {
-        0 => kit::ink(),
-        1 => [0.72, 0.86, 0.68, 1.0],
-        2 | 3 => kit::gold(),
-        4 => [1.0, 0.62, 0.32, 1.0],
-        _ => [0.62, 0.78, 1.0, 1.0],
-    }
+    kit::tier_colour(tier)
 }

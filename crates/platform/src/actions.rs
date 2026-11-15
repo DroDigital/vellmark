@@ -72,6 +72,11 @@ pub enum Action {
     NextWord,
     PreviousWord,
     PhotoMode,
+    /// The movement keys, so that they can be moved to other keys. A stick moves as it is.
+    MoveForward,
+    MoveBack,
+    MoveLeft,
+    MoveRight,
     /// Development builds only.
     DevConsole,
     DevFreeCamera,

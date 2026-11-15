@@ -26,7 +26,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S07-T03** [Render] Build photo mode: the free camera, the player's character with poses, text view, the split frame, and saving to PNG
   - [x] **S07-T03a** The free camera, field of view, tilt, exposure, the hands shown or hidden, text view, the split frame with its divider moved and turned, and saving to PNG
   - [ ] **S07-T03b** The player's character with poses (**after** S04-T01, the bodies), and depth of field
-- [ ] **S07-T04** [Shell] Add accessibility basics: subtitles, letter size, interface scale, reduced motion, reduced screen response, the photosensitivity option, and full remapping
+- [x] **S07-T04** [Shell] Add accessibility basics: subtitles, letter size, interface scale, reduced motion, reduced screen response, the photosensitivity option, and full remapping
 - [x] **S07-T05** [Shell] Finish the settings menu, the pause menu, and a clean first launch that picks a preset by itself
 - [ ] **S07-T06** [Sim] Run a soak of four hours of bot play and fix every crash, leak, and stuck state
 - [ ] **S07-T07** [Shell] Package for Windows, macOS, and Linux, run the license audit, and generate the notices and the AI disclosure

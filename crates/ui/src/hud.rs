@@ -62,7 +62,7 @@ impl Hud<'_> {
             use crate::Part;
             let label = crate::item_text::label(self.strings, table, item);
             let line_y = cy + 56.0 * d;
-            let title = TextStyle { face: Face::Large, size: (20.0 * d).round(), colour: if item.tier as u8 >= 2 { GOLD } else { WHITE } };
+            let title = TextStyle { face: Face::Large, size: (20.0 * d).round(), colour: crate::kit::tier_colour(item.tier as u8) };
             self.centred(canvas, cx, line_y, &title, &label);
             let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: WHITE };
             self.centred(canvas, cx, line_y + 22.0 * d, &small, &crate::item_text::tier(self.strings, item));
