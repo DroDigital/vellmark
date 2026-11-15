@@ -361,6 +361,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     // play the world holds still while it is open.
     let mut pack: Option<vellmark_ui::kit::Focus> = None;
     let mut pack_nav = vellmark_ui::kit::NavRepeat::default();
+    let mut pack_nav_repeat = vellmark_ui::menu::MenuRepeat::default();
     // The pause menu and the settings, while open. The world holds still in solo play.
     let mut menu: Option<vellmark_ui::pages::Menu> = None;
     // A conversation: the choice the focus rests on, the choice taken this frame, the line
@@ -378,6 +379,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     // The credits, while they roll: how far they have come.
     let credits_table = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::CREDITS_KEY)).and_then(|b| vellmark_content::Credits::from_bytes(b).ok()).unwrap_or_default();
     let mut credits: Option<f32> = None;
+    // Trade with a merchant, while it is open; and the last person spoken to, whose stock
+    // a conversation's `trade` opens.
+    let mut trade: Option<vellmark_ui::trade_view::Trade> = None;
+    let mut last_talker: Option<u64> = None;
     // Captions for the sounds that matter, and whether a Redactor's approach is captioned.
     let mut captions = vellmark_ui::captions::Captions::default();
     let mut redactor_heard = false;
@@ -441,7 +446,47 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 credits = None;
             }
         }
-        if title.is_some() || photo.is_some() || credits.is_some() {
+        // A conversation's `trade` opens its speaker's stock.
+        if let Some(t) = current.players.first().and_then(|p| p.talking.as_ref()) {
+            last_talker = Some(t.talker);
+        }
+        if world.events().iter().any(|(_, e)| e == "trade") {
+            if let Some(m) = last_talker.filter(|m| world.merchant(*m).is_some()) {
+                trade = Some(vellmark_ui::trade_view::Trade { merchant: m, ..Default::default() });
+            }
+        }
+        // Trading: up and down move along a side, left and right change sides, a press buys
+        // or sells, and back leaves.
+        if let (Some(t), Some(me)) = (trade.as_mut(), current.players.first().map(|p| p.id)) {
+            let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut pack_nav_repeat, frame_time.as_secs_f32());
+            let none = vellmark_content::LootTable::default();
+            let view = vellmark_ui::trade_view::TradeView { atlas: &assets.glyphs, strings: &strings, loot: world.loot().unwrap_or(&none), size: screen.size(), density: window.pixel_density() * settings.interface_scale() };
+            let rows = view.rows();
+            use vellmark_ui::trade_view::Side;
+            if input.change != 0 {
+                t.side = if input.change < 0 { Side::Theirs } else { Side::Yours };
+            }
+            let theirs = world.merchant(t.merchant).map_or(0, |m| m.stock.len());
+            let yours = world.inventory(me).map_or(0, |i| i.items.len());
+            match t.side {
+                Side::Theirs => t.theirs.step(input.step, theirs, rows),
+                Side::Yours => t.yours.step(input.step, yours, rows),
+            }
+            if input.confirm {
+                let done = match t.side {
+                    Side::Theirs => world.buy(me, t.merchant, t.theirs.at),
+                    Side::Yours => world.sell(me, t.merchant, t.yours.at),
+                };
+                t.refused = done.err();
+                let (theirs, yours) = (world.merchant(t.merchant).map_or(0, |m| m.stock.len()), world.inventory(me).map_or(0, |i| i.items.len()));
+                t.theirs.step(0, theirs, rows);
+                t.yours.step(0, yours, rows);
+            }
+            if input.back || actions.pressed(Action::Inventory) {
+                trade = None;
+            }
+        }
+        if title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() {
         } else if menu.is_some() {
         } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
             pack = None;
@@ -619,6 +664,13 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         };
                         world.add_redactor(vellmark_sim::redactor::Redactor { id: 1, path, speed: if high { 60.0 } else { 14.0 }, flown: 0.0, strike: (!high).then_some((2.4, 2.2)), caught: Vec::new() });
                         log::line(if high { "Obelus crosses the far sky" } else { "Obelus comes down the view" });
+                    }
+                    Command::Trade => {
+                        const MERCHANT: u64 = 0x70b1;
+                        if world.merchant(MERCHANT).is_none() {
+                            world.add_merchant(MERCHANT);
+                        }
+                        trade = Some(vellmark_ui::trade_view::Trade { merchant: MERCHANT, ..Default::default() });
                     }
                     Command::Talk(speaker) => {
                         let p = &current.players[0];
@@ -800,7 +852,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
         // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
         // play the world holds still while the pack or a menu is open.
-        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() || credits.is_some() { 0 } else { frame_time.as_nanos() as u64 });
+        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             if step == 0 {
@@ -919,7 +971,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
-        if let Some(scroll) = credits {
+        if let (Some(t), Some(player), Some(loot)) = (&trade, current.players.first(), world.loot()) {
+            if let (Some(m), Some(inv)) = (world.merchant(t.merchant), world.inventory(player.id)) {
+                let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+                let (confirm, back) = vellmark_ui::pages::Menu::hint_keys(actions.last_device, style);
+                vellmark_ui::trade_view::TradeView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
+                    .draw(&mut canvas, t, m, inv, (Some(&confirm), Some(&back)));
+            }
+        } else if let Some(scroll) = credits {
             let d = window.pixel_density() * settings.interface_scale();
             vellmark_ui::credits_view::CreditsView { atlas: &assets.glyphs, strings: &strings, credits: &credits_table, size: screen.size(), density: d }.draw(&mut canvas, scroll);
         } else if let Some(ph) = &photo {

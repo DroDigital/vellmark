@@ -2,6 +2,12 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: the trade screen
+
+- **Opened by a conversation**, through a node's `trade` event, so Tobit's lines decide when he trades, as his script has it; not by a separate prompt on the cart.
+- **Two pages, theirs and yours**, each priced from the merchant's own `asks` and `pays`, so the screen can never show a price the trade does not charge.
+- **A refusal is shown, not sounded alone**, in plain words under the pages, and stays until the next trade.
+
 ## 2026-11-15: the murmur (S06-T15a)
 
 - **Built whatever the owner chooses**: the brief has every line that is not voiced murmured, and the cast file says each preset's murmur uses its pitch, formant, and pacing. The owner's choice decides only whether the opening and the supper are voiced too.

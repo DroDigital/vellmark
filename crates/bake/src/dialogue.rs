@@ -88,7 +88,7 @@ struct AuthoredNode {
 }
 
 /// The scripted events a node may begin. The game answers each.
-pub const EVENTS: &[&str] = &["name_fades"];
+pub const EVENTS: &[&str] = &["name_fades", "trade"];
 
 pub fn bake_dialogue(dir: &Path, strings: &BTreeMap<String, String>) -> Result<DialogueTable, BakeError> {
     let mut table = DialogueTable::default();
