@@ -12,7 +12,9 @@ use glam::{Quat, Vec3};
 
 use crate::items::{Item, Tier};
 
-const MAGIC: &[u8; 8] = b"VLMKSAV3";
+const MAGIC: &[u8; 8] = b"VLMKSAV4";
+/// The version before Redactors struck things: still read, with nothing struck.
+const MAGIC_3: &[u8; 8] = b"VLMKSAV3";
 /// The version before the story's flags were kept: still read, with none set.
 const MAGIC_2: &[u8; 8] = b"VLMKSAV2";
 
@@ -35,6 +37,8 @@ pub struct SaveGame {
     /// The story's flags, and how many lines each Light character has said.
     pub flags: Vec<String>,
     pub light_said: Vec<(String, u32)>,
+    /// Things struck through by Redactors: each ID, the box it stood in, and when.
+    pub struck: Vec<(u64, Vec3, Vec3, f64)>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -295,14 +299,23 @@ impl SaveGame {
             w.s(k);
             w.u32(*n);
         }
+        w.u32(self.struck.len() as u32);
+        for (id, min, max, at) in &self.struck {
+            w.u64(*id);
+            w.v3(*min);
+            w.v3(*max);
+            w.f64(*at);
+        }
         w.0
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
-        if bytes.len() < 8 || (&bytes[..8] != MAGIC && &bytes[..8] != MAGIC_2) {
-            return Err("not a Vellmark save".into());
-        }
-        let version = if &bytes[..8] == MAGIC { 3 } else { 2 };
+        let version = match &bytes.get(..8) {
+            Some(m) if *m == MAGIC => 4,
+            Some(m) if *m == MAGIC_3 => 3,
+            Some(m) if *m == MAGIC_2 => 2,
+            _ => return Err("not a Vellmark save".into()),
+        };
         let mut r = R(bytes, 8);
         let mut s = SaveGame { seconds: r.f64()?, time_of_day: r.f32()?, day: r.u32()?, mornings: r.u32()?, rng: r.u64()?, ..Default::default() };
         for _ in 0..r.count()? {
@@ -372,6 +385,11 @@ impl SaveGame {
             }
             for _ in 0..r.count()? {
                 s.light_said.push((r.s()?, r.u32()?));
+            }
+        }
+        if version >= 4 {
+            for _ in 0..r.count()? {
+                s.struck.push((r.u64()?, r.v3()?, r.v3()?, r.f64()?));
             }
         }
         if r.1 != bytes.len() {

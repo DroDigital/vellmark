@@ -211,6 +211,23 @@
                 (material: "cloth", min: (-0.008, 1.64, 0.412), max: (0.008, 1.70, 0.428)),
             ],
         ),
+        // Obelus, the Redactor, as the obelus it is named for: a level rule between two
+        // dots, in solid black ink, its strokes trailing behind it. Its own space: the rule
+        // along +X, the way it flies. Parked out of reach above the valley, and drawn only
+        // where it flies (crates/sim/src/redactor.rs).
+        (
+            key: "obelus",
+            position: (0.0, 900.0, 0.0),
+            boxes: [
+                (material: "ink", min: (-8.0, -0.4, -0.55), max: (8.0, 0.4, 0.55)),
+                (material: "ink", min: (-0.8, 1.4, -0.8), max: (0.8, 3.0, 0.8)),
+                (material: "ink", min: (-0.8, -3.0, -0.8), max: (0.8, -1.4, 0.8)),
+                (material: "ink", min: (-15.0, -0.15, -0.25), max: (-8.0, 0.15, 0.25)),
+                (material: "ink", min: (-12.0, 0.55, -0.1), max: (-8.5, 0.7, 0.1)),
+                (material: "ink", min: (-13.5, -0.75, -0.08), max: (-9.0, -0.62, 0.08)),
+                (material: "ink", min: (8.0, -0.25, -0.35), max: (9.4, 0.25, 0.35)),
+            ],
+        ),
     ],
     // The Standing Pages: read them, and they give up the word they hold.
     texts: [

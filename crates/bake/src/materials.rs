@@ -32,6 +32,8 @@ enum Generator {
     Steel,
     Leather,
     Skin,
+    /// A Redactor's ink: wet black, ruled along the stroke.
+    Ink,
     /// A tree's far form, projected from the tree itself: `tree` names its kind.
     Impostor,
 }
@@ -308,6 +310,15 @@ fn skin(u: f32, v: f32) -> Texel {
     }
 }
 
+/// A Redactor's ink: very nearly black, wet and glossy, with the faint ruling of the
+/// stroke that laid it down.
+fn ink(u: f32, v: f32) -> Texel {
+    let pool = fbm(u, v, 4, 4, 3, 307);
+    let rule = (fbm(u, v, 2, 48, 2, 311) - 0.5).abs();
+    let colour = scale3([0.012, 0.011, 0.014], 0.85 + pool * 0.3 + rule * 0.4);
+    Texel { colour, height: 0.5 + rule * 0.04, roughness: 0.18 + pool * 0.12, metal: 0.0 }
+}
+
 /// Wrought iron: dark, hammered, with rust where water sits.
 fn iron(u: f32, v: f32) -> Texel {
     let (d, id) = cellular(u, v, 14, 71);
@@ -525,6 +536,7 @@ fn relief_depth(generator: Generator) -> f32 {
         Generator::Bark => 0.02,
         Generator::Leaves => 0.004,
         Generator::Steel => 0.0004,
+        Generator::Ink => 0.0002,
         Generator::Leather => 0.0012,
         Generator::Skin => 0.0006,
         Generator::Impostor => 0.0,
@@ -556,6 +568,7 @@ fn generate(generator: Generator, size: u32, tile_metres: f32, picture: Option<&
                 Generator::Bark => bark(u, v),
                 Generator::Leaves => leaves(u, v),
                 Generator::Steel => steel(u, v),
+                Generator::Ink => ink(u, v),
                 Generator::Leather => leather(u, v),
                 Generator::Skin => skin(u, v),
                 // Colour, and in the height the share of the texel the tree covers.

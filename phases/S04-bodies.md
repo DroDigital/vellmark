@@ -37,7 +37,7 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [x] **S04-T11** [Sim] Add the four annotations on every creature that supports them, with their names, letters, and the stagger when the word is replaced
 - [ ] **S04-T12** [Render] Add damage masks, letters knocked loose by hits, and typographic body language with each species' loud and quiet sets
 - [ ] **S04-T13** [Sim] Add ragdolls for bipeds and quadrupeds, partial ragdoll hit reactions, and bodies that dissolve into pools of characters
-- [ ] **S04-T14** [Render] Build Obelus as a flying form with its strike effect: the black rule and what it leaves behind
+- [x] **S04-T14** [Render] Build Obelus as a flying form with its strike effect: the black rule and what it leaves behind
 - [ ] **S04-T15** [Shell] Add creature voices, footsteps by surface, and combat sounds
 - [ ] **S04-T16** [Shell] Extend the scripted run and the combat simulation to all four creatures, run the exit gate, and save the evidence
 

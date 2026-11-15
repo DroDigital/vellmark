@@ -36,5 +36,7 @@
         (key: "steel", generator: Steel, tile_metres: 0.5, family: "=+TY", contrast: 0.30, relief: -0.3),
         (key: "leather", generator: Leather, tile_metres: 0.5, family: "oecas", contrast: 0.30, relief: -0.3),
         (key: "skin", generator: Skin, tile_metres: 0.25, family: "oecas", contrast: 0.22, relief: -0.2),
+        // A Redactor's ink, black strokes that cross out: written in rules.
+        (key: "ink", generator: Ink, tile_metres: 1.0, family: "-=_~", contrast: 0.12, relief: 0.1),
     ],
 )

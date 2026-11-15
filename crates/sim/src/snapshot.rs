@@ -183,6 +183,18 @@ pub struct Snapshot {
     /// Pages that write as they are watched: each readable's ID, and how many of its
     /// letters (not counting spaces) stand written.
     pub pages_written: Vec<(u64, u32)>,
+    /// Redactors in flight.
+    pub redactors: Vec<RedactorSnap>,
+    /// Things struck through, which stand as black rules.
+    pub struck: std::sync::Arc<Vec<crate::redactor::Struck>>,
+}
+
+/// A Redactor in flight: where it is, and the way it goes.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RedactorSnap {
+    pub id: u64,
+    pub at: Vec3,
+    pub heading: Vec3,
 }
 
 impl Snapshot {

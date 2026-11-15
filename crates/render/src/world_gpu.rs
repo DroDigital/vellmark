@@ -107,6 +107,8 @@ pub struct SceneGpu {
     /// For each placed thing, the generated page its surface reads, counted from 1; 0
     /// for none.
     pub generated: Vec<u32>,
+    /// Things struck through by a Redactor, by ID: hidden, their rules drawn instead.
+    pub struck: Vec<u64>,
     /// What is true of the scene's trees, for their bark.
     pub records: vellmark_content::TreeRecords,
     /// Counts the times a placed thing has moved.
@@ -227,6 +229,7 @@ impl SceneGpu {
             pages,
             list_end,
             generated: Vec::new(),
+            struck: Vec::new(),
             records: Default::default(),
             moves: 0,
         })
@@ -250,6 +253,14 @@ impl SceneGpu {
             if let Some(t) = transform {
                 p.transform = t;
             }
+        }
+    }
+
+    /// Things struck through by a Redactor; their shadows go with them.
+    pub fn set_struck(&mut self, ids: Vec<u64>) {
+        if ids != self.struck {
+            self.struck = ids;
+            self.moves = self.moves.wrapping_add(1);
         }
     }
 
@@ -281,7 +292,7 @@ impl SceneGpu {
                 let scale = p.transform.x_axis.truncate().length().max(p.transform.y_axis.truncate().length()).max(p.transform.z_axis.truncate().length());
                 let owner = if p.parent.0 != 0 { p.parent.0 } else { p.key.0 };
                 let heat = heat.iter().find(|(id, _)| *id == owner).map_or(0.0, |(_, h)| *h);
-                let hidden = if !p.shown || broken.contains(&p.key.0) {
+                let hidden = if !p.shown || broken.contains(&p.key.0) || self.struck.contains(&owner) {
                     1.0
                 } else {
                     match p.kind {

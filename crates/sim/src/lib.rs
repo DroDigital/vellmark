@@ -37,13 +37,14 @@ pub mod inventory;
 pub mod merchant;
 pub mod save;
 pub mod dialogue;
+pub mod redactor;
 mod snapshot;
 mod world;
 
 pub use clock::{FixedClock, StepPlan, STEP_HZ, STEP_SECONDS};
 pub use hash::Fnv64;
 pub use input::{buttons, PlayerInput};
-pub use snapshot::{Heard, LetterSnap, LearningSnap, PlayerSnap, Snapshot, TalkSnap, TargetSnap, ViewSnap};
+pub use snapshot::{Heard, LetterSnap, LearningSnap, PlayerSnap, RedactorSnap, Snapshot, TalkSnap, TargetSnap, ViewSnap};
 pub use weather::Weather;
 pub use world::{BreakableThing, PlayerId, World, WorldConfig, EYE_HEIGHT};
 pub use character::{Body, HeightPatch, Trunk};

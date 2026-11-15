@@ -341,6 +341,15 @@ pub fn scene_page_writing(pack: &vellmark_content::Pack, scene_key: &str) -> Vec
     r.items.iter().filter(|t| !t.writing.is_empty()).map(|t| (t.id.0, t.pages.clone())).collect()
 }
 
+/// Where a Redactor's body is drawn: at its place, its rule along the way it flies,
+/// turning slowly about it as if drawing itself along.
+pub fn redactor_transform(r: &vellmark_sim::RedactorSnap, seconds: f32) -> glam::Mat4 {
+    let flat = glam::Vec3::new(r.heading.x, 0.0, r.heading.z).normalize_or(glam::Vec3::X);
+    let yaw = (-flat.z).atan2(flat.x);
+    let rotation = glam::Quat::from_rotation_y(yaw) * glam::Quat::from_rotation_x(seconds * 0.9);
+    glam::Mat4::from_rotation_translation(rotation, r.at)
+}
+
 pub struct Renderer {
     world: ScenePass,
     surface: SurfaceResources,
@@ -468,6 +477,11 @@ impl Renderer {
     /// flight, their landings, and what they hold on. `seconds` as in `FrameInput`.
     pub fn observe(&mut self, snapshot: &vellmark_sim::Snapshot, seconds: f32) {
         self.magic.observe(snapshot, seconds);
+    }
+
+    /// Things struck through by a Redactor: each stands as its black rules alone.
+    pub fn set_struck(&mut self, struck: &[vellmark_sim::redactor::Struck]) {
+        self.scene.set_struck(struck.iter().map(|s| s.id).collect());
     }
 
     /// Photo mode's split frame: realistic on one side of a divider and text on the other.

@@ -570,6 +570,22 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         world.place_player(id, Vec3::new(x, 0.0, z), current.players[0].yaw);
                         log::line(&format!("went to {x} {z}"));
                     }
+                    Command::Obelus(high) => {
+                        let p = &current.players[0];
+                        let ahead = Vec3::new(p.yaw.sin(), 0.0, -p.yaw.cos());
+                        let side = Vec3::new(ahead.z, 0.0, -ahead.x);
+                        let ground = |at: Vec3| terrain.as_ref().and_then(|t| t.height_at(at.x, at.z)).unwrap_or(p.feet.y);
+                        let path: Vec<Vec3> = if high {
+                            // Far off and high, crossing the view once.
+                            let mid = p.feet + ahead * 900.0;
+                            (0..=8).map(|k| mid + side * (k as f32 - 4.0) * 150.0 + Vec3::Y * 160.0).collect()
+                        } else {
+                            // Down the view from behind, low, a little to the side.
+                            (0..=16).map(|k| p.feet + side * 2.5 + ahead * (k as f32 * 12.0 - 60.0)).map(|at| Vec3::new(at.x, ground(at) + 1.4, at.z)).collect()
+                        };
+                        world.add_redactor(vellmark_sim::redactor::Redactor { id: 1, path, speed: if high { 60.0 } else { 14.0 }, flown: 0.0, strike: (!high).then_some((2.4, 2.2)), caught: Vec::new() });
+                        log::line(if high { "Obelus crosses the far sky" } else { "Obelus comes down the view" });
+                    }
                     Command::Talk(speaker) => {
                         let p = &current.players[0];
                         let ahead = Vec3::new(p.yaw.sin(), 0.0, -p.yaw.cos()) * 2.0;
@@ -778,6 +794,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             camera.rotation = camera.rotation * glam::Quat::from_euler(glam::EulerRot::YXZ, (t * 91.0).sin() * jolt, (t * 73.0).sin() * jolt - jolt, 0.0);
             kick = (kick - frame_time.as_secs_f32() * 10.0).max(0.0);
         }
+        // Redactors: the body where each flies, hidden while none does; what they struck
+        // stands as its rules.
+        let obelus = AssetId::from_key(&format!("{scene_key}.obelus"));
+        match current.redactors.first() {
+            Some(r) => renderer.scene_mut().place_kit(obelus, Some(vellmark_render::redactor_transform(r, started.elapsed().as_secs_f32()))),
+            None => renderer.scene_mut().place_kit(obelus, None),
+        }
+        renderer.set_struck(&current.struck);
         // In photo mode, its own camera, near the player's eye; its split, exposure, and lens.
         if let (Some(ph), Some(view)) = (&photo, current.views.first()) {
             camera = Camera { eye: view.eye + ph.offset, rotation: ph.rotation(), fov_y: ph.fov.to_radians(), near: Camera::DEFAULT_NEAR };

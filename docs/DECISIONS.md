@@ -2,6 +2,13 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: Obelus (S04-T14)
+
+- **Its body is the obelus mark (÷)**, a level rule between two dots, built of boxes in a new near-black `ink` material written in rules (`-=_~`), with strokes trailing. It is an object of the valley, parked out of reach and drawn where its Redactor flies. Its form is ours, after its name; the owner judges it at the Look Gate for S04.
+- **A struck thing is hidden and stands as rows of rule characters** filling the box it stood in, drawn in the ink pass. Hiding rather than cutting holes keeps the depth pre-pass true.
+- **Its line catches a player once, for 70**, never below 1 Health: "wounds badly and does not kill on Standard".
+- **Struck things are saved** (save version 4) and stay struck until their Redactor falls, which is the full game's.
+
 ## 2026-11-15: photo mode (S07-T03a)
 
 - **Close reading is chosen per pixel**, so the split frame costs nothing over a normal frame: each fragment asks which side of the divider it is on. The divider's angle, place, and switch ride in unused slots of the view's uniform, so no layout changed.

@@ -43,6 +43,8 @@ pub enum Command {
     Respawn,
     /// Stand a speaker two metres ahead, to talk to, until the people are built (S06-T07).
     Talk(String),
+    /// Send Obelus past: low along the view, striking, or high and far, as at the vista.
+    Obelus(bool),
     /// Save the game, or load the saved game.
     Save,
     Load,
@@ -152,6 +154,7 @@ impl Overlay {
                 for text in [
                     "hour <0-24>    fix the time of day",
                     "talk <speaker> stand a speaker ahead to talk to (wick)",
+                    "obelus [high]  send Obelus down the view, or high and far",
                     "hour run       let the clock run",
                     "glyph on|off   switch the glyph layer",
                     "lamps on|off   light the lamps or put them out",
@@ -229,6 +232,7 @@ impl Overlay {
             },
             (Some("respawn"), _) => self.commands.push(Command::Respawn),
             (Some("talk"), Some(speaker)) => self.commands.push(Command::Talk(speaker.to_ascii_lowercase())),
+            (Some("obelus"), high) => self.commands.push(Command::Obelus(high == Some("high"))),
             (Some("save"), _) => self.commands.push(Command::Save),
             (Some("load"), _) => self.commands.push(Command::Load),
             (Some("quit"), _) => self.commands.push(Command::Quit),

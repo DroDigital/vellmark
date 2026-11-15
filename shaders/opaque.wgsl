@@ -2014,6 +2014,24 @@ fn vs_spark(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
             amount = sin(phase * 3.14159265) * 0.8;
             size *= 0.22 + 0.2 * unit(h >> 11u);
         }
+    } else if kind == 7u {
+        // A thing struck through by a Redactor: rows of rule characters across the box it
+        // stood in, overlapping into solid black strokes with nothing behind them, drawn on
+        // from one end as the line passes.
+        let half = e[1].xyz;
+        let rows = 4u;
+        let per = max(count / rows, 1u);
+        let row = min(k / per, rows - 1u);
+        let col = k % per;
+        let long_x = half.x >= half.z;
+        let axis = select(vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(1.0, 0.0, 0.0), long_x);
+        let reach = select(half.z, half.x, long_x);
+        let along = (f32(col) + 0.5) / f32(per) * 2.0 - 1.0;
+        let up = mix(-0.7, 0.7, f32(row) / f32(rows - 1u)) * half.y;
+        place = centre + axis * along * reach + vec3<f32>(0.0, up, 0.0);
+        size = max(2.0 * reach / f32(per) * 2.6, half.y * 0.5);
+        amount = select(0.0, 1.0, along * 0.5 + 0.5 <= e[3].w);
+        out.ink = 1u;
     } else if kind == 4u {
         // Frost: glitter over the thing, each point catching the light now and then.
         let radius = e[1].w;

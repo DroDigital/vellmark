@@ -246,6 +246,23 @@ impl Magic {
             ));
             self.lights.push(Light { key: AssetId(0), position: f.at.into(), colour: look.colour.map(|c| c * (3.5 + 3.0 * f.charge)), radius: 7.0, casts_shadow: false });
         }
+        // A Redactor in flight: ink letters streaming off its strokes behind it.
+        for (i, r) in snap.redactors.iter().enumerate() {
+            let tail = r.at - r.heading * 9.0;
+            let facing = -r.heading;
+            self.emitters.push((
+                [[tail.x, tail.y, tail.z, 5.0], [facing.x, 0.0, facing.z, 3.2], [0.006, 0.005, 0.008, 2.6], [160.0, 0.32, (r.id % 97) as f32 + i as f32, 0.0]],
+                pack("-=_~|"),
+            ));
+        }
+        // Things struck through by a Redactor: black rules where each stood, drawn on
+        // across it as the line passes.
+        for s in snap.struck.iter().take(12) {
+            let centre = (s.min + s.max) * 0.5;
+            let half = (s.max - s.min) * 0.5;
+            let drawn = ((snap.seconds - s.at) as f32 / 0.35).clamp(0.0, 1.0);
+            self.emitters.push(([[centre.x, centre.y, centre.z, 7.0], [half.x, half.y, half.z, 0.0], [0.008, 0.007, 0.01, 1.0], [160.0, 0.0, (s.id % 89) as f32, drawn]], pack("=-=_")));
+        }
         // Words given by Standing Pages: lifting from the stone and held there, bright,
         // until they go out to everything round the Page.
         for (i, l) in snap.learning.iter().enumerate().filter(|(_, l)| !l.released) {

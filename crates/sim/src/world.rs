@@ -169,6 +169,9 @@ pub struct World {
     learning: Vec<crate::reading::Learning>,
     /// Pages writing as they are watched.
     pages: Vec<crate::reading::PageWriting>,
+    /// Redactors in flight, and the things they have struck through.
+    redactors: Vec<crate::redactor::Redactor>,
+    struck: Vec<crate::redactor::Struck>,
 }
 
 impl World {
@@ -225,6 +228,8 @@ impl World {
             events: Vec::new(),
             learning: Vec::new(),
             pages: Vec::new(),
+            redactors: Vec::new(),
+            struck: Vec::new(),
         }
     }
 
@@ -697,6 +702,7 @@ impl World {
             merchants: self.merchants.iter().map(|m| SavedMerchant { id: m.id, day: m.day, purse: m.purse, stock: m.stock.clone() }).collect(),
             flags: self.flags.iter().cloned().collect(),
             light_said: self.light_said.iter().map(|(k, n)| (k.clone(), *n)).collect(),
+            struck: self.struck.iter().map(|s| (s.id, s.min, s.max, s.at)).collect(),
         }
     }
 
@@ -809,6 +815,9 @@ impl World {
         self.merchants = save.merchants.iter().map(|m| crate::merchant::Merchant { id: m.id, stock: m.stock.clone(), purse: m.purse, day: m.day }).collect();
         self.flags = save.flags.iter().cloned().collect();
         self.light_said = save.light_said.iter().cloned().collect();
+        self.struck = save.struck.iter().map(|&(id, min, max, at)| crate::redactor::Struck { id, min, max, at }).collect();
+        let struck: Vec<u64> = self.struck.iter().map(|s| s.id).collect();
+        self.targets.retain(|t| !struck.contains(&t.id));
         self.settle_pages();
         for p in &mut self.players {
             p.talking = None;
@@ -820,6 +829,79 @@ impl World {
     /// Sets the hour, as the title does when it leaves the player at dawn.
     pub fn set_time_of_day(&mut self, hour: f32) {
         self.time_of_day = hour.rem_euclid(24.0);
+    }
+
+    /// Sends a Redactor along its path.
+    pub fn add_redactor(&mut self, r: crate::redactor::Redactor) {
+        self.redactors.retain(|o| o.id != r.id);
+        self.redactors.push(r);
+    }
+
+    /// The things struck through by Redactors.
+    pub fn struck(&self) -> &[crate::redactor::Struck] {
+        &self.struck
+    }
+
+    /// Redactors fly on; one flying low strikes through every thing its line passes and
+    /// wounds every player it catches, once.
+    fn fly_redactors(&mut self, dt: f32) {
+        let now = self.seconds;
+        let mut reds = std::mem::take(&mut self.redactors);
+        for r in &mut reds {
+            let from = r.flown;
+            r.flown += r.speed * dt;
+            let to = r.flown;
+            if r.strike.is_none() {
+                continue;
+            }
+            // Things: loose and fixed, by the box each stands in.
+            for b in &self.breakables {
+                if self.struck.iter().any(|s| s.id == b.id) {
+                    continue;
+                }
+                let mut lo = Vec3::splat(f32::MAX);
+                let mut hi = Vec3::splat(f32::MIN);
+                for (min, max, _) in &b.boxes {
+                    for k in 0..8 {
+                        let c = Vec3::new(if k & 1 == 0 { min.x } else { max.x }, if k & 2 == 0 { min.y } else { max.y }, if k & 4 == 0 { min.z } else { max.z });
+                        let w = b.to_world.transform_point3(c);
+                        lo = lo.min(w);
+                        hi = hi.max(w);
+                    }
+                }
+                if lo.x > hi.x {
+                    continue;
+                }
+                let centre = (lo + hi) * 0.5;
+                if r.strikes(from, to, centre, ((hi - lo) * 0.5).length() * 0.6) {
+                    self.struck.push(crate::redactor::Struck { id: b.id, min: lo, max: hi, at: now });
+                }
+            }
+            // Things with Inscriptions: struck through, they carry none.
+            for t in &self.targets {
+                if !self.struck.iter().any(|s| s.id == t.id) && r.strikes(from, to, t.centre, t.radius) {
+                    let half = Vec3::splat(t.radius * 0.7);
+                    self.struck.push(crate::redactor::Struck { id: t.id, min: t.centre - half, max: t.centre + half, at: now });
+                }
+            }
+            // Players: wounded badly, never killed.
+            for p in &mut self.players {
+                if r.caught.contains(&p.id.0) || !r.strikes(from, to, p.body.feet + Vec3::Y * 0.9, 0.4) {
+                    continue;
+                }
+                r.caught.push(p.id.0);
+                p.melee.health = (p.melee.health - crate::redactor::WOUND).max(crate::redactor::LEAVES.min(p.melee.health));
+                self.heard.push(crate::snapshot::Heard::Struck { player: p.id, through: crate::redactor::WOUND, blocked: false });
+            }
+        }
+        reds.retain(|r| !r.done());
+        self.redactors = reds;
+        let struck: Vec<u64> = self.struck.iter().map(|s| s.id).collect();
+        let before = self.targets.len();
+        self.targets.retain(|t| !struck.contains(&t.id));
+        if self.targets.len() != before {
+            self.refresh_targets();
+        }
     }
 
     /// The dialogue table: who says what.
@@ -1834,6 +1916,7 @@ impl World {
         crate::melee::recover(&mut self.creatures, dt);
         let landed_before = self.landings.len();
         self.write_pages(dt);
+        self.fly_redactors(dt);
         // A word given by a Page acts once on everything round it that it would change.
         for l in self.learning.iter_mut().filter(|l| !l.released && self.seconds - l.began >= crate::reading::LIFT + crate::reading::HOLD) {
             l.released = true;
@@ -2176,6 +2259,15 @@ impl World {
                 })
                 .collect(),
             pages_written: self.pages_written(),
+            redactors: self
+                .redactors
+                .iter()
+                .map(|r| {
+                    let (at, heading) = r.at(r.flown);
+                    crate::snapshot::RedactorSnap { id: r.id, at, heading }
+                })
+                .collect(),
+            struck: Arc::new(self.struck.clone()),
         })
     }
 
@@ -2184,6 +2276,12 @@ impl World {
     pub fn state_hash(&self) -> u64 {
         let mut h = Fnv64::new();
         h.u64(self.step);
+        for r in &self.redactors {
+            h.f32(r.flown);
+        }
+        for s in &self.struck {
+            h.u64(s.id);
+        }
         for w in &self.pages {
             h.f32(w.shown);
             h.u64(w.next as u64);
