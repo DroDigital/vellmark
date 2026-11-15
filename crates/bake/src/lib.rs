@@ -8,6 +8,7 @@ pub mod grades;
 pub mod loot;
 pub mod dialogue;
 pub mod voices;
+pub mod credits;
 pub mod manifest;
 pub mod materials;
 pub mod pages;
@@ -119,6 +120,12 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     let dialogue = dialogue::bake_dialogue(&inputs.assets.join("dialogue"), &table.text)?;
     report.push(format!("{}: {} speakers, {} nodes", vellmark_content::DIALOGUE_KEY, dialogue.speakers.len(), dialogue.speakers.iter().map(|s| s.nodes.len()).sum::<usize>()));
     base.add(AssetKind::Table, AssetId::from_key(vellmark_content::DIALOGUE_KEY), dialogue.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+
+    // The credits: the typefaces, and the crates from the notices beside the assets.
+    let notices = std::fs::read_to_string(inputs.assets.join("../THIRD_PARTY_NOTICES.txt")).ok();
+    let credits = credits::bake_credits(&inputs.assets.join("data/credits.ron"), notices.as_deref())?;
+    report.push(format!("{}: {} crates", vellmark_content::CREDITS_KEY, credits.crates.len()));
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::CREDITS_KEY), credits.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
 
     // The murmur's voices.
     let voices = voices::bake_voices(&inputs.assets.join("data/voices.ron"))?;

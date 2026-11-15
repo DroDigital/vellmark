@@ -375,6 +375,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut photo: Option<vellmark_ui::photo::Photo> = None;
     let mut photo_note = 0.0f32;
     let mut take_picture = false;
+    // The credits, while they roll: how far they have come.
+    let credits_table = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::CREDITS_KEY)).and_then(|b| vellmark_content::Credits::from_bytes(b).ok()).unwrap_or_default();
+    let mut credits: Option<f32> = None;
     // Captions for the sounds that matter, and whether a Redactor's approach is captioned.
     let mut captions = vellmark_ui::captions::Captions::default();
     let mut redactor_heard = false;
@@ -425,7 +428,20 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
         // While a menu is open, it has the input.
-        if title.is_some() || photo.is_some() {
+        // The credits roll; up and down move them, back closes them.
+        if let Some(scroll) = credits.as_mut() {
+            let input = vellmark_ui::menu::MenuInput::from_keys(&raw);
+            let d = window.pixel_density() * settings.interface_scale();
+            let view = vellmark_ui::credits_view::CreditsView { atlas: &assets.glyphs, strings: &strings, credits: &credits_table, size: screen.size(), density: d };
+            *scroll = (*scroll + (vellmark_ui::credits_view::ROLL * d) * frame_time.as_secs_f32() + input.step as f32 * 60.0 * d).max(0.0);
+            if *scroll > view.height() + screen.size().1 as f32 {
+                *scroll = 0.0;
+            }
+            if input.back || actions.pressed(Action::Pause) {
+                credits = None;
+            }
+        }
+        if title.is_some() || photo.is_some() || credits.is_some() {
         } else if menu.is_some() {
         } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
             pack = None;
@@ -482,6 +498,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 Outcome::Resume => menu = None,
                 Outcome::Changed => settings_changed = true,
                 Outcome::Quit => break 'frames,
+                Outcome::Credits => {
+                    menu = None;
+                    credits = Some(0.0);
+                }
                 Outcome::Photo => {
                     menu = None;
                     if let Some(p) = current.players.first() {
@@ -780,7 +800,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
         // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
         // play the world holds still while the pack or a menu is open.
-        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() { 0 } else { frame_time.as_nanos() as u64 });
+        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() || credits.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             if step == 0 {
@@ -899,7 +919,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
-        if let Some(ph) = &photo {
+        if let Some(scroll) = credits {
+            let d = window.pixel_density() * settings.interface_scale();
+            vellmark_ui::credits_view::CreditsView { atlas: &assets.glyphs, strings: &strings, credits: &credits_table, size: screen.size(), density: d }.draw(&mut canvas, scroll);
+        } else if let Some(ph) = &photo {
             let density = window.pixel_density() * settings.interface_scale();
             let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
             let hint = vellmark_platform::prompts::prompt_key(Action::Inventory, actions.last_device, style, &bindings)

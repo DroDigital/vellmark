@@ -1,0 +1,11 @@
+// The credits. `made_by` is the owner's to write: who made Vellmark, a line each, as it
+// should stand. The typefaces are credited as their licenses ask. The crates the game is
+// built with, and their licenses, are read by the bake from THIRD_PARTY_NOTICES.txt,
+// which `cargo run -p vellmark-bake --bin notices` writes.
+(
+    made_by: [],
+    typefaces: [
+        (name: "IM Fell English", author: "Igino Marini", license: "SIL Open Font License 1.1"),
+        (name: "Tiny5", author: "The Tiny5 Project Authors (Stefan Schmidt)", license: "SIL Open Font License 1.1"),
+    ],
+)

@@ -15,6 +15,7 @@ pub mod dialogue_view;
 pub mod title;
 pub mod photo;
 pub mod captions;
+pub mod credits_view;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 
@@ -30,6 +31,13 @@ impl<'a> Shown<'a> {
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// A name carried by the game's data rather than its string tables: a crate or a
+    /// typeface in the credits, which are names and are not translated. Never text
+    /// written in code.
+    pub fn from_data(name: &'a str) -> Self {
+        Self(Cow::Borrowed(name))
     }
 
     /// Its first `chars` characters: a line as far as it is written.

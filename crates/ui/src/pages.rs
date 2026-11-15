@@ -29,6 +29,8 @@ pub enum Outcome {
     Quit,
     /// Photo mode, from the pause menu.
     Photo,
+    /// The credits.
+    Credits,
     /// The settings changed: apply them and write them.
     Changed,
 }
@@ -121,6 +123,7 @@ impl Menu {
                 e(sid!("ui.menu.photo"), Value::Button),
                 e(sid!("ui.menu.save"), Value::Button),
                 e(sid!("ui.menu.load"), Value::Button),
+                e(sid!("ui.menu.credits"), Value::Button),
                 e(sid!("ui.menu.quit"), Value::Button),
             ],
             Page::Settings => vec![
@@ -244,6 +247,7 @@ impl Menu {
                     2 => Outcome::Photo,
                     3 => Outcome::Save,
                     4 => Outcome::Load,
+                    5 => Outcome::Credits,
                     _ => Outcome::Quit,
                 };
             }

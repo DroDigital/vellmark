@@ -112,6 +112,12 @@
     "ui.photo.hint": "{hide} Hide panel",
     "ui.photo.saved": "Picture saved.",
     "ui.menu.photo": "Photo mode",
+    "ui.menu.credits": "Credits",
+    "ui.credits.title": "Vellmark",
+    "ui.credits.made_by": "Made by",
+    "ui.credits.typefaces": "Typefaces",
+    "ui.credits.built_with": "Built with",
+    "ui.credits.notices": "Their licenses in full are in THIRD_PARTY_NOTICES.txt, beside the game.",
     // Accessibility.
     "ui.setting.captions": "Captions",
     "ui.setting.close_reading_slows": "Slow time while reading closely",
