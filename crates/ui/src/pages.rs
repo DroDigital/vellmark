@@ -150,6 +150,11 @@ impl Menu {
                 e(sid!("ui.setting.reduced_motion"), Value::Switch(s.reduced_motion)),
                 e(sid!("ui.setting.reduced_screen_response"), Value::Switch(s.reduced_screen_response)),
                 e(sid!("ui.setting.fewer_flashes"), Value::Switch(s.fewer_flashes)),
+                e(sid!("ui.setting.captions"), Value::Switch(s.captions)),
+                e(sid!("ui.setting.close_reading_slows"), Value::Switch(s.close_reading_slows)),
+                e(sid!("ui.setting.creature_states"), Value::Switch(s.creature_states)),
+                e(sid!("ui.setting.high_contrast"), Value::Switch(s.high_contrast)),
+                e(sid!("ui.setting.letter_size"), pct(s.letter_size, 1.0, 1.5)),
             ],
         }
     }
@@ -271,11 +276,21 @@ impl Menu {
             (Page::Sound, 1) => nudge(&mut s.music_volume, 0.1, 0.0, 1.0),
             (Page::Sound, 2) => nudge(&mut s.effects_volume, 0.1, 0.0, 1.0),
             (Page::Sound, 3) => nudge(&mut s.ambience_volume, 0.1, 0.0, 1.0),
+            (Page::Access, 7) => {
+                let mut v = s.letter_size.clamp(1.0, 1.5);
+                let changed = nudge(&mut v, 0.05, 1.0, 1.5);
+                s.letter_size = v;
+                changed
+            }
             (Page::Access, k) if input.confirm || input.change != 0 => {
                 let flag = match k {
                     0 => &mut s.reduced_motion,
                     1 => &mut s.reduced_screen_response,
-                    _ => &mut s.fewer_flashes,
+                    2 => &mut s.fewer_flashes,
+                    3 => &mut s.captions,
+                    4 => &mut s.close_reading_slows,
+                    5 => &mut s.creature_states,
+                    _ => &mut s.high_contrast,
                 };
                 *flag = !*flag;
                 true

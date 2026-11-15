@@ -370,6 +370,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut photo: Option<vellmark_ui::photo::Photo> = None;
     let mut photo_note = 0.0f32;
     let mut take_picture = false;
+    // Captions for the sounds that matter, and whether a Redactor's approach is captioned.
+    let mut captions = vellmark_ui::captions::Captions::default();
+    let mut redactor_heard = false;
+    world.set_close_reading_slows(settings.close_reading_slows);
+    vellmark_ui::kit::set_high_contrast(settings.high_contrast);
+    vellmark_ui::set_letter_scale(settings.letter_size);
     renderer.set_fewer_flashes(settings.fewer_flashes);
     sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume, settings.music_volume);
 
@@ -634,6 +640,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
             renderer.set_fewer_flashes(settings.fewer_flashes);
             sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume, settings.music_volume);
+            world.set_close_reading_slows(settings.close_reading_slows);
+            vellmark_ui::kit::set_high_contrast(settings.high_contrast);
+            vellmark_ui::set_letter_scale(settings.letter_size);
             match crate::paths::write_atomically(&settings_path, settings.to_text().as_bytes()) {
                 Ok(()) => log::line("settings saved"),
                 Err(e) => log::line(&format!("the settings could not be saved: {e}")),
@@ -755,6 +764,34 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             current = world.snapshot();
             sound.heard(&current);
             sound.set_danger(&current);
+            // Captions: each word written by its motif, and the sounds not to miss.
+            if settings.captions {
+                use vellmark_sim::Heard;
+                let word = |w: &str| vellmark_content::StringId::from_key(&format!("caption.word.{}", w.to_ascii_lowercase()));
+                for l in &current.landings {
+                    let key = if l.typo { sid!("caption.sound.motif_wrong") } else { sid!("caption.sound.motif") };
+                    captions.heard(key, Some(word(&l.word)));
+                }
+                for h in &current.heard {
+                    match h {
+                        Heard::Learned { word: w, .. } => {
+                            if let Some(rule) = world.word_rules().words.get(*w) {
+                                captions.heard(sid!("caption.sound.learned"), Some(word(&rule.spelling)));
+                            }
+                        }
+                        Heard::Gather { .. } => captions.heard(sid!("caption.sound.gather"), None),
+                        Heard::Call { .. } => captions.heard(sid!("caption.sound.call"), None),
+                        Heard::Break { .. } => captions.heard(sid!("caption.sound.break"), None),
+                        Heard::Mend { .. } => captions.heard(sid!("caption.sound.mend"), None),
+                        _ => {}
+                    }
+                }
+                let near = current.players.first().is_some_and(|p| current.redactors.iter().any(|r| r.at.distance(p.feet) < 200.0));
+                if near && !redactor_heard {
+                    captions.heard(sid!("caption.sound.redactor"), None);
+                }
+                redactor_heard = near;
+            }
             // Hit stop: a blow that lands holds the striker's view a moment and kicks it.
             // Only the view: the shared world never pauses. Reduced screen response and
             // reduced motion leave the view alone.
@@ -856,7 +893,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 }
             }
             if player.reading == vellmark_sim::reading::ReadingSnap::None && pack.is_none() && player.talking.is_none() {
-                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot: world.loot(), size: screen.size(), density: window.pixel_density() * settings.interface_scale() }.draw(&mut canvas, player);
+                vellmark_ui::hud::Hud { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot: world.loot(), size: screen.size(), density: window.pixel_density() * settings.interface_scale(), states: settings.creature_states }.draw(&mut canvas, player);
+            }
+            // Captions over play, below the menus.
+            captions.update(frame_time.as_secs_f32());
+            if settings.captions && menu.is_none() && pack.is_none() {
+                captions.draw(&mut canvas, &assets.glyphs, &strings, screen.size(), window.pixel_density() * settings.interface_scale());
             }
             if let (Some(focus), Some(inv), Some(loot)) = (pack, world.inventory(player.id), world.loot()) {
                 let key = |action| vellmark_platform::prompts::prompt_key(action, actions.last_device, style, &bindings);

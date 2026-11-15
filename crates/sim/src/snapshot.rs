@@ -53,6 +53,9 @@ pub struct PlayerSnap {
     pub lit: bool,
     /// An Inkling is near, and what it wears warns of it.
     pub warned: bool,
+    /// The state of the creature in the gaze, in a word for players who cannot read it from
+    /// its letters: `unaware`, `aware`, `gathering`, `staggered`, `calm`, or `burning`.
+    pub facing_state: Option<&'static str>,
     /// Someone within reach and in the gaze who can be spoken to: their speaker key.
     pub talker_in_gaze: Option<String>,
     /// The conversation under way, if any.

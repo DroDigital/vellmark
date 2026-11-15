@@ -94,4 +94,35 @@ fn every_page_is_written_and_drawn() {
             offscreen.frame(&input).save(&out.join(format!("{name}.png"))).unwrap();
         }
     }
+    // High contrast and larger letters: the accessibility page still holds every entry.
+    vellmark_ui::kit::set_high_contrast(true);
+    vellmark_ui::set_letter_scale(1.4);
+    let entries = menu.entries(&s, &s.input.bindings(), DeviceKind::KeyboardMouse, PadStyle::Xbox);
+    let view = MenuView { atlas: &assets.glyphs, strings: &strings, size: (w, h), density: 1.0 };
+    assert!(view.rows(entries.len(), &assets.glyphs) >= entries.len(), "every entry fits at the larger letters");
+    let mut canvas = Canvas::new();
+    view.draw(&mut canvas, menu.title(), &entries, menu.focus(), None);
+    vellmark_ui::kit::set_high_contrast(false);
+    vellmark_ui::set_letter_scale(1.0);
+    let views = [View::full(Camera::looking((0.0, 1.68, 1.5).into(), -0.5, 0.05))];
+    let input = FrameInput {
+        views: &views,
+        time_of_day: 16.0,
+        seconds: 0.0,
+        glyph_layer: true,
+        close_reading: 0.0,
+        dive: 0.0,
+        lamps: 1.0,
+        tuning: Default::default(),
+        reveal_mask: false,
+        letters: &[],
+        letters_step: 0,
+        broken: &[],
+        heat: &[],
+        weather: Default::default(),
+        wind_gust: None,
+        relief: Default::default(),
+        ui: Some(&canvas),
+    };
+    offscreen.frame(&input).save(&out.join("access_high.png")).unwrap();
 }

@@ -14,6 +14,7 @@ pub mod pages;
 pub mod dialogue_view;
 pub mod title;
 pub mod photo;
+pub mod captions;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 
@@ -99,6 +100,25 @@ pub fn dev_text(text: &str) -> Shown<'_> {
 /// Linear RGBA, not premultiplied.
 pub type Colour = [f32; 4];
 
+static LETTER_SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// The letter-size setting: every piece of interface text is set this much larger, 1 to
+/// 1.5. An accessibility setting.
+pub fn set_letter_scale(scale: f32) {
+    LETTER_SCALE.store(scale.clamp(1.0, 1.5).to_bits(), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn letter_scale() -> f32 {
+    f32::from_bits(LETTER_SCALE.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+impl TextStyle {
+    /// As set, at the letter-size setting.
+    fn scaled(&self) -> TextStyle {
+        TextStyle { size: self.size * letter_scale(), ..*self }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct TextStyle {
     pub face: Face,
@@ -143,6 +163,7 @@ impl Canvas {
     /// Sets a line of text with its left edge at `x` and its baseline at `baseline`.
     /// Returns the width it took.
     pub fn text(&mut self, atlas: &GlyphAtlas, x: f32, baseline: f32, style: &TextStyle, text: &Shown<'_>) -> f32 {
+        let style = &style.scaled();
         let face = atlas.face(style.face);
         let cell = style.size * face.cell_ems;
         let mut pen = x;
@@ -168,6 +189,7 @@ impl Canvas {
     /// Sets text as a paragraph, wrapped at word breaks to `width`, its first baseline
     /// at `top` plus one line. Returns the height it took.
     pub fn paragraph(&mut self, atlas: &GlyphAtlas, x: f32, top: f32, width: f32, style: &TextStyle, text: &Shown<'_>) -> f32 {
+        let style = &style.scaled();
         let line = Self::line_height(atlas, style);
         let space = atlas.glyph(style.face, ' ').advance * style.size;
         let mut pen = 0.0f32;
@@ -197,11 +219,13 @@ impl Canvas {
 
     /// The width a line of text would take, without drawing it.
     pub fn measure(atlas: &GlyphAtlas, style: &TextStyle, text: &Shown<'_>) -> f32 {
+        let style = &style.scaled();
         text.as_str().chars().map(|c| atlas.glyph(style.face, c).advance * style.size).sum()
     }
 
     /// The distance from one baseline to the next.
     pub fn line_height(atlas: &GlyphAtlas, style: &TextStyle) -> f32 {
+        let style = &style.scaled();
         let face = atlas.face(style.face);
         (face.ascent - face.descent) * style.size * 1.15
     }

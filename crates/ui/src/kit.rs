@@ -6,17 +6,40 @@ use vellmark_content::{Face, GlyphAtlas, StringTable};
 
 use crate::{Canvas, Shown, TextStyle};
 
-pub const PAPER: [f32; 4] = [0.05, 0.045, 0.04, 0.9];
-pub const INK: [f32; 4] = [0.9, 0.87, 0.8, 1.0];
-pub const FAINT: [f32; 4] = [0.9, 0.87, 0.8, 0.45];
-pub const GOLD: [f32; 4] = [0.98, 0.78, 0.30, 1.0];
-pub const RULE: [f32; 4] = [0.9, 0.87, 0.8, 0.6];
+static HIGH_CONTRAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// High contrast, for every screen: black fields, white letters, and faint text that is
+/// not faint. An accessibility setting.
+pub fn set_high_contrast(on: bool) {
+    HIGH_CONTRAST.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn high() -> bool {
+    HIGH_CONTRAST.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The colours every screen is set in.
+pub fn paper() -> [f32; 4] {
+    if high() { [0.0, 0.0, 0.0, 0.97] } else { [0.05, 0.045, 0.04, 0.9] }
+}
+pub fn ink() -> [f32; 4] {
+    if high() { [1.0, 1.0, 1.0, 1.0] } else { [0.9, 0.87, 0.8, 1.0] }
+}
+pub fn faint() -> [f32; 4] {
+    if high() { [1.0, 1.0, 1.0, 0.85] } else { [0.9, 0.87, 0.8, 0.45] }
+}
+pub fn gold() -> [f32; 4] {
+    if high() { [1.0, 0.85, 0.15, 1.0] } else { [0.98, 0.78, 0.30, 1.0] }
+}
+pub fn rule() -> [f32; 4] {
+    if high() { [1.0, 1.0, 1.0, 0.95] } else { [0.9, 0.87, 0.8, 0.6] }
+}
 
 /// A panel: a dark field framed with a rule of characters, as a ledger's page is ruled.
 pub fn panel(canvas: &mut Canvas, atlas: &GlyphAtlas, strings: &StringTable, rect: [f32; 4], density: f32) {
     let [x, y, w, h] = rect;
-    canvas.rect(rect, PAPER);
-    let style = TextStyle { face: Face::Small, size: (12.0 * density).round(), colour: RULE };
+    canvas.rect(rect, paper());
+    let style = TextStyle { face: Face::Small, size: (12.0 * density).round(), colour: rule() };
     let across = Shown::from_table(strings, vellmark_content::sid!("ui.rule.across"));
     let down = Shown::from_table(strings, vellmark_content::sid!("ui.rule.down"));
     let corner = Shown::from_table(strings, vellmark_content::sid!("ui.rule.corner"));
@@ -76,7 +99,7 @@ pub struct Row<'a> {
 #[allow(clippy::too_many_arguments)]
 pub fn list(canvas: &mut Canvas, atlas: &GlyphAtlas, strings: &StringTable, rect: [f32; 4], density: f32, rows: &[Row<'_>], focus: Focus, size: f32) -> usize {
     let [x, y, w, h] = rect;
-    let style = TextStyle { face: Face::Large, size: (size * density).round(), colour: INK };
+    let style = TextStyle { face: Face::Large, size: (size * density).round(), colour: ink() };
     let line = Canvas::line_height(atlas, &style) * 1.15;
     let shown = ((h / line).floor() as usize).max(1);
     let pointer = Shown::from_table(strings, vellmark_content::sid!("ui.focus"));
@@ -87,7 +110,7 @@ pub fn list(canvas: &mut Canvas, atlas: &GlyphAtlas, strings: &StringTable, rect
         let focused = k == focus.at;
         if focused {
             canvas.rect([x, top - line * 0.8, w, line], [1.0, 1.0, 1.0, 0.06]);
-            canvas.text(atlas, x, top, &TextStyle { colour: GOLD, ..style }, &pointer);
+            canvas.text(atlas, x, top, &TextStyle { colour: gold(), ..style }, &pointer);
         }
         let colour = if focused { row.colour } else { [row.colour[0], row.colour[1], row.colour[2], row.colour[3] * 0.8] };
         let room = w - indent - Canvas::measure(atlas, &style, &held) * 2.0;
@@ -95,7 +118,7 @@ pub fn list(canvas: &mut Canvas, atlas: &GlyphAtlas, strings: &StringTable, rect
         canvas.text(atlas, x + indent, top, &fitted, text.as_ref().unwrap_or(&row.text));
         if row.marked {
             let mw = Canvas::measure(atlas, &style, &held);
-            canvas.text(atlas, x + w - mw, top, &TextStyle { colour: GOLD, ..style }, &held);
+            canvas.text(atlas, x + w - mw, top, &TextStyle { colour: gold(), ..style }, &held);
         }
     }
     shown

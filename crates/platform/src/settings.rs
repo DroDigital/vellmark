@@ -95,6 +95,16 @@ pub struct Settings {
     pub reduced_screen_response: bool,
     /// Flashes of light are dimmer and slower, and fire does not flicker.
     pub fewer_flashes: bool,
+    /// Captions for the sounds that matter: each word's motif and the sounds not to miss.
+    pub captions: bool,
+    /// Close reading slows time in solo play.
+    pub close_reading_slows: bool,
+    /// The state of the creature in the gaze, said in words beside its name.
+    pub creature_states: bool,
+    /// Black fields and white letters on every screen.
+    pub high_contrast: bool,
+    /// 1 to 1.5: interface letters set larger, apart from the interface's size.
+    pub letter_size: f32,
     /// Where photo mode saves its pictures; none for the user's pictures folder.
     pub picture_folder: Option<String>,
 }
@@ -112,6 +122,11 @@ impl Default for Settings {
             reduced_motion: false,
             reduced_screen_response: false,
             fewer_flashes: false,
+            captions: true,
+            close_reading_slows: true,
+            creature_states: false,
+            high_contrast: false,
+            letter_size: 1.0,
             picture_folder: None,
         }
     }

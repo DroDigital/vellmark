@@ -27,7 +27,7 @@ pub fn written(strings: &StringTable, talk: &TalkSnap, now: f64) -> bool {
 
 impl DialogueView<'_> {
     fn choice_line(&self) -> f32 {
-        let style = TextStyle { face: Face::Large, size: (19.0 * self.density.max(1.0)).round(), colour: kit::INK };
+        let style = TextStyle { face: Face::Large, size: (19.0 * self.density.max(1.0)).round(), colour: kit::ink() };
         Canvas::line_height(self.atlas, &style) * 1.15
     }
 
@@ -56,11 +56,11 @@ impl DialogueView<'_> {
     /// prompt key for Interact, or for confirming on a pad.
     pub fn draw(&self, canvas: &mut Canvas, talk: &TalkSnap, now: f64, focus: Focus, key: Option<&str>) {
         let d = self.density.max(1.0);
-        let body = TextStyle { face: Face::Large, size: (21.0 * d).round(), colour: kit::INK };
+        let body = TextStyle { face: Face::Large, size: (21.0 * d).round(), colour: kit::ink() };
         let [x, y, w, h] = self.panel(talk, &body);
         kit::panel(canvas, self.atlas, self.strings, [x, y, w, h], d);
         let pad = 32.0 * d;
-        let name = TextStyle { face: Face::Large, size: (22.0 * d).round(), colour: kit::GOLD };
+        let name = TextStyle { face: Face::Large, size: (22.0 * d).round(), colour: kit::gold() };
         let speaker = Shown::from_table(self.strings, StringId::from_key(&format!("speaker.{}", talk.by)));
         canvas.text(self.atlas, x + pad, y + pad + 14.0 * d, &name, &speaker);
         let mut top = y + pad + 30.0 * d;
@@ -71,12 +71,12 @@ impl DialogueView<'_> {
             top += canvas.paragraph(self.atlas, x + pad, top, w - pad * 2.0, &body, &part) + 14.0 * d;
         }
         if !talk.choices.is_empty() {
-            let rows: Vec<Row<'_>> = talk.choices.iter().map(|c| Row { text: Shown::from_table(self.strings, StringId(*c)), marked: false, colour: kit::INK }).collect();
+            let rows: Vec<Row<'_>> = talk.choices.iter().map(|c| Row { text: Shown::from_table(self.strings, StringId(*c)), marked: false, colour: kit::ink() }).collect();
             kit::list(canvas, self.atlas, self.strings, [x + pad, top, w - pad * 2.0, y + h - pad - top - 10.0 * d], d, &rows, focus, 19.0);
         }
         // The prompt, at the panel's foot, once the line is written.
         if let Some(key) = key.filter(|_| !talk.choices.is_empty() || written(self.strings, talk, now)) {
-            let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: kit::FAINT };
+            let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: kit::faint() };
             let verb = if talk.choices.is_empty() { sid!("ui.talk.continue") } else { sid!("ui.talk.choose") };
             let text = Shown::filled(self.strings, verb, &[("key", Part::Shown(Shown::from_table(self.strings, StringId::from_key(key))))]);
             let tw = Canvas::measure(self.atlas, &small, &text);

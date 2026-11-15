@@ -22,7 +22,7 @@ pub struct InventoryView<'a> {
 /// The rows of the list at this size, so that the caller can keep the focus on screen.
 pub fn rows_shown(atlas: &GlyphAtlas, size: (u32, u32), density: f32) -> usize {
     let (_, list) = layout(size, density);
-    let style = TextStyle { face: Face::Large, size: (LIST_SIZE * density).round(), colour: kit::INK };
+    let style = TextStyle { face: Face::Large, size: (LIST_SIZE * density).round(), colour: kit::ink() };
     ((list[3] / (Canvas::line_height(atlas, &style) * 1.15)).floor() as usize).max(1)
 }
 
@@ -53,19 +53,19 @@ impl InventoryView<'_> {
         let (panel, list) = layout(self.size, self.density);
         canvas.rect([0.0, 0.0, w, h], [0.0, 0.0, 0.0, 0.35]);
         kit::panel(canvas, self.atlas, self.strings, panel, d);
-        let title = TextStyle { face: Face::Large, size: (24.0 * d).round(), colour: kit::INK };
-        let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: kit::INK };
+        let title = TextStyle { face: Face::Large, size: (24.0 * d).round(), colour: kit::ink() };
+        let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: kit::ink() };
         let pad = 30.0 * d;
         canvas.text(self.atlas, panel[0] + pad, panel[1] + pad + 18.0 * d, &title, &Shown::from_table(self.strings, sid!("ui.inventory.title")));
         let marks = Shown::filled(self.strings, sid!("ui.inventory.marks"), &[("n", Part::Number(inv.marks))]);
         let mw = Canvas::measure(self.atlas, &small, &marks);
-        canvas.text(self.atlas, list[0] + list[2] - mw, panel[1] + pad + 18.0 * d, &TextStyle { colour: kit::GOLD, ..small }, &marks);
+        canvas.text(self.atlas, list[0] + list[2] - mw, panel[1] + pad + 18.0 * d, &TextStyle { colour: kit::gold(), ..small }, &marks);
         let weight: f32 = inv.items.iter().map(|i| i.weight(self.loot)).sum();
         let carrying = Shown::filled(self.strings, sid!("ui.inventory.weight"), &[("n", Part::Number(weight.round() as u32))]);
-        canvas.text(self.atlas, list[0], panel[1] + panel[3] - pad - 4.0 * d, &TextStyle { colour: kit::FAINT, ..small }, &carrying);
+        canvas.text(self.atlas, list[0], panel[1] + panel[3] - pad - 4.0 * d, &TextStyle { colour: kit::faint(), ..small }, &carrying);
 
         if inv.items.is_empty() {
-            canvas.text(self.atlas, list[0], list[1] + 20.0 * d, &TextStyle { colour: kit::FAINT, ..small }, &Shown::from_table(self.strings, sid!("ui.inventory.empty")));
+            canvas.text(self.atlas, list[0], list[1] + 20.0 * d, &TextStyle { colour: kit::faint(), ..small }, &Shown::from_table(self.strings, sid!("ui.inventory.empty")));
         } else {
             let rows: Vec<Row<'_>> = inv
                 .items
@@ -79,7 +79,7 @@ impl InventoryView<'_> {
         // The focused item's page.
         let x = list[0] + list[2] + pad;
         let width = panel[0] + panel[2] - pad - x;
-        canvas.rect([x - pad * 0.5, list[1], 1.0 * d, list[3]], kit::FAINT);
+        canvas.rect([x - pad * 0.5, list[1], 1.0 * d, list[3]], kit::faint());
         if let Some(item) = inv.items.get(focus.at) {
             let mut y = list[1] + 6.0 * d;
             let head = TextStyle { face: Face::Large, size: (21.0 * d).round(), colour: tier_colour(item.tier as u8) };
@@ -90,25 +90,25 @@ impl InventoryView<'_> {
                 tier = Shown::filled(self.strings, sid!("ui.inventory.tier_held"), &[("tier", Part::Shown(tier)), ("held", Part::Shown(held))]);
             }
             y += 4.0 * d;
-            y += canvas.paragraph(self.atlas, x, y, width, &TextStyle { colour: kit::FAINT, ..small }, &tier);
+            y += canvas.paragraph(self.atlas, x, y, width, &TextStyle { colour: kit::faint(), ..small }, &tier);
             y += 14.0 * d;
             let line = |canvas: &mut Canvas, y: &mut f32, text: &Shown<'_>, colour: [f32; 4]| {
                 *y += canvas.paragraph(self.atlas, x, *y, width, &TextStyle { colour, ..small }, text) + 3.0 * d;
             };
             let stat = |key: StringId, n: f32| Shown::filled(self.strings, key, &[("n", Part::Number(n.round() as u32))]);
             if item.damage(self.loot) > 0.0 {
-                line(canvas, &mut y, &stat(sid!("item.stat.damage"), item.damage(self.loot)), kit::INK);
+                line(canvas, &mut y, &stat(sid!("item.stat.damage"), item.damage(self.loot)), kit::ink());
             }
             if item.armour(self.loot) > 0.0 {
-                line(canvas, &mut y, &stat(sid!("item.stat.armour"), item.armour(self.loot)), kit::INK);
+                line(canvas, &mut y, &stat(sid!("item.stat.armour"), item.armour(self.loot)), kit::ink());
             }
-            line(canvas, &mut y, &stat(sid!("item.stat.weight"), item.weight(self.loot)), kit::INK);
-            line(canvas, &mut y, &stat(sid!("item.stat.value"), item.value(self.loot) as f32), kit::INK);
+            line(canvas, &mut y, &stat(sid!("item.stat.weight"), item.weight(self.loot)), kit::ink());
+            line(canvas, &mut y, &stat(sid!("item.stat.value"), item.value(self.loot) as f32), kit::ink());
             y += 10.0 * d;
-            line(canvas, &mut y, &item_text::trait_line(self.strings, self.loot, item), kit::FAINT);
+            line(canvas, &mut y, &item_text::trait_line(self.strings, self.loot, item), kit::faint());
             y += 6.0 * d;
             for effect in item_text::effects(self.strings, self.loot, item) {
-                line(canvas, &mut y, &effect, kit::GOLD);
+                line(canvas, &mut y, &effect, kit::gold());
             }
         }
 
@@ -130,9 +130,9 @@ impl InventoryView<'_> {
 /// the colour of fresh ink for Unique things.
 fn tier_colour(tier: u8) -> [f32; 4] {
     match tier {
-        0 => kit::INK,
+        0 => kit::ink(),
         1 => [0.72, 0.86, 0.68, 1.0],
-        2 | 3 => kit::GOLD,
+        2 | 3 => kit::gold(),
         4 => [1.0, 0.62, 0.32, 1.0],
         _ => [0.62, 0.78, 1.0, 1.0],
     }

@@ -169,6 +169,8 @@ pub struct World {
     learning: Vec<crate::reading::Learning>,
     /// Pages writing as they are watched.
     pages: Vec<crate::reading::PageWriting>,
+    /// Close reading slows time in solo play, unless a player has turned that off.
+    config_slows: bool,
     /// Redactors in flight, and the things they have struck through.
     redactors: Vec<crate::redactor::Redactor>,
     struck: Vec<crate::redactor::Struck>,
@@ -230,6 +232,7 @@ impl World {
             pages: Vec::new(),
             redactors: Vec::new(),
             struck: Vec::new(),
+            config_slows: true,
         }
     }
 
@@ -829,6 +832,11 @@ impl World {
     /// Sets the hour, as the title does when it leaves the player at dawn.
     pub fn set_time_of_day(&mut self, hour: f32) {
         self.time_of_day = hour.rem_euclid(24.0);
+    }
+
+    /// Whether close reading slows time in solo play: an accessibility setting.
+    pub fn set_close_reading_slows(&mut self, slows: bool) {
+        self.config_slows = slows;
     }
 
     /// Sends a Redactor along its path.
@@ -1594,7 +1602,7 @@ impl World {
             }
         }
         // In solo play, close reading slows time. In co-op the shared world never slows.
-        self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close { CLOSE_READING_PACE } else { 1.0 };
+        self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close && self.config_slows { CLOSE_READING_PACE } else { 1.0 };
         let dt = STEP_SECONDS * self.pace;
         let solo = self.players.len() == 1;
         for (i, p) in self.players.iter_mut().enumerate() {
@@ -2169,6 +2177,27 @@ impl World {
                     .and_then(|i| self.targets.get(i))
                     .and_then(|t| self.creatures.iter().find(|c| c.id == t.id && c.alive()))
                     .map(|c| (c.class.clone(), c.annotation.clone())),
+                facing_state: p
+                    .caster
+                    .aimed
+                    .and_then(|i| self.targets.get(i))
+                    .and_then(|t| self.creatures.iter().find(|c| c.id == t.id && c.alive()))
+                    .map(|c| {
+                        use crate::melee::marks;
+                        if c.staggered > 0.0 {
+                            "staggered"
+                        } else if c.marks & marks::BURNING != 0 {
+                            "burning"
+                        } else if c.marks & marks::PACIFIED != 0 {
+                            "calm"
+                        } else if c.telegraph > 0.0 {
+                            "gathering"
+                        } else if c.aware {
+                            "aware"
+                        } else {
+                            "unaware"
+                        }
+                    }),
                 item_in_gaze: {
                     let eye = p.body.feet + Vec3::Y * p.body.eye;
                     let (sy, cy) = p.yaw.sin_cos();

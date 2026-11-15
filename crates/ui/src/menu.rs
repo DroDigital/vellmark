@@ -106,7 +106,7 @@ const ROW: f32 = 19.0;
 
 impl MenuView<'_> {
     fn line(&self) -> f32 {
-        let style = TextStyle { face: Face::Large, size: (ROW * self.density.max(1.0)).round(), colour: kit::INK };
+        let style = TextStyle { face: Face::Large, size: (ROW * self.density.max(1.0)).round(), colour: kit::ink() };
         Canvas::line_height(self.atlas, &style) * 1.15
     }
 
@@ -135,13 +135,13 @@ impl MenuView<'_> {
         let (panel, list) = self.layout(entries.len());
         kit::panel(canvas, self.atlas, self.strings, panel, d);
         let pad = 34.0 * d;
-        let heading = TextStyle { face: Face::Large, size: (26.0 * d).round(), colour: kit::INK };
+        let heading = TextStyle { face: Face::Large, size: (26.0 * d).round(), colour: kit::ink() };
         let title = Shown::from_table(self.strings, title);
         let tw = Canvas::measure(self.atlas, &heading, &title);
         canvas.text(self.atlas, panel[0] + (panel[2] - tw) * 0.5, panel[1] + pad + 20.0 * d, &heading, &title);
         self.rows_in(canvas, list, entries, focus, ROW);
         if let Some(hint) = hint {
-            let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: kit::FAINT };
+            let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: kit::faint() };
             let hw = Canvas::measure(self.atlas, &small, &hint);
             canvas.text(self.atlas, panel[0] + (panel[2] - hw) * 0.5, panel[1] + panel[3] - pad, &small, &hint);
         }
@@ -152,15 +152,15 @@ impl MenuView<'_> {
     pub fn rows_in(&self, canvas: &mut Canvas, list: [f32; 4], entries: &[Entry], focus: Focus, row: f32) {
         let d = self.density.max(1.0);
         let values: Vec<Shown<'_>> = entries.iter().map(|e| self.value(&e.value)).collect();
-        let rows: Vec<kit::Row<'_>> = entries.iter().map(|e| kit::Row { text: Shown::from_table(self.strings, e.label), marked: false, colour: kit::INK }).collect();
+        let rows: Vec<kit::Row<'_>> = entries.iter().map(|e| kit::Row { text: Shown::from_table(self.strings, e.label), marked: false, colour: kit::ink() }).collect();
         kit::list(canvas, self.atlas, self.strings, list, d, &rows, focus, row);
         // Each value, right-aligned on its row.
-        let style = TextStyle { face: Face::Large, size: (row * d).round(), colour: kit::INK };
+        let style = TextStyle { face: Face::Large, size: (row * d).round(), colour: kit::ink() };
         let line = Canvas::line_height(self.atlas, &style) * 1.15;
         let shown = ((list[3] / line).floor() as usize).max(1);
         for (k, value) in values.iter().enumerate().skip(focus.scroll).take(shown) {
             let top = list[1] + (k - focus.scroll) as f32 * line + line * 0.8;
-            let colour = if k == focus.at { kit::GOLD } else { kit::INK };
+            let colour = if k == focus.at { kit::gold() } else { kit::ink() };
             let vw = Canvas::measure(self.atlas, &style, value);
             canvas.text(self.atlas, list[0] + list[2] - vw, top, &TextStyle { colour, ..style }, value);
         }

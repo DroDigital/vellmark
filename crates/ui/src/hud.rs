@@ -24,6 +24,8 @@ pub struct Hud<'a> {
     pub loot: Option<&'a vellmark_content::LootTable>,
     pub size: (u32, u32),
     pub density: f32,
+    /// Say the state of the creature in the gaze in words.
+    pub states: bool,
 }
 
 impl Hud<'_> {
@@ -81,6 +83,11 @@ impl Hud<'_> {
             let colour = if annotation.is_some() { GOLD } else { WHITE };
             let style = TextStyle { face: Face::Large, size: (18.0 * d).round(), colour };
             self.centred(canvas, cx, cy - 40.0 * d, &style, &Shown::from_table(self.strings, StringId::from_key(&key)));
+            // Its state in words, for those who ask for it.
+            if let (true, Some(state)) = (self.states, player.facing_state) {
+                let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: WHITE };
+                self.centred(canvas, cx, cy - 60.0 * d, &small, &Shown::from_table(self.strings, StringId::from_key(&format!("creature.state.{state}"))));
+            }
         }
         // The preview: the off hand's word first, as the hand that writes.
         let preview = player.preview[1].clone().or_else(|| player.preview[0].clone());

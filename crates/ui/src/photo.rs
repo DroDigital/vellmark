@@ -194,17 +194,17 @@ impl Photo {
         let pad = 22.0 * d;
         let row = 18.0 * d;
         let pw = (380.0 * d).min(w * 0.4);
-        let style = TextStyle { face: Face::Large, size: row.round(), colour: kit::INK };
+        let style = TextStyle { face: Face::Large, size: row.round(), colour: kit::ink() };
         let line = Canvas::line_height(atlas, &style) * 1.15;
         let ph = entries.len() as f32 * line + pad * 2.0 + 60.0 * d;
         let panel = [w - pw - 24.0 * d, 24.0 * d, pw, ph];
         kit::panel(canvas, atlas, strings, panel, d);
-        let heading = TextStyle { face: Face::Large, size: (22.0 * d).round(), colour: kit::INK };
+        let heading = TextStyle { face: Face::Large, size: (22.0 * d).round(), colour: kit::ink() };
         canvas.text(atlas, panel[0] + pad, panel[1] + pad + 14.0 * d, &heading, &Shown::from_table(strings, sid!("ui.photo.title")));
         let list = [panel[0] + pad, panel[1] + pad + 30.0 * d, pw - pad * 2.0, entries.len() as f32 * line + 4.0];
         crate::menu::MenuView { atlas, strings, size, density }.rows_in(canvas, list, &entries, self.focus, 18.0);
         if let Some(hint) = hint {
-            let small = TextStyle { face: Face::Small, size: (14.0 * d).round(), colour: kit::FAINT };
+            let small = TextStyle { face: Face::Small, size: (14.0 * d).round(), colour: kit::faint() };
             canvas.text(atlas, panel[0] + pad, panel[1] + ph - pad * 0.5, &small, &hint);
         }
     }
