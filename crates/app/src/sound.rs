@@ -185,7 +185,8 @@ impl Sound {
                     // The word settles into the hand: a shimmer, then its motif.
                     push(CueKind::Mend, eye, 0.6);
                     if let Some((_, notes, timbre)) = self.motifs.get(word) {
-                        cues.push(Cue { kind: CueKind::Motif, pan: 0.0, gain: 0.9, notes: *notes, timbre: *timbre, charge: 1.0, ..Default::default() });
+                        // Played across the whole valley: it comes back off the hills.
+                        cues.push(Cue { kind: CueKind::Motif, pan: 0.0, gain: 0.9, notes: *notes, timbre: *timbre, charge: 1.0, far: 0.8, ..Default::default() });
                     }
                 }
             }

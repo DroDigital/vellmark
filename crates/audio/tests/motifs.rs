@@ -85,3 +85,52 @@ fn write_a_listening_sample() {
     }
     std::fs::write(path, out).unwrap();
 }
+
+/// Writes `docs/evidence/S06/learned.wav`: OPEN's motif as it is learned at a Standing
+/// Page, played across the valley and coming back off the hills; then as it is heard when
+/// cast, for comparison. `cargo test -p vellmark-audio -- --ignored`.
+#[test]
+#[ignore]
+fn write_the_learned_motif() {
+    let controls = Controls::new();
+    controls.master.set(0.9);
+    let mut mixer = Mixer::new(controls.clone(), 7);
+    let mut samples = Vec::new();
+    let mut buffer = vec![0.0f32; 960];
+    let mut play = |cue: Option<Cue>, seconds: f32| {
+        if let Some(c) = cue {
+            controls.cues.push(c);
+        }
+        for _ in 0..(seconds * SAMPLE_RATE as f32 / 480.0) as usize {
+            mixer.render(&mut buffer);
+            samples.extend(buffer.chunks_exact(2).map(|v| ((v[0] + v[1]) * 0.5).clamp(-1.0, 1.0) * 32767.0).map(|v| v as i16));
+        }
+    };
+    let (_, class, motif) = sheets().into_iter().find(|(w, _, _)| w == "OPEN").expect("OPEN's sheet");
+    let mut notes = [0u8; 6];
+    for (n, m) in notes.iter_mut().zip(&motif) {
+        *n = *m;
+    }
+    let cue = Cue { kind: CueKind::Motif, gain: 0.9, notes, timbre: Timbre::of_class(&class), charge: 1.0, ..Default::default() };
+    play(Some(Cue { far: 0.8, ..cue }), 6.0);
+    play(Some(cue), 2.5);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/evidence/S06/learned.wav");
+    let data = (samples.len() * 2) as u32;
+    let mut out = Vec::new();
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
+    out.extend_from_slice(&(SAMPLE_RATE * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data.to_le_bytes());
+    for s in samples {
+        out.extend_from_slice(&s.to_le_bytes());
+    }
+    std::fs::write(path, out).unwrap();
+}

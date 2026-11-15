@@ -31,6 +31,8 @@ pub struct Cue {
     pub charge: f32,
     /// The motif goes wrong on its last note.
     pub wrong: bool,
+    /// How much of it is sent out across the valley, 0 to 1, to come back off the hills.
+    pub far: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -191,6 +193,7 @@ impl Cues {
         s[3].store(notes, Ordering::Relaxed);
         s[4].store(more, Ordering::Relaxed);
         s[5].store(cue.charge.to_bits(), Ordering::Relaxed);
+        s[6].store(cue.far.to_bits(), Ordering::Relaxed);
         self.written.store(w.wrapping_add(1), Ordering::Release);
     }
 
@@ -213,6 +216,7 @@ impl Cues {
             timbre,
             charge: f32::from_bits(s[5].load(Ordering::Relaxed)),
             wrong: m[3] != 0,
+            far: f32::from_bits(s[6].load(Ordering::Relaxed)),
         };
         self.read.store(r.wrapping_add(1), Ordering::Release);
         Some(cue)
@@ -431,6 +435,68 @@ impl Voice {
     }
 }
 
+/// A valley for a sound sent far: a moment's silence while it crosses, then it comes back
+/// off the hills, again and again, losing its brightness, for about four and a half
+/// seconds. Four feedback delays mixed by a Householder matrix, each damped. Allocates
+/// only when made.
+pub struct Valley {
+    lines: [Box<[f32]>; 4],
+    at: [usize; 4],
+    gain: [f32; 4],
+    damp: [f32; 4],
+    pre: Box<[f32]>,
+    pre_at: usize,
+}
+
+/// Each line's length in samples: far apart and sharing no factor, so the echoes do
+/// not line up into a tone.
+const VALLEY_LINES: [usize; 4] = [3203, 4813, 6421, 8117];
+/// The seconds in which the echoes fall by sixty decibels.
+const VALLEY_T60: f32 = 4.5;
+/// The seconds the sound takes to reach the nearest hill and come back.
+const VALLEY_FIRST: f32 = 0.28;
+
+impl Valley {
+    pub fn new() -> Self {
+        let sr = SAMPLE_RATE as f32;
+        Self {
+            lines: VALLEY_LINES.map(|n| vec![0.0; n].into_boxed_slice()),
+            at: [0; 4],
+            gain: VALLEY_LINES.map(|n| 10f32.powf(-3.0 * n as f32 / (VALLEY_T60 * sr))),
+            damp: [0.0; 4],
+            pre: vec![0.0; (VALLEY_FIRST * sr) as usize].into_boxed_slice(),
+            pre_at: 0,
+        }
+    }
+
+    /// One stereo frame of what comes back, for `x` sent out now.
+    pub fn next(&mut self, x: f32) -> (f32, f32) {
+        let crossed = self.pre[self.pre_at];
+        self.pre[self.pre_at] = x;
+        self.pre_at = (self.pre_at + 1) % self.pre.len();
+        let mut out = [0.0f32; 4];
+        for i in 0..4 {
+            let y = self.lines[i][self.at[i]];
+            // The hills and the air take the top off each return.
+            self.damp[i] += (y - self.damp[i]) * 0.3;
+            out[i] = self.damp[i];
+        }
+        let half_sum = (out[0] + out[1] + out[2] + out[3]) * 0.5;
+        for (i, o) in out.iter().enumerate() {
+            let line = &mut self.lines[i];
+            line[self.at[i]] = crossed + (o - half_sum) * self.gain[i];
+            self.at[i] = (self.at[i] + 1) % line.len();
+        }
+        ((out[0] + out[2]) * 0.45, (out[1] + out[3]) * 0.45)
+    }
+}
+
+impl Default for Valley {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Seconds between a motif's notes.
 pub const NOTE_GAP: f32 = 0.13;
 
@@ -441,11 +507,13 @@ pub struct Player {
     /// A small room: two feedback delays.
     room: Box<[f32]>,
     room_at: usize,
+    /// The valley, for what is sent far.
+    valley: Valley,
 }
 
 impl Player {
     pub fn new() -> Self {
-        Self { voices: std::array::from_fn(|_| Voice::default()), seed: 0x51ed, room: vec![0.0; 4096].into_boxed_slice(), room_at: 0 }
+        Self { voices: std::array::from_fn(|_| Voice::default()), seed: 0x51ed, room: vec![0.0; 4096].into_boxed_slice(), room_at: 0, valley: Valley::new() }
     }
 
     /// Takes waiting cues and gives each a voice: a free one, or else the quietest.
@@ -460,12 +528,17 @@ impl Player {
     /// One stereo frame.
     pub fn next(&mut self) -> (f32, f32) {
         let (mut l, mut r) = (0.0, 0.0);
+        let mut far = 0.0;
         for v in self.voices.iter_mut().filter(|v| v.length > 0.0) {
             let x = v.next() * v.cue.gain;
+            far += x * v.cue.far;
             let (a, b) = pan(x, v.cue.pan);
             l += a;
             r += b;
         }
+        let (vl, vr) = self.valley.next(far);
+        l += vl;
+        r += vr;
         // The room: what was sent a moment ago comes back, softer, crossed.
         let n = self.room.len();
         let back_l = self.room[(self.room_at + n - 2711) % n];
@@ -582,5 +655,24 @@ mod tests {
         p.take(&cues);
         assert_eq!(p.sounding(), VOICES);
         assert!(cues.pop().is_none());
+    }
+
+    #[test]
+    fn a_motif_sent_far_comes_back_off_the_hills() {
+        let cue = Cue { kind: CueKind::Motif, gain: 0.9, notes: [62, 69, 67, 0, 0, 0], charge: 1.0, ..Default::default() };
+        let energy = |x: &[f32], from: f32, to: f32| {
+            let (a, b) = ((from * SAMPLE_RATE as f32) as usize, (to * SAMPLE_RATE as f32) as usize);
+            x[a..b].iter().map(|s| s * s).sum::<f32>() / (b - a) as f32
+        };
+        let near = render(cue, 6.0);
+        let far = render(Cue { far: 0.8, ..cue }, 6.0);
+        let (n, f) = (energy(&near, 2.5, 3.5), energy(&far, 2.5, 3.5));
+        assert!(f > n * 20.0 && f > 1e-6, "it rings on after the motif: {f} against {n}");
+        assert!(energy(&far, 5.5, 6.0) < energy(&far, 2.5, 3.0) * 0.3, "and dies away");
+        assert!(far.iter().all(|s| s.is_finite() && s.abs() < 4.0), "and stays in bounds");
+        // The cue crosses the queue with its send.
+        let cues = Cues::default();
+        cues.push(Cue { far: 0.8, ..cue });
+        assert_eq!(cues.pop().map(|c| c.far), Some(0.8));
     }
 }
