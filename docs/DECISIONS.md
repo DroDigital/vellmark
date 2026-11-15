@@ -2,6 +2,14 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: the Line (S06-T12)
+
+- **When it comes:** the first night after the player has four words (the hill's and three of the village's), once they are near the road. The tour puts it after free play and the night, and four words means the player has seen the village. When the supper is built it may be tied to the night after it instead.
+- **From behind, by the way the player faces**, as the script has it, down the road from the hill to the village, through the village's edge.
+- **Faster than a sprint (9 m/s)**, not merely faster than a walk, so that the only way clear is off the road, which is the script's point.
+- **North is the way a view at no turn looks (-Z)**, as the title's vista has the white band along the north.
+- **The roads are baked as a table** with the terrain, so the Line follows the real road and later the map and people's ways can.
+
 ## 2026-11-15: the favourites wheel
 
 - **Kept from the hands, not chosen item by item**: equip in the pack, then C keeps what both hands hold. One press, and the pairing is exactly what was tried.

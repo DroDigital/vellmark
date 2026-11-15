@@ -1068,6 +1068,13 @@ fn distance_to_line(points: &[(f32, f32)], x: f32, z: f32) -> f32 {
 /// apples in the Quiet Orchard, and hawthorn hedges along the roads. Never on a road,
 /// in water, or in a field. Within the playable area only: beyond it, the far ring's
 /// woods are drawn by the terrain itself.
+/// The roads as they were authored, for what follows a road at run time.
+pub fn roads(path: &Path) -> Result<vellmark_content::RoadTable, BakeError> {
+    let (a, _) = read(path)?;
+    let roads = a.roads.iter().map(|r| vellmark_content::Road { key: r.key.clone(), width: r.width, points: r.points.iter().map(|p| [p.0, p.1]).collect() }).collect();
+    Ok(vellmark_content::RoadTable { roads })
+}
+
 pub fn tree_places(path: &Path) -> Result<Vec<TreePlace>, BakeError> {
     let (a, _) = read(path)?;
     let clear = |x: f32, z: f32, margin: f32| {

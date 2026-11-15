@@ -166,6 +166,9 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
         }).map(|t| t.height_at(x, z))
     };
     let tree_places = terrain::tree_places(&inputs.assets.join("terrain/valley.ron"))?;
+    let roads = terrain::roads(&inputs.assets.join("terrain/valley.ron"))?;
+    report.push(format!("{}: {} roads", vellmark_content::ROADS_KEY, roads.roads.len()));
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::ROADS_KEY), roads.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
     for (id, bytes) in tiles {
         base.add(AssetKind::Tile, id, bytes).map_err(|e| BakeError(e.to_string()))?;
     }

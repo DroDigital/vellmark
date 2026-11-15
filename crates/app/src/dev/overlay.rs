@@ -47,8 +47,10 @@ pub enum Command {
     Obelus(bool),
     /// Trade with a merchant's stock, until Tobit stands on the green (S06-T07).
     Trade,
-    /// The end card, until the Line ends with it (S06-T12).
+    /// The end card.
     EndCard,
+    /// The Line, now: Obelus down the road to the village.
+    Line,
     /// Save the game, or load the saved game.
     Save,
     Load,
@@ -161,6 +163,7 @@ impl Overlay {
                     "obelus [high]  send Obelus down the view, or high and far",
                     "trade          trade with a merchant's stock",
                     "endcard        show the end card",
+                    "line           the Line, now: Obelus down the road",
                     "hour run       let the clock run",
                     "glyph on|off   switch the glyph layer",
                     "lamps on|off   light the lamps or put them out",
@@ -241,6 +244,7 @@ impl Overlay {
             (Some("obelus"), high) => self.commands.push(Command::Obelus(high == Some("high"))),
             (Some("trade"), _) => self.commands.push(Command::Trade),
             (Some("endcard"), _) => self.commands.push(Command::EndCard),
+            (Some("line"), _) => self.commands.push(Command::Line),
             (Some("save"), _) => self.commands.push(Command::Save),
             (Some("load"), _) => self.commands.push(Command::Load),
             (Some("quit"), _) => self.commands.push(Command::Quit),

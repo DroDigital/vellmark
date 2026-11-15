@@ -6,6 +6,7 @@
 
 mod clock;
 pub mod debris;
+pub mod line;
 pub mod weather;
 
 /// The ground the players walk on: its height at a point, if there is ground there.

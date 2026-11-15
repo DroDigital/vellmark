@@ -165,8 +165,15 @@ pub struct World {
     flags: std::collections::BTreeSet<String>,
     /// How many lines each Light character has said, so that they say the next.
     light_said: std::collections::BTreeMap<String, u32>,
-    /// Scripted events begun by dialogue this step, with the player who began them.
+    /// Scripted events begun by dialogue or a set piece this step, with the player who
+    /// began them.
     events: Vec<(u32, String)>,
+    /// The road the Line comes down, at the height Obelus flies over it, and where it
+    /// stands (crates/sim/src/line.rs).
+    line_road: Vec<Vec3>,
+    line: crate::line::State,
+    /// The Line called up now, whatever the hour, the words, and the place.
+    line_now: bool,
     /// Words being given by Standing Pages.
     learning: Vec<crate::reading::Learning>,
     /// Pages writing as they are watched.
@@ -230,6 +237,9 @@ impl World {
             flags: Default::default(),
             light_said: Default::default(),
             events: Vec::new(),
+            line_road: Vec::new(),
+            line: Default::default(),
+            line_now: false,
             learning: Vec::new(),
             pages: Vec::new(),
             redactors: Vec::new(),
@@ -868,6 +878,72 @@ impl World {
     /// The things struck through by Redactors.
     pub fn struck(&self) -> &[crate::redactor::Struck] {
         &self.struck
+    }
+
+    /// Gives the road the Line comes down, as points at the height Obelus flies over it.
+    pub fn set_line_road(&mut self, road: Vec<Vec3>) {
+        self.line_road = road;
+    }
+
+    /// Calls the Line up now, if it has not come: for trying it.
+    pub fn begin_line(&mut self) {
+        self.line_now = true;
+    }
+
+    /// Where the Line stands.
+    pub fn line(&self) -> &crate::line::State {
+        &self.line
+    }
+
+    /// The Line: it waits for the night, the words, and the road; Obelus comes; when it
+    /// has gone, the flag is set and, a while after, the end card is asked for.
+    fn run_line(&mut self, dt: f32) {
+        use crate::line::{State, END_AFTER, END_EVENT, FLAG};
+        if self.flags.contains(FLAG) && self.line != State::Passed && !matches!(self.line, State::Gone(_)) {
+            self.line = State::Passed;
+        }
+        match self.line.clone() {
+            State::Waiting => {
+                let Some(p) = self.players.first() else { return };
+                let now = std::mem::take(&mut self.line_now);
+                if self.line_road.len() < 2 {
+                    return;
+                }
+                if !now && (!crate::line::night(self.time_of_day)
+                    || p.caster.known.len() < crate::line::WORDS_BEFORE
+                    || crate::line::distance_from_road(&self.line_road, p.body.feet) > crate::line::NEAR_ROAD)
+                {
+                    return;
+                }
+                let facing = Vec3::new(p.yaw.sin(), 0.0, -p.yaw.cos());
+                let mut path = crate::line::flight(&self.line_road, p.body.feet, facing);
+                if let Some(g) = &self.ground {
+                    crate::line::clear_ground(&mut path, |x, z| g.height(x, z));
+                }
+                if path.len() < 2 {
+                    return;
+                }
+                self.add_redactor(crate::redactor::Redactor { id: crate::line::OBELUS, path, speed: crate::line::SPEED, flown: 0.0, strike: Some(crate::line::STRIKE), caught: Vec::new() });
+                self.line = State::Flying;
+            }
+            State::Flying => {
+                if !self.redactors.iter().any(|r| r.id == crate::line::OBELUS) {
+                    self.flags.insert(FLAG.into());
+                    self.line = State::Gone(0.0);
+                }
+            }
+            State::Gone(t) => {
+                if t + dt >= END_AFTER {
+                    if let Some(p) = self.players.first() {
+                        self.events.push((p.id.0, END_EVENT.into()));
+                    }
+                    self.line = State::Passed;
+                } else {
+                    self.line = State::Gone(t + dt);
+                }
+            }
+            State::Passed => {}
+        }
     }
 
     /// Redactors fly on; one flying low strikes through every thing its line passes and
@@ -1977,6 +2053,7 @@ impl World {
         let landed_before = self.landings.len();
         self.write_pages(dt);
         self.fly_redactors(dt);
+        self.run_line(dt);
         // A word given by a Page acts once on everything round it that it would change.
         for l in self.learning.iter_mut().filter(|l| !l.released && self.seconds - l.began >= crate::reading::LIFT + crate::reading::HOLD) {
             l.released = true;

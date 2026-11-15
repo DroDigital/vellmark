@@ -271,6 +271,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     if let Some(table) = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::DIALOGUE_KEY)).and_then(|b| vellmark_content::DialogueTable::from_bytes(b).ok()) {
         world.set_dialogue(table);
     }
+    // The Line comes down the road from the hill to the village, flown low over it.
+    if let (Some(roads), Some(t)) = (base.get(AssetKind::Table, AssetId::from_key(vellmark_content::ROADS_KEY)).and_then(|b| vellmark_content::RoadTable::from_bytes(b).ok()), &terrain) {
+        if let Some(road) = roads.road("penance_road") {
+            world.set_line_road(vellmark_sim::line::road_over(&road.points, |x, z| t.height_at(x, z)));
+        }
+    }
     // The world as it begins, for starting again from the end card or the pause menu.
     let beginning = world.save();
     // The game is saved apart from the settings; `--continue` starts from it.
@@ -394,6 +400,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut last_talker: Option<u64> = None;
     // The end card while it is up, and a start again asked for this frame.
     let mut end_card: Option<vellmark_ui::end_card::EndCard> = None;
+    // The world's events from every step of the last frame, so none is missed when a
+    // frame runs several steps.
+    let mut heard_events: Vec<String> = Vec::new();
     let mut start_again = false;
     // Captions for the sounds that matter, and whether a Redactor's approach is captioned.
     let mut captions = vellmark_ui::captions::Captions::default();
@@ -463,7 +472,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         if let Some(t) = current.players.first().and_then(|p| p.talking.as_ref()) {
             last_talker = Some(t.talker);
         }
-        if world.events().iter().any(|(_, e)| e == "trade") {
+        let events = std::mem::take(&mut heard_events);
+        if events.iter().any(|e| e == vellmark_sim::line::END_EVENT) {
+            end_card = Some(Default::default());
+        }
+        if events.iter().any(|e| e == "trade") {
             if let Some(m) = last_talker.filter(|m| world.merchant(*m).is_some()) {
                 trade = Some(vellmark_ui::trade_view::Trade { merchant: m, ..Default::default() });
             }
@@ -718,6 +731,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         log::line(if high { "Obelus crosses the far sky" } else { "Obelus comes down the view" });
                     }
                     Command::EndCard => end_card = Some(Default::default()),
+                    Command::Line => {
+                        world.begin_line();
+                        log::line("the Line comes down the road");
+                    }
                     Command::Trade => {
                         const MERCHANT: u64 = 0x70b1;
                         if world.merchant(MERCHANT).is_none() {
@@ -955,6 +972,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let take: String = typed.drain(..typed.len().min(4)).collect();
             input.typed = PlayerInput::pack_typed(&take);
             world.step(&[input]);
+            heard_events.extend(world.events().iter().map(|(_, e)| e.clone()));
             previous = current;
             current = world.snapshot();
             sound.heard(&current);

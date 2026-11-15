@@ -25,9 +25,11 @@ pub use readables::{readables_key, targets_key, InscribedThing, InscribedThings,
 pub mod loot;
 pub mod dialogue;
 pub mod voices;
+pub mod roads;
 pub mod credits;
 pub use credits::{Credits, CREDITS_KEY};
 pub use voices::{Voice, VoiceTable, VOICES_KEY};
+pub use roads::{Road, RoadTable, ROADS_KEY};
 pub use dialogue::{Choice, Condition, DialogueTable, Line, Node, Speaker, Talk, DIALOGUE_KEY};
 pub use loot::{LootCanonical, LootMaterial, LootModifier, LootSource, LootTable, LootType, LootWordClause, LOOT_KEY};
 pub use words::{Compound, EffectLook, Outcome, Typo, Word, WordTable, WORDS_KEY};
