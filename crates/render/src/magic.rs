@@ -246,6 +246,18 @@ impl Magic {
             ));
             self.lights.push(Light { key: AssetId(0), position: f.at.into(), colour: look.colour.map(|c| c * (3.5 + 3.0 * f.charge)), radius: 7.0, casts_shadow: false });
         }
+        // Words given by Standing Pages: lifting from the stone and held there, bright,
+        // until they go out to everything round the Page.
+        for (i, l) in snap.learning.iter().enumerate().filter(|(_, l)| !l.released) {
+            let Some(look) = self.look(&l.word).cloned() else { continue };
+            let letters = l.word.len().min(16) as f32;
+            let swell = (l.age / 0.6).min(1.0);
+            self.emitters.push((
+                [[l.at.x, l.at.y, l.at.z, 6.0], [0.0, 1.0, 0.0, l.age], [look.colour[0], look.colour[1], look.colour[2], 4.0], [letters + 70.0, 0.2 + 0.06 * swell, i as f32 * 5.7, letters]],
+                pack(&l.word),
+            ));
+            self.lights.push(Light { key: AssetId(0), position: l.at.into(), colour: look.colour.map(|c| c * 4.0 * swell), radius: 10.0, casts_shadow: false });
+        }
         // Impacts: a burst, and a flash of light that dies quickly.
         for b in &self.bursts {
             let age = seconds - b.began;

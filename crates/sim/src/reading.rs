@@ -23,6 +23,42 @@ pub struct ReadableText {
     pub teaches: String,
 }
 
+/// A word given by a Standing Page, as it is given: it lifts from the stone, the reader's
+/// view holds on it, and then it acts once on everything round the Page that it would
+/// change, flying to each, so that the player leaves having seen what it does.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Learning {
+    pub player: u32,
+    pub word: usize,
+    /// The middle of the Page's face, where the word lifts from.
+    pub page: glam::Vec3,
+    /// Where it hangs while the view holds on it: before the stone, towards the reader.
+    pub hover: glam::Vec3,
+    pub began: f64,
+    pub released: bool,
+    /// The nearest thing it changes: the view turns there once it goes out, to watch.
+    pub sight: Option<glam::Vec3>,
+}
+
+/// Seconds the word takes to lift, and how long the view holds on it before it acts.
+pub const LIFT: f64 = 1.2;
+pub const HOLD: f64 = 1.6;
+/// Seconds from the start until the reader may move again: long enough to watch the
+/// word land on the nearest thing it changes.
+pub const SPECTACLE: f64 = 5.0;
+/// How far round the Page the word acts, and on how many things at most.
+pub const SPECTACLE_REACH: f32 = 120.0;
+pub const SPECTACLE_MOST: usize = 32;
+
+impl Learning {
+    /// Where the word is, `age` seconds in.
+    pub fn at(&self, age: f64) -> glam::Vec3 {
+        let t = (age / LIFT).clamp(0.0, 1.0) as f32;
+        let s = t * t * (3.0 - 2.0 * t);
+        self.page + (self.hover - self.page) * s
+    }
+}
+
 /// What a player is doing with Read.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum Reading {

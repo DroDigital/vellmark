@@ -2,6 +2,12 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: the learning spectacle (S06-T10a)
+
+- **"Everything it would change" is everything whose Inscription holds another word of the word's class** and takes it at full charge: BROKEN things for WHOLE, LOCKED for OPEN, DARK for LIT, within 120 m of the Page, nearest first, at most 32. Things it would merely add to are left alone, so the spectacle always shows a real change.
+- **The word goes out as real flights**, so its landings, rewrite waves, sounds, and lasting states are the same as a word written by hand.
+- **The reader is held for 5 s**: 1.2 s of lifting, 1.6 s of the view on the word, then the view on the nearest thing it changes. Any longer was judged too long to hold a player; the owner judges it on the Mac.
+
 ## 2026-11-15: the title sequence (S06-T13a)
 
 - **Drawn on the interface's canvas, over the world.** The dive is quads of the atlas's own glyphs, placed where each letter above them has ink; the world behind is the real valley from a camera path, revealed as the black thins. No video, as the brief asks of cinematics.

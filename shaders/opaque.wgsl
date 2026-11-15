@@ -1991,6 +1991,22 @@ fn vs_spark(@builtin(vertex_index) vertex: u32, @builtin(instance_index) index: 
         amount = 1.0 - 0.4 * dying;
         size *= 0.7 + 0.6 * unit(h >> 11u);
         out.ink = 1u;
+    } else if kind == 6u {
+        // A word given by a Standing Page: its letters side by side, large, facing the
+        // eye, rising gently; round it motes of the same letters, circling and rising.
+        let letters = u32(e[3].w + 0.5);
+        let age = e[1].w;
+        if k < letters {
+            place = centre + right * (f32(k) - (f32(letters) - 1.0) * 0.5) * size * 0.78 + up * sin(t * 1.7 + f32(k) * 0.6) * size * 0.06;
+            amount = 1.7 * smoothstep(0.0, 0.5, age);
+        } else {
+            let phase = fract(t * (0.25 + 0.3 * unit(h >> 3u)) + unit(h));
+            let a = unit(h >> 8u) * 6.2831853 + t * (0.6 + 0.8 * unit(h >> 5u));
+            let r = size * (1.6 + 2.2 * unit(h >> 12u)) * (0.6 + 0.4 * phase);
+            place = centre + (right * cos(a) + towards * sin(a)) * r + up * (phase - 0.4) * size * 3.0;
+            amount = sin(phase * 3.14159265) * 0.8;
+            size *= 0.22 + 0.2 * unit(h >> 11u);
+        }
     } else if kind == 4u {
         // Frost: glitter over the thing, each point catching the light now and then.
         let radius = e[1].w;

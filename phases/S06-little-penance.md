@@ -34,6 +34,9 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S06-T08** [Content] Write Tobit's lines, the villagers' lines, the forty gravestones, the wall text, and three short books, in the Vale's voice
 - [ ] **S06-T09** [Sim] Build the opening from the script as written: the grave, Wick, the climb, the Runt, and the first word
 - [ ] **S06-T10** [Render] Build the four Standing Pages, each writing as the player watches, each with its learning spectacle
+  - [x] **S06-T10a** The learning spectacle, for every Page: the word lifts, the view holds on it, and it acts once on everything round the Page it would change
+  - [ ] **S06-T10b** Each Page writing as the player watches: the Tithe Hill Stone setting down what happens as it happens
+  - [ ] **S06-T10c** The Lamp's and the Orchard's Pages in place (**after** S06-T01 and S06-T03, the green and the orchard)
 - [ ] **S06-T11** [Sim] Build the supper with the Oakes and Tamsin's stones from the script as written, including reading her sleeve
 - [ ] **S06-T12** [Sim] Build the Line as a set piece: Obelus down the road, the struck hedge, milestone, and village edge, and the player getting clear
 - [ ] **S06-T13** [Render] Build the title sequence as a dive through letters into the valley, and the door dive for entering interiors

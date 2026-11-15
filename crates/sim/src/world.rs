@@ -165,6 +165,8 @@ pub struct World {
     light_said: std::collections::BTreeMap<String, u32>,
     /// Scripted events begun by dialogue this step, with the player who began them.
     events: Vec<(u32, String)>,
+    /// Words being given by Standing Pages.
+    learning: Vec<crate::reading::Learning>,
 }
 
 impl World {
@@ -219,6 +221,7 @@ impl World {
             flags: Default::default(),
             light_said: Default::default(),
             events: Vec::new(),
+            learning: Vec::new(),
         }
     }
 
@@ -1387,13 +1390,30 @@ impl World {
                     p.pitch += (pitch - p.pitch) * 0.2;
                 }
             }
-            talked.push(was || p.talking.is_some());
+            // A word being given by a Page holds its reader still, looking at it.
+            let now = self.seconds;
+            let held = self.learning.iter().find(|l| l.player == p.id.0 && now - l.began < crate::reading::SPECTACLE);
+            if let Some(l) = held {
+                let eye = p.body.feet + Vec3::Y * p.body.eye;
+                // The word while it lifts and holds; then what it goes out to change.
+                let look = match (l.released, l.sight) {
+                    (true, Some(sight)) => sight,
+                    _ => l.at(now - l.began),
+                };
+                let to = look - eye;
+                let yaw = to.x.atan2(-to.z);
+                let pitch = (to.y / to.length().max(1e-3)).asin();
+                let turn = (yaw - p.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+                p.yaw += turn * 0.12;
+                p.pitch += (pitch - p.pitch) * 0.12;
+            }
+            talked.push(was || p.talking.is_some() || held.is_some());
         }
         use crate::reading::{focus, Reading, CLOSE_READING_PACE};
         // What each player reads. A text in focus is read while Read is held; with none,
         // Read is close reading.
         for (i, p) in self.players.iter_mut().enumerate() {
-            let input = if p.talking.is_some() { PlayerInput::default() } else { inputs.get(i).copied().unwrap_or_default() };
+            let input = if talked[i] { PlayerInput::default() } else { inputs.get(i).copied().unwrap_or_default() };
             let eye = p.body.feet + Vec3::Y * p.body.eye;
             let (sy, cy) = p.yaw.sin_cos();
             let (sp, cp) = p.pitch.sin_cos();
@@ -1421,6 +1441,14 @@ impl World {
                             p.caster.learn(w);
                             p.learned = Some((w, self.seconds));
                             self.heard.push(crate::snapshot::Heard::Learned { player: p.id, word: w });
+                            // The spectacle: the word lifts from the stone towards its reader.
+                            let r = &self.readables[t];
+                            let page = (r.min + r.max) * 0.5;
+                            let toward = Vec3::new(eye.x - page.x, 0.0, eye.z - page.z).normalize_or_zero();
+                            // Halfway to the reader, at about the height of their eye.
+                            let mut hover = page + toward * Vec3::new(eye.x - page.x, 0.0, eye.z - page.z).length().min(4.0) * 0.5;
+                            hover.y = (page.y + 0.35).max(eye.y - 0.1);
+                            self.learning.push(crate::reading::Learning { player: p.id.0, word: w, page, hover, began: self.seconds, released: false, sight: None });
                         }
                     }
                 }
@@ -1433,7 +1461,7 @@ impl World {
         let dt = STEP_SECONDS * self.pace;
         let solo = self.players.len() == 1;
         for (i, p) in self.players.iter_mut().enumerate() {
-            let input = if p.talking.is_some() { PlayerInput::default() } else { inputs.get(i).copied().unwrap_or_default() };
+            let input = if talked[i] { PlayerInput::default() } else { inputs.get(i).copied().unwrap_or_default() };
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
             p.pitch = (p.pitch + input.look_pitch).clamp(-MAX_PITCH, MAX_PITCH);
             // A sidestep costs Stamina, and needs it. A chilled body is slow; a fallen one
@@ -1750,6 +1778,31 @@ impl World {
         self.deaths();
         crate::melee::recover(&mut self.creatures, dt);
         let landed_before = self.landings.len();
+        // A word given by a Page acts once on everything round it that it would change.
+        for l in self.learning.iter_mut().filter(|l| !l.released && self.seconds - l.began >= crate::reading::LIFT + crate::reading::HOLD) {
+            l.released = true;
+            let mut near: Vec<(f32, u64)> = self
+                .targets
+                .iter()
+                .filter(|t| t.centre.distance(l.page) < crate::reading::SPECTACLE_REACH)
+                // What it would change: a thing whose Inscription holds another word of its
+                // class (BROKEN for WHOLE, LOCKED for OPEN, DARK for LIT), and takes it.
+                .filter(|t| {
+                    let rule = &self.rules.words[l.word];
+                    t.words.iter().any(|w| w.class == rule.class && w.spelling != rule.spelling)
+                })
+                .filter(|t| matches!(crate::emendation::preview(&self.rules, l.word, t, 1.0, false), crate::emendation::Preview::Result(_)))
+                .map(|t| (t.centre.distance(l.page), t.id))
+                .collect();
+            near.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            l.sight = near.first().and_then(|(_, id)| self.targets.iter().find(|t| t.id == *id)).map(|t| t.centre);
+            for (_, target) in near.into_iter().take(crate::reading::SPECTACLE_MOST) {
+                let speed = self.rules.words[l.word].flight_speed * 1.5;
+                self.flights.push(crate::emendation::Flight { player: l.player, word: l.word, target, from: l.hover, at: l.hover, speed, charge: 1.0, both: false, typed: false, typo: false });
+            }
+        }
+        let now = self.seconds;
+        self.learning.retain(|l| now - l.began < crate::reading::SPECTACLE + 2.0);
         crate::casting::fly(&mut self.flights, &mut self.targets, &self.rules, dt, self.seconds, &mut self.landings);
         // The chain: twice a second, fire spreads to what is near it.
         if self.step % 30 == 0 && !self.targets.is_empty() {
@@ -2053,6 +2106,18 @@ impl World {
             dropped: Arc::new(self.dropped.clone()),
             arrows: Arc::new(self.arrows.clone()),
             creatures: Arc::new(self.creatures.clone()),
+            learning: self
+                .learning
+                .iter()
+                .map(|l| crate::snapshot::LearningSnap {
+                    player: l.player,
+                    word: self.rules.words[l.word].spelling.clone(),
+                    at: l.at(self.seconds - l.began),
+                    page: l.page,
+                    age: (self.seconds - l.began) as f32,
+                    released: l.released,
+                })
+                .collect(),
         })
     }
 
@@ -2061,6 +2126,10 @@ impl World {
     pub fn state_hash(&self) -> u64 {
         let mut h = Fnv64::new();
         h.u64(self.step);
+        for l in &self.learning {
+            h.u64(l.began.to_bits());
+            h.u64(l.word as u64);
+        }
         h.u64(self.rng);
         h.u64(self.seconds.to_bits());
         h.f32(self.time_of_day);

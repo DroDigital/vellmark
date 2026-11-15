@@ -59,6 +59,18 @@ pub struct PlayerSnap {
     pub talking: Option<TalkSnap>,
 }
 
+/// A word being given by a Standing Page, as drawn.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LearningSnap {
+    pub player: u32,
+    pub word: String,
+    pub at: Vec3,
+    pub page: Vec3,
+    /// Seconds since it began.
+    pub age: f32,
+    pub released: bool,
+}
+
 /// A conversation as shown: who is speaking, the line, and the choices offered.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TalkSnap {
@@ -166,6 +178,8 @@ pub struct Snapshot {
     pub arrows: std::sync::Arc<Vec<crate::melee::Arrow>>,
     /// What steel meets, as it stands.
     pub creatures: std::sync::Arc<Vec<crate::melee::Creature>>,
+    /// Words being given by Standing Pages.
+    pub learning: Vec<LearningSnap>,
 }
 
 impl Snapshot {

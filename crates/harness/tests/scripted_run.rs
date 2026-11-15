@@ -106,7 +106,9 @@ fn read_page(v: &mut Valley, stand: Vec3, stone: Vec3) -> Option<String> {
             learned = Some(w.clone());
         }
     }
-    go(&mut v.world, 2, PlayerInput::default());
+    // Watch the spectacle out: the word lifts, the view holds on it, and it goes out to
+    // what it changes before the reader is free again.
+    go(&mut v.world, (vellmark_sim::reading::SPECTACLE * STEP_HZ as f64) as u32, PlayerInput::default());
     assert!(read, "the Page is read");
     learned
 }
