@@ -100,6 +100,17 @@
     "ui.talk.offer": "{key} Talk to {name}",
     "ui.talk.continue": "{key} Continue",
     "ui.talk.choose": "{key} Choose",
+    // The end card, after the Line. Written to the store page's promises; the owner's to edit.
+    "end.line": "An open-world RPG where you rewrite reality with a word.",
+    "end.more": "This was one valley. The full game is a whole land to wander, written in every surface, with words to find and a friend to play beside you.",
+    "end.thanks": "Thank you for playing.",
+    "end.keep": "Keep playing",
+    "end.wishlist": "Wishlist Vellmark",
+    "end.feedback": "Say what you thought",
+    "end.again": "Start again from the beginning",
+    "end.opened": "Opened in your browser.",
+    "end.no_browser": "No browser could be opened.",
+    "ui.menu.start_again": "Start again",
     // The title sequence.
     "title.name": "VELLMARK",
     "title.press": "Press any button.",

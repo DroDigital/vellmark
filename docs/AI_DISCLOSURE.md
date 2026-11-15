@@ -27,6 +27,7 @@ owner with AI help) is marked as such. Everything else here was written by Claud
 | The bark's records and the trees' names | `assets/text/en/trees.ron` | Written by Claude Code in the Ledger's voice |
 | The words' lines: previews, refusals, combat lines, and motif captions | `assets/text/en/words.ron` | Written by Claude Code in the Ledger's voice, after the canon's word list |
 | Item names: makers, materials, types, clauses, word clauses, tiers, traits, and what each does | `assets/text/en/items.ron` | Written by Claude Code after the canon's own examples (`full-game/docs/bible/08-words-items-craft.md`); the two Canonical items' names and effects are the canon's |
+| The end card: the line, what the full game will be, and its choices | `assets/text/en/interface.ron` (`end.*`) | Written by Claude Code to the store page's promises; waits on the owner's edit |
 | The interface: menus, settings, the pack, photo mode, prompts' words, captions of sounds, creatures' names and states, and the title's "Press any button." | `assets/text/en/interface.ron`, `assets/text/en/prompts.ron` | Written by Claude Code in plain words, as the brief asks; the title VELLMARK is the game's name |
 
 ## Music

@@ -31,6 +31,8 @@ pub enum Outcome {
     Photo,
     /// The credits.
     Credits,
+    /// Back to the beginning: the world as it was at the start, and the title.
+    StartAgain,
     /// The settings changed: apply them and write them.
     Changed,
 }
@@ -126,6 +128,7 @@ impl Menu {
                 e(sid!("ui.menu.save"), Value::Button),
                 e(sid!("ui.menu.load"), Value::Button),
                 e(sid!("ui.menu.credits"), Value::Button),
+                e(sid!("ui.menu.start_again"), Value::Button),
                 e(sid!("ui.menu.quit"), Value::Button),
             ],
             Page::Settings => vec![
@@ -253,6 +256,7 @@ impl Menu {
                     3 => Outcome::Save,
                     4 => Outcome::Load,
                     5 => Outcome::Credits,
+                    6 => Outcome::StartAgain,
                     _ => Outcome::Quit,
                 };
             }

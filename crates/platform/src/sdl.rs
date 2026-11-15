@@ -151,6 +151,12 @@ impl Platform {
         Ok(Window { inner })
     }
 
+    /// Opens an address in the player's browser, when they choose a link. Whether a
+    /// browser took it.
+    pub fn open_url(&self, url: &str) -> bool {
+        url.starts_with("https://") && sdl3::url::open_url(url).is_ok()
+    }
+
     /// Hides the cursor and reports mouse movement without limit, for looking around.
     pub fn capture_mouse(&self, window: &Window, on: bool) {
         self.mouse.set_relative_mouse_mode(&window.inner, on);

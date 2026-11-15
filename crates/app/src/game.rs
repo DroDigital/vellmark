@@ -271,6 +271,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     if let Some(table) = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::DIALOGUE_KEY)).and_then(|b| vellmark_content::DialogueTable::from_bytes(b).ok()) {
         world.set_dialogue(table);
     }
+    // The world as it begins, for starting again from the end card or the pause menu.
+    let beginning = world.save();
     // The game is saved apart from the settings; `--continue` starts from it.
     let save_path = crate::paths::user_data_dir().join(format!("{}.vsave", scene_key.trim_start_matches("scene.")));
     if args.continue_game {
@@ -390,6 +392,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     // a conversation's `trade` opens.
     let mut trade: Option<vellmark_ui::trade_view::Trade> = None;
     let mut last_talker: Option<u64> = None;
+    // The end card while it is up, and a start again asked for this frame.
+    let mut end_card: Option<vellmark_ui::end_card::EndCard> = None;
+    let mut start_again = false;
     // Captions for the sounds that matter, and whether a Redactor's approach is captioned.
     let mut captions = vellmark_ui::captions::Captions::default();
     let mut redactor_heard = false;
@@ -494,7 +499,34 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 trade = None;
             }
         }
-        if title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() || wheel.is_some() {
+        // The end card: its choices, and a link opened only when it is chosen.
+        if let Some(card) = end_card.as_mut() {
+            use vellmark_ui::end_card::EndOutcome;
+            let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut pack_nav_repeat, frame_time.as_secs_f32());
+            match card.update(input, &strings, frame_time.as_secs_f32()) {
+                EndOutcome::None => {}
+                EndOutcome::Close => end_card = None,
+                EndOutcome::Open(url) => card.note = Some(if platform.open_url(&url) { sid!("end.opened") } else { sid!("end.no_browser") }),
+                EndOutcome::StartAgain => {
+                    end_card = None;
+                    start_again = true;
+                }
+            }
+        }
+        // Back to the beginning: the world as it began, at the title's hour, and the title.
+        if std::mem::take(&mut start_again) {
+            world.load(&beginning);
+            if let Some(last) = title_path.as_ref().and_then(|p| p.keys.last()) {
+                world.set_time_of_day(last.hour);
+                title = Some(vellmark_ui::title::Title::new(&assets.glyphs, &strings, settings.reduced_motion));
+            }
+            previous = world.snapshot();
+            current = previous.clone();
+            (pack, trade, wheel, photo, credits) = (None, None, None, None, None);
+            page_shown.iter_mut().for_each(|p| *p = u32::MAX);
+            log::line("started again from the beginning");
+        }
+        if title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() || wheel.is_some() || end_card.is_some() {
         } else if menu.is_some() {
         } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
             pack = None;
@@ -559,6 +591,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 Outcome::Resume => menu = None,
                 Outcome::Changed => settings_changed = true,
                 Outcome::Quit => break 'frames,
+                Outcome::StartAgain => {
+                    menu = None;
+                    start_again = true;
+                }
                 Outcome::Credits => {
                     menu = None;
                     credits = Some(0.0);
@@ -681,6 +717,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                         world.add_redactor(vellmark_sim::redactor::Redactor { id: 1, path, speed: if high { 60.0 } else { 14.0 }, flown: 0.0, strike: (!high).then_some((2.4, 2.2)), caught: Vec::new() });
                         log::line(if high { "Obelus crosses the far sky" } else { "Obelus comes down the view" });
                     }
+                    Command::EndCard => end_card = Some(Default::default()),
                     Command::Trade => {
                         const MERCHANT: u64 = 0x70b1;
                         if world.merchant(MERCHANT).is_none() {
@@ -899,7 +936,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
         // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
         // play the world holds still while the pack or a menu is open.
-        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() || wheel.is_some() { 0 } else { frame_time.as_nanos() as u64 });
+        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() || wheel.is_some() || end_card.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             if step == 0 {
@@ -1035,6 +1072,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 vellmark_ui::trade_view::TradeView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
                     .draw(&mut canvas, t, m, inv, (Some(&confirm), Some(&back)));
             }
+        } else if let Some(card) = &end_card {
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            let (confirm, back) = vellmark_ui::pages::Menu::hint_keys(actions.last_device, style);
+            let key = |k: &str| vellmark_ui::Part::Shown(vellmark_ui::Shown::from_table(&strings, vellmark_content::StringId::from_key(k)));
+            let hint = vellmark_ui::Shown::filled(&strings, sid!("ui.menu.hint"), &[("confirm", key(&confirm)), ("back", key(&back))]);
+            vellmark_ui::end_card::EndCardView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }.draw(&mut canvas, card, Some(hint));
         } else if let Some(scroll) = credits {
             let d = window.pixel_density() * settings.interface_scale();
             vellmark_ui::credits_view::CreditsView { atlas: &assets.glyphs, strings: &strings, credits: &credits_table, size: screen.size(), density: d }.draw(&mut canvas, scroll);
