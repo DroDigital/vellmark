@@ -106,6 +106,9 @@
 
 ## Lane: Shell
 
+**Done:** S04-T15a, footsteps by surface: each stride (1.3 m walking, 1.7 m sprinting) on the ground is heard on what is underfoot, from the terrain's ground (grass, barley, the road's gravel, earth and forest floor, mud at the banks), water when wading, and planks on anything built; softer while sneaking. Each surface has its own synthesized step (`CueKind::Step`). Tests: `crates/harness/tests/footsteps.rs`, `crates/audio/src/cues.rs`.
+**Not yet:** S04-T15b, the voices of the creatures still to be built; recorded footstep layers when approved samples come.
+
 **Done:** S06-T14, brought forward because it needs no assets: the score (`crates/audio/src/score.rs`), composed as it plays in D Dorian from the Vale's theme, which is the motifs of OPEN, WHOLE, LIT, and CALM in turn (it begins and ends on D; it follows the word sheets, so a changed motif changes the theme). By day a plucked string takes a phrase (the whole theme, two motifs, or one, sometimes turned in the mode or an octave up) over a bowed chord and a drone, then rests 18 to 50 seconds; by night a choir hums it an octave lower and slower; when a creature that knows of the player is within 25 m, a fight's music begins at once: drone, low strings in eighths, a frame drum, and the theme high on bowed strings at 126 beats a minute, ending when the danger has passed. All synthesized (Karplus-Strong strings, bowed saws, a formant choir, a drum), never allocating; a music volume in the settings. Evidence: `docs/evidence/S06/score.wav` (a day's phrase, a night's, a fight). Tests: `crates/audio/tests/score.rs`, `crates/audio/src/score.rs`, `crates/audio/tests/no_allocation.rs`.
 **Not yet:** approved CC0 instrument samples in place of the synthesis (the brief's bowed strings, plucked instruments, and hurdy-gurdy), when the owner fetches them; the theme under the title (S06-T13); discovery swells.
 

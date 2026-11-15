@@ -151,6 +151,12 @@ impl Sound {
                     let base = 72 + 2 * tier as u8;
                     cues.push(Cue { kind: CueKind::Motif, pan, gain: gain * 0.6, notes: [base, base + 4, if tier as u8 >= 2 { base + 7 } else { 0 }, if tier as u8 >= 4 { base + 12 } else { 0 }, 0, 0], timbre: Timbre::Celesta, charge: 0.3, ..Default::default() });
                 }
+                Heard::Step { at, surface, soft, .. } => {
+                    // A footstep: the player's own centred, near, and quiet; softer sneaking.
+                    let (pan, gain) = place(at + Vec3::Y * 1.0);
+                    let loud = if soft { 0.12 } else { 0.32 };
+                    cues.push(Cue { kind: CueKind::Step, pan: pan * 0.3, gain: gain * loud, notes: [surface, 0, 0, 0, 0, 0], ..Default::default() });
+                }
                 Heard::Learned { word, .. } => {
                     // The word settles into the hand: a shimmer, then its motif.
                     push(CueKind::Mend, eye, 0.6);

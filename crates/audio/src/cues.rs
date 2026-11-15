@@ -61,6 +61,25 @@ pub enum CueKind {
     /// A thing falling to its letters: a dry crumble. Standing whole: a rising shimmer.
     Break,
     Mend,
+    /// A footstep; its surface is `notes[0]`, as `Surface` numbers it.
+    Step,
+}
+
+/// What a foot comes down on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum Surface {
+    Grass = 0,
+    Field = 1,
+    Gravel = 2,
+    Earth = 3,
+    Mud = 4,
+    Water = 5,
+    Wood = 6,
+}
+
+impl Surface {
+    pub const ALL: [Surface; 7] = [Surface::Grass, Surface::Field, Surface::Gravel, Surface::Earth, Surface::Mud, Surface::Water, Surface::Wood];
 }
 
 /// The sound of a word's class.
@@ -217,7 +236,7 @@ const KINDS: [CueKind; 17] = [
     CueKind::Spill,
     CueKind::Break,
     CueKind::Mend,
-    CueKind::Motif,
+    CueKind::Step,
 ];
 const TIMBRES: [Timbre; 6] = [Timbre::Bell, Timbre::Glass, Timbre::Reed, Timbre::Celesta, Timbre::Swell, Timbre::Metal];
 
@@ -264,6 +283,12 @@ impl Voice {
             CueKind::Spill => 1.2,
             CueKind::Break => 1.1,
             CueKind::Mend => 1.8,
+            CueKind::Step => match cue.notes[0] {
+                4 => 0.35,
+                5 => 0.45,
+                1 => 0.3,
+                _ => 0.22,
+            },
         };
         *self = Voice { cue, t: 0.0, length, rng: Some(Rng::new(seed)), ..Default::default() };
     }
@@ -332,6 +357,29 @@ impl Voice {
                 // Letters falling: a dry crackle that thins.
                 let crackle = if noise.abs() > 0.97 - 0.2 * (-t * 3.0).exp() { noise } else { 0.0 };
                 self.filter.next(crackle, 3500.0, 0.7).high * (-t * 2.5).exp() * 1.5
+            }
+            CueKind::Step => {
+                // A footstep, by what it comes down on.
+                let p = t / self.length;
+                match c.notes[0] {
+                    // Grass: a soft swish over a low press.
+                    0 => self.filter.next(noise, 2800.0, 0.8).band * (-t * 22.0).exp() * 0.5 + self.carrier[0].next(70.0) * (-t * 40.0).exp() * 0.25,
+                    // Barley: a longer, drier rustle.
+                    1 => self.filter.next(noise, 5200.0 - 1500.0 * p, 1.2).band * (p * std::f32::consts::PI).sin() * 0.45,
+                    // Gravel: a crunch of small stones, grainy.
+                    2 => {
+                        let grain = if noise.abs() > 0.82 { noise } else { noise * 0.15 };
+                        self.filter.next(grain, 2400.0, 0.9).band * (-t * 16.0).exp() * 1.1
+                    }
+                    // Earth: a dull thud.
+                    3 => self.filter.next(noise, 380.0, 1.2).low * (-t * 26.0).exp() * 1.2 + self.carrier[0].next(60.0) * (-t * 30.0).exp() * 0.35,
+                    // Mud: a squelch, a resonance sliding down.
+                    4 => self.filter.next(noise, 900.0 - 600.0 * p, 6.0).band * (1.0 - p).powi(2) * 0.8,
+                    // Water: a splash falling away.
+                    5 => self.filter.next(noise, 3200.0 - 2400.0 * p, 1.5).band * (-t * 7.0).exp() * 0.7,
+                    // Planks: a hollow knock.
+                    _ => self.carrier[0].next(190.0) * (-t * 28.0).exp() * 0.6 + self.filter.next(noise, 1100.0, 2.0).band * (-t * 45.0).exp() * 0.6,
+                }
             }
             CueKind::Mend => {
                 // Letters coming home: a shimmer of bells that rises into a chord.
@@ -503,6 +551,24 @@ mod tests {
             assert!(loudest > 0.01 && loudest < 4.0, "{kind:?}: {loudest}");
             assert!(x.iter().all(|s| s.is_finite()));
             assert!(x[x.len() - 2400..].iter().all(|s| s.abs() < 0.05), "{kind:?} rings on");
+        }
+    }
+
+    #[test]
+    fn every_surface_has_a_footstep_of_its_own() {
+        let mut steps: Vec<Vec<f32>> = Vec::new();
+        for surface in Surface::ALL {
+            let x = render(Cue { kind: CueKind::Step, gain: 1.0, notes: [surface as u8, 0, 0, 0, 0, 0], ..Default::default() }, 1.0);
+            let loudest = x.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+            assert!(loudest > 0.01 && loudest < 2.0, "{surface:?}: {loudest}");
+            assert!(x[x.len() - 2400..].iter().all(|s| s.abs() < 0.02), "{surface:?} rings on");
+            steps.push(x);
+        }
+        for i in 0..steps.len() {
+            for j in i + 1..steps.len() {
+                let d: f32 = steps[i].iter().zip(&steps[j]).map(|(a, b)| (a - b).abs()).sum();
+                assert!(d > 1.0, "{:?} and {:?} sound alike", Surface::ALL[i], Surface::ALL[j]);
+            }
         }
     }
 

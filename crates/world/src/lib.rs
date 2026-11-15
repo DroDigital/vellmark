@@ -56,6 +56,15 @@ impl Terrain {
         self.finest_at(x, z).map(|t| t.height_at(x, z))
     }
 
+    /// What the ground is at a point: the nearest sample's.
+    pub fn ground_at(&self, x: f32, z: f32) -> Option<vellmark_content::Ground> {
+        let tile = self.finest_at(x, z)?;
+        let (x0, z0) = tile.coord.origin();
+        let i = (((x - x0) / tile.spacing).round() as usize).min(vellmark_content::TILE_SAMPLES - 1);
+        let j = (((z - z0) / tile.spacing).round() as usize).min(vellmark_content::TILE_SAMPLES - 1);
+        tile.ground.get(TerrainTile::index(i, j)).copied()
+    }
+
     /// The height of the water's surface at a point, if there is water there.
     pub fn water_at(&self, x: f32, z: f32) -> Option<f32> {
         let tile = self.finest_at(x, z)?;
@@ -80,6 +89,10 @@ impl vellmark_sim::Ground for Terrain {
 
     fn water(&self, x: f32, z: f32) -> Option<f32> {
         self.water_at(x, z)
+    }
+
+    fn surface(&self, x: f32, z: f32) -> Option<u8> {
+        self.ground_at(x, z).map(|g| g as u8)
     }
 
     /// The finest level's tiles: the ground a body walks on.

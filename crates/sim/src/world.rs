@@ -73,6 +73,8 @@ struct Player {
     passing: Option<(String, f64, u64)>,
     /// The conversation it is in, if any.
     talking: Option<crate::dialogue::Conversation>,
+    /// Metres walked since the last footstep.
+    stride: f32,
 }
 
 /// The ground as the body asks about it.
@@ -241,7 +243,7 @@ impl World {
     pub fn add_player(&mut self, feet: Vec3, yaw: f32) -> PlayerId {
         let id = PlayerId(self.next_player);
         self.next_player += 1;
-        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default(), read_for: 0.0, learned: None, inventory: Default::default(), passing: None, talking: None });
+        self.players.push(Player { id, body: crate::character::Body::new(feet), yaw, pitch: 0.0, reading: Default::default(), in_focus: None, perception: 0, caster: Default::default(), melee: Default::default(), read_for: 0.0, learned: None, inventory: Default::default(), passing: None, talking: None, stride: 0.0 });
         id
     }
 
@@ -1605,6 +1607,8 @@ impl World {
         self.pace = if self.players.len() == 1 && self.players[0].reading == Reading::Close && self.config_slows { CLOSE_READING_PACE } else { 1.0 };
         let dt = STEP_SECONDS * self.pace;
         let solo = self.players.len() == 1;
+        // Footsteps, heard with the rest of this step's sounds once those are begun.
+        let mut footsteps = Vec::new();
         for (i, p) in self.players.iter_mut().enumerate() {
             let input = if talked[i] { PlayerInput::default() } else { inputs.get(i).copied().unwrap_or_default() };
             p.yaw = (p.yaw + input.look_yaw).rem_euclid(std::f32::consts::TAU);
@@ -1629,7 +1633,36 @@ impl World {
                 input.buttons &= !buttons::SIDESTEP;
             }
             let was = p.body.sidestepping();
+            let before = p.body.feet;
             p.body.step(&input, p.yaw, self.statics.as_deref(), &Around(self.ground.as_deref()), dt);
+            // Footsteps: one each stride on the ground, by what is underfoot.
+            let moved = Vec3::new(p.body.feet.x - before.x, 0.0, p.body.feet.z - before.z).length();
+            if p.body.grounded && !p.body.swimming && moved > 0.0 && moved < 1.0 {
+                p.stride += moved;
+                let stride = if input.held(buttons::SPRINT) { 1.7 } else { 1.3 };
+                if p.stride >= stride {
+                    p.stride = 0.0;
+                    let f = p.body.feet;
+                    let ground = self.ground.as_deref();
+                    let wading = ground.and_then(|g| g.water(f.x, f.z)).is_some_and(|w| w > f.y + 0.03);
+                    let on_built = ground.and_then(|g| g.height(f.x, f.z)).is_some_and(|h| f.y > h + 0.25);
+                    let surface = if wading {
+                        5
+                    } else if on_built {
+                        6
+                    } else {
+                        match ground.and_then(|g| g.surface(f.x, f.z)) {
+                            Some(0) => 0,
+                            Some(1) => 1,
+                            Some(2) => 2,
+                            Some(4) | Some(5) => 4,
+                            Some(_) => 3,
+                            None => 6,
+                        }
+                    };
+                    footsteps.push(crate::snapshot::Heard::Step { player: p.id, at: f, surface, soft: p.body.crouching });
+                }
+            }
             if p.body.sidestepping() && !was {
                 p.melee.spend(crate::melee::SIDESTEP_COST);
             }
@@ -1671,6 +1704,7 @@ impl World {
         self.landings.clear();
         self.hits.clear();
         self.heard.clear();
+        self.heard.append(&mut footsteps);
         let mut hand_events = Vec::new();
         for (i, p) in self.players.iter_mut().enumerate() {
             let mut input = inputs.get(i).copied().unwrap_or_default();

@@ -16,6 +16,11 @@ pub trait Ground: Send + Sync + std::fmt::Debug {
     fn water(&self, _x: f32, _z: f32) -> Option<f32> {
         None
     }
+    /// What the ground is at a point, as the terrain numbers it (grass, field, road,
+    /// earth, bank, bed, forest, Erasure), if there is ground there.
+    fn surface(&self, _x: f32, _z: f32) -> Option<u8> {
+        None
+    }
     /// The ground as squares of heights, for the physics: the finest there is.
     fn patches(&self) -> Vec<character::HeightPatch> {
         Vec::new()

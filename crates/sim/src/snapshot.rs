@@ -242,6 +242,9 @@ pub enum Heard {
     Mend { at: glam::Vec3 },
     /// A player took a word from a Standing Page, by its index in the rules.
     Learned { player: crate::PlayerId, word: usize },
+    /// A footstep: where, on what (`Step`'s surfaces: 0 grass, 1 field, 2 gravel, 3 earth,
+    /// 4 mud, 5 water, 6 planks), and whether softly, sneaking.
+    Step { player: crate::PlayerId, at: glam::Vec3, surface: u8, soft: bool },
     /// An item taken up, by its tier.
     Pickup { at: glam::Vec3, tier: crate::items::Tier },
 }
