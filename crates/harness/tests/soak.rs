@@ -78,6 +78,12 @@ fn soak(minutes: u64) -> Report {
                 heading = home.x.atan2(-home.z);
             }
         }
+        // A creature near: turn on it, and fight.
+        let foe = s.creatures.iter().filter(|c| c.alive()).map(|c| (c.feet.distance(p.feet), c.feet)).filter(|(d, _)| *d < 25.0).min_by(|a, b| a.0.total_cmp(&b.0));
+        if let Some((_, at)) = foe {
+            let to = at - p.feet;
+            heading = to.x.atan2(-to.z);
+        }
         let turn = ((heading - p.yaw + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI).clamp(-0.08, 0.08);
         let r = next();
         let mut held = 0;
@@ -157,6 +163,13 @@ fn soak(minutes: u64) -> Report {
             w.load(&back);
             report.saves += 1;
         }
+        // Every five minutes, to the Inklings' yards off the bridge road, as the scripted
+        // bot is placed at its stations.
+        if report.seconds % 300 == 150 {
+            let at = Vec3::new(62.0, 0.0, -62.0);
+            w.place_player(me, Vec3::new(at.x, terrain.height_at(at.x, at.z).unwrap_or(8.0) + 0.2, at.z), 0.0);
+            window_start = w.snapshot().players[0].feet;
+        }
         // When every creature is down, they come back.
         if s.creatures.iter().all(|c| !c.alive()) {
             w.remove_creatures();
@@ -173,6 +186,7 @@ fn soak(minutes: u64) -> Report {
 fn three_minutes_of_play_break_nothing() {
     let r = soak(3);
     assert!(r.words > 5, "the bot wrote words: {}", r.words);
+    assert!(r.kills > 0, "the bot fought and killed: {}", r.kills);
     assert_eq!(r.saves, 3);
 }
 
