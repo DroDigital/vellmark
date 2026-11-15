@@ -2,6 +2,13 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: the murmur (S06-T15a)
+
+- **Built whatever the owner chooses**: the brief has every line that is not voiced murmured, and the cast file says each preset's murmur uses its pitch, formant, and pacing. The owner's choice decides only whether the opening and the supper are voiced too.
+- **The bases' numbers are read from their descriptions** (The Gravel: an old man's 108 Hz, a larger voice, 3.6 syllables a second, gravel 0.35), since the cast file describes them in words; the presets' offsets are its own, copied as they are.
+- **The murmur follows the line's own letters**, so the same line is murmured the same way each time and a longer line murmurs longer.
+- **The score steps back under speech** to about half, as the cast file's runtime ducking asks.
+
 ## 2026-11-15: Obelus (S04-T14)
 
 - **Its body is the obelus mark (÷)**, a level rule between two dots, built of boxes in a new near-black `ink` material written in rules (`-=_~`), with strokes trailing. It is an object of the valley, parked out of reach and drawn where its Redactor flies. Its form is ours, after its name; the owner judges it at the Look Gate for S04.

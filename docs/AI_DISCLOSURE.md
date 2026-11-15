@@ -56,6 +56,10 @@ is in the repository, and none may enter a pack without passing the AI gate in
 
 ## Voices
 
+Every spoken line is murmured: wordless speech synthesized at run time by code Claude Code
+wrote (`crates/audio/src/murmur.rs`), shaped by the cast file's presets. No voice model is
+used for it.
+
 None. The owner chooses in Phase S06 between generated lines (ElevenLabs, from
 `full-game/docs/voice/voice_lines.tsv`, with the owner's approval for each batch) and
 the synthesized murmur.

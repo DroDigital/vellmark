@@ -24,6 +24,8 @@ pub use records::{TreeRecord, TreeRecords, TREE_RECORDS_KEY};
 pub use readables::{readables_key, targets_key, InscribedThing, InscribedThings, Readable, Readables, WriteCue};
 pub mod loot;
 pub mod dialogue;
+pub mod voices;
+pub use voices::{Voice, VoiceTable, VOICES_KEY};
 pub use dialogue::{Choice, Condition, DialogueTable, Line, Node, Speaker, Talk, DIALOGUE_KEY};
 pub use loot::{LootCanonical, LootMaterial, LootModifier, LootSource, LootTable, LootType, LootWordClause, LOOT_KEY};
 pub use words::{Compound, EffectLook, Outcome, Typo, Word, WordTable, WORDS_KEY};

@@ -332,6 +332,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     if let Some(table) = base.get(vellmark_content::AssetKind::Table, vellmark_content::AssetId::from_key(vellmark_content::WORDS_KEY)).and_then(|b| vellmark_content::WordTable::from_bytes(b).ok()) {
         sound.set_words(&table);
     }
+    if let Some(table) = base.get(AssetKind::Table, AssetId::from_key(vellmark_content::VOICES_KEY)).and_then(|b| vellmark_content::VoiceTable::from_bytes(b).ok()) {
+        sound.set_voices(table);
+    }
+    // The line last murmured, so that each is murmured once as it begins.
+    let mut murmured: Option<(u64, u64)> = None;
     // Letters typed while a word charges, waiting for the next step.
     let mut typing = false;
     let mut typed = String::new();
@@ -717,6 +722,23 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }));
         }
 
+        // The murmur: each line as it begins, in its speaker's voice; hushed when done.
+        match current.players.first().and_then(|p| p.talking.as_ref()) {
+            Some(t) => {
+                if let Some(line) = t.line {
+                    let key = (line, t.since.to_bits());
+                    if murmured != Some(key) && t.choices.is_empty() {
+                        murmured = Some(key);
+                        sound.murmur(&t.by, &strings.text(vellmark_content::StringId(line)));
+                    }
+                }
+            }
+            None if murmured.is_some() => {
+                murmured = None;
+                sound.hush();
+            }
+            None => {}
+        }
         // A conversation: choices are taken with the menu keys; a press on a line still
         // being written writes it out at once.
         if let (Some(t), None) = (current.players.first().and_then(|p| p.talking.as_ref()), &menu) {

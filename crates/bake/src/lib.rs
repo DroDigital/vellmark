@@ -7,6 +7,7 @@ pub mod glyphs;
 pub mod grades;
 pub mod loot;
 pub mod dialogue;
+pub mod voices;
 pub mod manifest;
 pub mod materials;
 pub mod pages;
@@ -118,6 +119,11 @@ pub fn bake(inputs: &BakeInputs) -> Result<BakeOutput, BakeError> {
     let dialogue = dialogue::bake_dialogue(&inputs.assets.join("dialogue"), &table.text)?;
     report.push(format!("{}: {} speakers, {} nodes", vellmark_content::DIALOGUE_KEY, dialogue.speakers.len(), dialogue.speakers.iter().map(|s| s.nodes.len()).sum::<usize>()));
     base.add(AssetKind::Table, AssetId::from_key(vellmark_content::DIALOGUE_KEY), dialogue.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
+
+    // The murmur's voices.
+    let voices = voices::bake_voices(&inputs.assets.join("data/voices.ron"))?;
+    report.push(format!("{}: {} speakers", vellmark_content::VOICES_KEY, voices.speakers.len()));
+    base.add(AssetKind::Table, AssetId::from_key(vellmark_content::VOICES_KEY), voices.to_bytes()).map_err(|e| BakeError(e.to_string()))?;
 
     let atlas = glyphs::bake_atlas(&inputs.third_party, inputs.cache.as_deref())?;
     report.push(format!("{GLYPH_ATLAS_KEY}: {} bytes", atlas.len()));

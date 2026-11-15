@@ -24,6 +24,7 @@ pub struct Sound {
     frame: u64,
     /// Each word's motif and timbre, by its spelling and its typo's.
     motifs: Vec<(String, [u8; MOTIF_NOTES], Timbre)>,
+    voices: vellmark_content::VoiceTable,
 }
 
 impl Sound {
@@ -40,7 +41,7 @@ impl Sound {
         };
         // Where the trees stand, from the scene: their keys say what they are.
         let trees = scene.objects.iter().filter(|o| tree_key(o.mesh)).map(|o| Vec2::new(o.transform[3], o.transform[11])).collect();
-        Self { _out: out, controls, trees, water: 0.0, frame: 0, motifs: Vec::new() }
+        Self { _out: out, controls, trees, water: 0.0, frame: 0, motifs: Vec::new(), voices: Default::default() }
     }
 
     /// Loudness from the settings: the whole mix, the one-shot sounds, and the
@@ -58,6 +59,23 @@ impl Sound {
         let Some(me) = snap.players.first() else { return };
         let near = snap.creatures.iter().any(|c| c.alive() && c.aware && c.feet.distance(me.feet) < 25.0);
         self.controls.danger.set(if near { 1.0 } else { 0.0 });
+    }
+
+    /// The murmur's voices, by speaker.
+    pub fn set_voices(&mut self, table: vellmark_content::VoiceTable) {
+        self.voices = table;
+    }
+
+    /// Murmurs a line in its speaker's voice; one with no voice of its own is given a
+    /// middling one.
+    pub fn murmur(&mut self, speaker: &str, text: &str) {
+        let v = self.voices.voice(speaker).unwrap_or(vellmark_content::Voice { pitch: 150.0, size: 1.0, rate: 4.2, breath: 0.1, gravel: 0.0 });
+        let voice = vellmark_audio::murmur::MurmurVoice { pitch: v.pitch, size: v.size, rate: v.rate, breath: v.breath, gravel: v.gravel };
+        self.controls.murmur.say(text, voice, 0.7);
+    }
+
+    pub fn hush(&mut self) {
+        self.controls.murmur.hush();
     }
 
     /// Learns every word's motif from the table of words.

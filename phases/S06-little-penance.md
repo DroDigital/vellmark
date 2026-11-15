@@ -44,6 +44,8 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
   - [ ] **S06-T13b** The door dive into interiors (**after** S06-T02, the interiors)
 - [x] **S06-T14** [Shell] Compose the Vale's theme from the motifs of its words, and add the generated score that follows the hour and the danger
 - [ ] **S06-T15** [Shell] With the owner's choice recorded, either generate the approved lines for these scenes as one batch or add the murmur for every line
+  - [x] **S06-T15a** The murmur, for every line that is not voiced (the brief's rule whatever the owner chooses)
+  - [ ] **S06-T15b** The owner's choice: voiced scenes as one approved batch, or the murmur alone (**owner**)
 - [ ] **S06-T16** [Sim] Extend the bot to play the whole tour, place the loot, and tune every fight
 - [ ] **S06-T17** [Shell] Add the end card with the owner's links, run the exit gate, and save the evidence
 

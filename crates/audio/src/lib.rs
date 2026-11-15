@@ -9,6 +9,7 @@ pub mod ambience;
 pub mod cues;
 pub mod dsp;
 pub mod score;
+pub mod murmur;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -66,6 +67,8 @@ pub struct Controls {
     /// when it is set.
     pub theme: [std::sync::atomic::AtomicU32; score::THEME_NOTES],
     pub theme_version: std::sync::atomic::AtomicU32,
+    /// The line being murmured.
+    pub murmur: murmur::MurmurSlot,
 }
 
 impl Controls {
@@ -110,11 +113,14 @@ pub struct Mixer {
     cues: cues::Player,
     score: score::Score,
     theme_version: u32,
+    murmur: murmur::Murmur,
+    /// The score's share while someone speaks: it steps back under speech.
+    duck: dsp::Smooth,
 }
 
 impl Mixer {
     pub fn new(controls: Arc<Controls>, seed: u32) -> Self {
-        Self { controls, ambience: Ambience::new(seed), master: dsp::Smooth::new(0.0, 0.05), cues: cues::Player::new(), score: score::Score::new(seed ^ 0x5c0e), theme_version: 0 }
+        Self { controls, ambience: Ambience::new(seed), master: dsp::Smooth::new(0.0, 0.05), cues: cues::Player::new(), score: score::Score::new(seed ^ 0x5c0e), theme_version: 0, murmur: murmur::Murmur::new(seed ^ 0x3f1d), duck: dsp::Smooth::new(1.0, 0.4) }
     }
 
     /// Fills `out` with interleaved stereo frames. Allocates nothing and takes no lock.
@@ -144,11 +150,15 @@ impl Mixer {
             }
             self.score.set_theme_notes(notes);
         }
+        self.murmur.take(&c.murmur);
         for frame in out.chunks_exact_mut(CHANNELS) {
             let (l, r) = self.ambience.next();
             let (l, r) = (l * surroundings, r * surroundings);
             let (ml, mr) = self.score.next(mood);
-            let (l, r) = (l + ml * music, r + mr * music);
+            let duck = self.duck.next(if self.murmur.speaking() { 0.55 } else { 1.0 });
+            let (l, r) = (l + ml * music * duck, r + mr * music * duck);
+            let said = self.murmur.next() * effects;
+            let (l, r) = (l + said, r + said);
             let (el, er) = self.cues.next();
             let (l, r) = (l + el * effects, r + er * effects);
             let m = self.master.next(master_target);

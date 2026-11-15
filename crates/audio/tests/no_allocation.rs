@@ -28,6 +28,8 @@ fn the_mixer_never_allocates() {
     }
     let mut mixer = vellmark_audio::Mixer::new(controls.clone(), 5);
     let mut buffer = vec![0.0f32; 960];
+    // A line being murmured, set on the game's side.
+    controls.murmur.say("Now that is a poor way to start the day.", vellmark_audio::murmur::MurmurVoice { pitch: 108.0, size: 0.94, rate: 3.6, breath: 0.1, gravel: 0.3 }, 0.5);
     let before = ALLOCATIONS.load(Ordering::Relaxed);
     for i in 0..2000 {
         controls.rain.set((i % 7) as f32 / 7.0);

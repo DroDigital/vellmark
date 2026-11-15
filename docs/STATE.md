@@ -106,6 +106,9 @@
 
 ## Lane: Shell
 
+**Done:** S06-T15a, the murmur (`crates/audio/src/murmur.rs`, `assets/data/voices.ron` baked to `voices.table`): every line not voiced is spoken under its text as wordless speech in its speaker's voice, from the cast file's bases and presets (pitch, size, pace, breath, gravel; a crowd voice moved by its own fixed offset). It follows the line itself: a syllable for each vowel, hiss, click, or hum for consonants, pauses at spaces and punctuation, the phrase falling, or rising at a question. The score steps back under it. Evidence: `docs/evidence/S06/murmur.wav` (Wick, Mabel, Tamsin, lines from the script). Tests: `crates/audio/src/murmur.rs`, `crates/audio/tests/no_allocation.rs`.
+**Waiting on the owner:** S06-T15b, whether the opening and supper are voiced (one approved batch through `full-game/tools/generate_voice.py`) or murmured.
+
 **Done:** S07-T07, packaging and licenses: `scripts/package.sh windows|linux` and `scripts/package-macos.sh` build each platform's game with its packs, the typefaces' licenses, and `THIRD_PARTY_NOTICES.txt`, and archive it; CI packages all three on every push (`Package (Linux)`, `Package (Windows)`, `macOS app for the owner`). `PUBLISH=1` builds without the development tools, for a build the owner publishes. The notices are generated from `Cargo.lock` by `cargo run -p vellmark-bake --bin notices`: every crate (212) with its license, and each distinct license and notice text once, SDL's own among them (it is linked statically). The license audit is `cargo deny` in CI. `docs/AI_DISCLOSURE.md` lists every use of AI that reaches players: code, text by file, the composed score, the synthesized sounds, and procedural assets. The Linux package was built and run here.
 **Not yet:** the notices shown in the in-game credits (with the end card, S06-T17).
 
