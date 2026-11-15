@@ -2,6 +2,14 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: photo mode (S07-T03a)
+
+- **Close reading is chosen per pixel**, so the split frame costs nothing over a normal frame: each fragment asks which side of the divider it is on. The divider's angle, place, and switch ride in unused slots of the view's uniform, so no layout changed.
+- **The picture is drawn once more without the panel** into a texture of the display's size and read back; the game uploads nothing.
+- **Photo mode keeps its own keys**: the panel answers only the fixed menu keys (not Space or E, which fly and would toggle), the movement keys fly the camera, and the pack button hides the panel.
+- **Pictures go to `Pictures/Vellmark`** in the user's home unless the settings name another folder (`picture_folder` in `settings.ron`).
+- **Depth of field waits** with the character's poses: neither is needed to show the split frame, and both are judged together on the Mac.
+
 ## 2026-11-15: Pages that write as they are watched (S06-T10b)
 
 - **A Page's entries are its `ENTRY` chunks**, the canon's own form for Standing Pages, so the scene names entries by number and the bake finds where each ends.

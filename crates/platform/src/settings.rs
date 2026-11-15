@@ -95,6 +95,8 @@ pub struct Settings {
     pub reduced_screen_response: bool,
     /// Flashes of light are dimmer and slower, and fire does not flicker.
     pub fewer_flashes: bool,
+    /// Where photo mode saves its pictures; none for the user's pictures folder.
+    pub picture_folder: Option<String>,
 }
 
 impl Default for Settings {
@@ -110,6 +112,7 @@ impl Default for Settings {
             reduced_motion: false,
             reduced_screen_response: false,
             fewer_flashes: false,
+            picture_folder: None,
         }
     }
 }

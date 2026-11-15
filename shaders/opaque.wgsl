@@ -380,6 +380,7 @@ fn rain_rings(p: vec2<f32>, rain: f32) -> vec2<f32> {
 
 @fragment
 fn fs(in: Varyings) -> @location(0) vec4<f32> {
+    reading_here = reading_at(in.position.xy);
     return shade_mesh(in);
 }
 
@@ -475,6 +476,7 @@ struct TreeOut {
 // and tangent turn with it.
 @fragment
 fn fs_tree(seen: Varyings, @builtin(front_facing) front: bool) -> TreeOut {
+    reading_here = reading_at(seen.position.xy);
     let mask = tree_samples(seen);
     if mask == 0u {
         discard;
@@ -560,7 +562,7 @@ fn shade_mesh(in: Varyings) -> vec4<f32> {
     let t = normalize(in.tangent.xyz - n * dot(n, in.tangent.xyz));
     let b = cross(n, t) * in.tangent.w;
     let map_normal = vec2<f32>(normal_texel.x, normal_texel.y) * 2.0 - 1.0;
-    let reading = view.switches.y;
+    let reading = reading_here;
 
     // In close reading the light is needed first, because it becomes the ink's weight.
     var light = 0.0;
@@ -683,6 +685,7 @@ fn vs_letter(in: LetterInput) -> LetterVaryings {
 
 @fragment
 fn fs_letter(in: LetterVaryings) -> @location(0) vec4<f32> {
+    reading_here = reading_at(in.position.xy);
     // How tall the letter is on screen, in pixels.
     let du = dpdx(in.uv);
     let dv = dpdy(in.uv);
@@ -735,6 +738,7 @@ fn vs_sky(@builtin(vertex_index) index: u32) -> SkyVaryings {
 
 @fragment
 fn fs_sky(in: SkyVaryings) -> @location(0) vec4<f32> {
+    reading_here = reading_at(in.position.xy);
     let far = view.inv_view_proj * vec4<f32>(in.ndc, 0.5, 1.0);
     let dir = normalize(far.xyz / far.w - view.eye_time.xyz);
     if view.viewport.w > 0.5 {
@@ -774,10 +778,10 @@ fn fs_sky(in: SkyVaryings) -> @location(0) vec4<f32> {
     // The mist in front of the sky: the god rays of a low sun are seen against it.
     let mist = mist_between(FOG_FAR, in.position.xy - view.viewport_origin.xy);
     colour = colour * mist.a + mist.rgb;
-    if view.switches.y > 0.0 {
+    if reading_here > 0.0 {
         // In close reading the sky is bare paper, a little darker towards the zenith.
         let paper = vec3<f32>(0.50, 0.46, 0.37) * (1.0 - 0.25 * clamp(dir.y, 0.0, 1.0)) / view.viewport.z;
-        colour = mix(colour, paper, view.switches.y);
+        colour = mix(colour, paper, reading_here);
     }
     return vec4<f32>(colour, 0.0);
 }
@@ -850,6 +854,7 @@ fn fs_terrain_depth(in: TerrainVaryings) {
 
 @fragment
 fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
+    reading_here = reading_at(in.position.xy);
     let t = terrain.tiles[in.tile * 2u];
     let layer = i32(t.w);
     let n = normalize(in.normal);
@@ -1015,9 +1020,9 @@ fn fs_terrain(in: TerrainVaryings) -> @location(0) vec4<f32> {
         colour = glyph_depth(colour, anchor, footprint, in_frame, world, -to_eye, length(view.eye_time.xyz - in.world), material, 0u, 1.2, glyphs.ink, look, win);
     }
     colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
-    if view.switches.y > 0.0 {
+    if reading_here > 0.0 {
         let text = mix(paper_of(colour_texel.rgb), ink_of(colour_texel.rgb), glyphs.ink) / view.viewport.z;
-        colour = mix(colour, text, view.switches.y);
+        colour = mix(colour, text, reading_here);
     }
     // Never hand the bloom chain a NaN: one would spread through it into a block.
     colour = select(colour, vec3<f32>(0.0), colour != colour);
@@ -1357,6 +1362,7 @@ fn fs_grass_depth(in: GrassVaryings, @builtin(front_facing) front: bool) {
 
 @fragment
 fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+    reading_here = reading_at(in.position.xy);
     let letters = blade_letters(in, front);
     if view.viewport.w > 0.5 {
         return vec4<f32>(vec3<f32>(letters.revealed * 100.0), 1.0);
@@ -1406,9 +1412,9 @@ fn fs_grass(in: GrassVaryings, @builtin(front_facing) front: bool) -> @location(
     let through = mix(0.12, max(dot(-n, l), 0.0) * 0.3, in.seen) + pow(max(dot(-to_eye, l), 0.0), 6.0) * 0.8;
     colour += albedo * letters.tone * view.light_colour.rgb * sun_shadow(shadow_at, n, depth_in_view) * through;
     colour = through_air(colour, in.world, in.position.xy - view.viewport_origin.xy);
-    if view.switches.y > 0.0 {
+    if reading_here > 0.0 {
         let text = mix(paper_of(texel.rgb), ink_of(texel.rgb), letters.ink) / view.viewport.z;
-        colour = mix(colour, text, view.switches.y);
+        colour = mix(colour, text, reading_here);
     }
     colour = select(colour, vec3<f32>(0.0), colour != colour);
     return vec4<f32>(colour, letters.revealed);
@@ -1555,6 +1561,7 @@ fn reflected_scene(start: vec3<f32>, dir: vec3<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_water(in: WaterVaryings) -> @location(0) vec4<f32> {
+    reading_here = reading_at(in.position.xy);
     // Footprints first, while every pixel of the quad is still here.
     let dwx = dpdx(in.world);
     let dwy = dpdy(in.world);
@@ -1690,9 +1697,9 @@ fn fs_water(in: WaterVaryings) -> @location(0) vec4<f32> {
     // At the very edge, the water thins to nothing over the bank.
     colour = mix(under, colour, smoothstep(0.0, 0.03, deep));
     colour = through_air(colour, in.world, pixel - view.viewport_origin.xy);
-    if view.switches.y > 0.0 {
+    if reading_here > 0.0 {
         let text = mix(paper_of(tint), ink_of(tint), glyphs.ink) / view.viewport.z;
-        colour = mix(colour, text, view.switches.y);
+        colour = mix(colour, text, reading_here);
     }
     colour = select(colour, vec3<f32>(0.0), colour != colour);
     return vec4<f32>(colour, glyphs.revealed);

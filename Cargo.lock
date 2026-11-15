@@ -1632,6 +1632,7 @@ version = "0.1.0"
 dependencies = [
  "glam 0.34.3",
  "notify",
+ "png",
  "vellmark-audio",
  "vellmark-bake",
  "vellmark-content",
@@ -1738,6 +1739,7 @@ version = "0.1.0"
 name = "vellmark-ui"
 version = "0.1.0"
 dependencies = [
+ "glam 0.34.3",
  "vellmark-content",
  "vellmark-platform",
  "vellmark-sim",

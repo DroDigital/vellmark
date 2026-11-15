@@ -13,6 +13,7 @@ pub mod menu;
 pub mod pages;
 pub mod dialogue_view;
 pub mod title;
+pub mod photo;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 

@@ -50,7 +50,9 @@ impl MenuInput {
     /// From this frame's raw input and the movement axes: arrows, WASD, Enter, Space, and
     /// Escape on a keyboard; the pad's D-pad, its left stick, South to confirm, and East
     /// to go back.
-    pub fn read(raw: &[RawInput], actions: &ActionState, repeat: &mut MenuRepeat, dt: f32) -> Self {
+    /// From the fixed keys and buttons alone, without the movement axes: for photo mode,
+    /// where those fly the camera.
+    pub fn from_keys(raw: &[RawInput]) -> Self {
         let mut m = MenuInput::default();
         for r in raw {
             match *r {
@@ -75,6 +77,11 @@ impl MenuInput {
                 _ => {}
             }
         }
+        m
+    }
+
+    pub fn read(raw: &[RawInput], actions: &ActionState, repeat: &mut MenuRepeat, dt: f32) -> Self {
+        let mut m = Self::from_keys(raw);
         let (x, y) = actions.movement();
         let v = repeat.vertical.step(y, dt);
         let a = -repeat.across.step(x, dt);
@@ -132,11 +139,23 @@ impl MenuView<'_> {
         let title = Shown::from_table(self.strings, title);
         let tw = Canvas::measure(self.atlas, &heading, &title);
         canvas.text(self.atlas, panel[0] + (panel[2] - tw) * 0.5, panel[1] + pad + 20.0 * d, &heading, &title);
+        self.rows_in(canvas, list, entries, focus, ROW);
+        if let Some(hint) = hint {
+            let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: kit::FAINT };
+            let hw = Canvas::measure(self.atlas, &small, &hint);
+            canvas.text(self.atlas, panel[0] + (panel[2] - hw) * 0.5, panel[1] + panel[3] - pad, &small, &hint);
+        }
+    }
+
+    /// A page's rows, labels with their values right-aligned, in `list`, set at `row`
+    /// pixels before the interface's density.
+    pub fn rows_in(&self, canvas: &mut Canvas, list: [f32; 4], entries: &[Entry], focus: Focus, row: f32) {
+        let d = self.density.max(1.0);
         let values: Vec<Shown<'_>> = entries.iter().map(|e| self.value(&e.value)).collect();
         let rows: Vec<kit::Row<'_>> = entries.iter().map(|e| kit::Row { text: Shown::from_table(self.strings, e.label), marked: false, colour: kit::INK }).collect();
-        kit::list(canvas, self.atlas, self.strings, list, d, &rows, focus, ROW);
+        kit::list(canvas, self.atlas, self.strings, list, d, &rows, focus, row);
         // Each value, right-aligned on its row.
-        let style = TextStyle { face: Face::Large, size: (ROW * d).round(), colour: kit::INK };
+        let style = TextStyle { face: Face::Large, size: (row * d).round(), colour: kit::INK };
         let line = Canvas::line_height(self.atlas, &style) * 1.15;
         let shown = ((list[3] / line).floor() as usize).max(1);
         for (k, value) in values.iter().enumerate().skip(focus.scroll).take(shown) {
@@ -144,11 +163,6 @@ impl MenuView<'_> {
             let colour = if k == focus.at { kit::GOLD } else { kit::INK };
             let vw = Canvas::measure(self.atlas, &style, value);
             canvas.text(self.atlas, list[0] + list[2] - vw, top, &TextStyle { colour, ..style }, value);
-        }
-        if let Some(hint) = hint {
-            let small = TextStyle { face: Face::Small, size: (15.0 * d).round(), colour: kit::FAINT };
-            let hw = Canvas::measure(self.atlas, &small, &hint);
-            canvas.text(self.atlas, panel[0] + (panel[2] - hw) * 0.5, panel[1] + panel[3] - pad, &small, &hint);
         }
     }
 

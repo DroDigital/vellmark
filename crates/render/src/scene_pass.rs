@@ -138,6 +138,11 @@ pub struct ScenePass {
     frame_count: u64,
     /// What the preset asks of the frame.
     pub quality: crate::Quality,
+    /// Photo mode's split frame: the divider's angle in radians and how far it sits from
+    /// the middle of the view, in pixels. Text on its positive side.
+    pub split: Option<(f32, f32)>,
+    /// Photo mode's exposure, as a multiple of the hour's own.
+    pub exposure_scale: f32,
 }
 
 /// A gust that writes one of the wind's sentences across the grass: which, where its
@@ -578,6 +583,8 @@ impl ScenePass {
             shadows_drawn: (0, 0),
             frame_count: 0,
             quality: crate::Quality::default(),
+            split: None,
+            exposure_scale: 1.0,
         })
     }
 
@@ -1444,7 +1451,8 @@ impl ScenePass {
         let mut atmosphere = Atmosphere::at(frame.time_of_day);
         let air = self.grade.at(frame.time_of_day);
         atmosphere.fog = [air.fog_density, air.fog_floor, air.fog_falloff];
-        let atmosphere = atmosphere.with_rain(frame.weather.rain).with_fog(frame.weather.fog);
+        let mut atmosphere = atmosphere.with_rain(frame.weather.rain).with_fog(frame.weather.fog);
+        atmosphere.exposure *= self.exposure_scale;
         let views = &frame.views[..frame.views.len().min(MAX_VIEWS)];
         let letter_count = frame.letters.len().min(vellmark_sim::debris::MAX_LETTERS);
         if self.letters_sent != Some((frame.letters_step, letter_count)) {
@@ -1619,6 +1627,11 @@ impl ScenePass {
                 &cascades,
             );
             let mut uniform = uniform;
+            if let Some((angle, offset)) = self.split {
+                uniform.viewport_origin[2] = angle;
+                uniform.viewport_origin[3] = 1.0;
+                uniform.effects[3] = offset;
+            }
             let w = &frame.weather;
             uniform.weather = [w.rain, w.wetness, w.wind_strength, 0.0];
             let r = &frame.relief;

@@ -366,6 +366,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut say: u8 = 0;
     let mut hurried: Option<u64> = None;
     let mut hold_interact = false;
+    // Photo mode, while open, and how long its "Picture saved." has left to show.
+    let mut photo: Option<vellmark_ui::photo::Photo> = None;
+    let mut photo_note = 0.0f32;
+    let mut take_picture = false;
     renderer.set_fewer_flashes(settings.fewer_flashes);
     sound.set_volumes(settings.master_volume, settings.effects_volume, settings.ambience_volume, settings.music_volume);
 
@@ -407,16 +411,45 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
         // While a menu is open, it has the input.
-        if title.is_some() {
+        if title.is_some() || photo.is_some() {
         } else if menu.is_some() {
         } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
             pack = None;
         } else if actions.pressed(Action::Inventory) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None && p.talking.is_none()) {
             pack = Some(Default::default());
             pack_nav = Default::default();
+        } else if actions.pressed(Action::PhotoMode) && current.players.first().is_some_and(|p| p.talking.is_none()) {
+            if let Some(p) = current.players.first() {
+                photo = Some(vellmark_ui::photo::Photo::open(p.yaw, p.pitch));
+            }
         } else if actions.pressed(Action::Pause) && menu.is_none() {
             menu = Some(vellmark_ui::pages::Menu::open());
             menu_opened = true;
+        }
+        // Photo mode: the panel by its fixed keys, the camera by the movement and look.
+        if let (Some(ph), Some(view)) = (photo.as_mut(), current.views.first()) {
+            let keys: Vec<RawInput> = raw.iter().filter(|r| !matches!(r, RawInput::Key { key: vellmark_platform::Key::Space | vellmark_platform::Key::E, .. })).copied().collect();
+            if actions.pressed(Action::Inventory) {
+                ph.panel = !ph.panel;
+            }
+            match ph.update(vellmark_ui::menu::MenuInput::from_keys(&keys)) {
+                vellmark_ui::photo::PhotoOutcome::None => {}
+                vellmark_ui::photo::PhotoOutcome::Save => take_picture = true,
+                vellmark_ui::photo::PhotoOutcome::Leave => {
+                    photo = None;
+                    renderer.set_split(None);
+                    renderer.set_exposure_scale(1.0);
+                }
+            }
+            if let Some(ph) = photo.as_mut() {
+                let (x, z) = actions.movement();
+                let rise = actions.held(Action::Jump) as i32 as f32 - actions.held(Action::Sneak) as i32 as f32;
+                let eye = view.eye;
+                let ground = terrain.clone();
+                ph.fly(Vec3::new(x, rise, z), actions.look(&bindings, frame_time.as_secs_f32()), frame_time.as_secs_f32(), &|at| {
+                    ground.as_ref().and_then(|t| t.height_at(eye.x + at.x, eye.z + at.z)).map_or(f32::MIN, |g| g - eye.y)
+                });
+            }
         }
         let mut settings_changed = false;
         if let (Some(m), false) = (menu.as_mut(), menu_opened) {
@@ -435,6 +468,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 Outcome::Resume => menu = None,
                 Outcome::Changed => settings_changed = true,
                 Outcome::Quit => break 'frames,
+                Outcome::Photo => {
+                    menu = None;
+                    if let Some(p) = current.players.first() {
+                        photo = Some(vellmark_ui::photo::Photo::open(p.yaw, p.pitch));
+                    }
+                }
                 Outcome::Save => match crate::paths::write_atomically(&save_path, &world.save().to_bytes()) {
                     Ok(()) => {
                         log::line("the game is saved");
@@ -455,11 +494,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
         // The mouse is free while a menu is open, and taken again when it closes.
-        if menu.is_some() && mouse_captured {
+        if menu.is_some() && photo.is_none() && mouse_captured {
             mouse_captured = false;
             platform.capture_mouse(&window, false);
         }
-        if menu.is_none() && title.is_none() && !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0 || menu_was_open || title_was_up) {
+        if (menu.is_none() || photo.is_some()) && title.is_none() && !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0 || menu_was_open || title_was_up) {
             mouse_captured = true;
             platform.capture_mouse(&window, true);
         }
@@ -684,7 +723,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
 
         // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
         // play the world holds still while the pack or a menu is open.
-        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() { 0 } else { frame_time.as_nanos() as u64 });
+        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             if step == 0 {
@@ -739,6 +778,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             camera.rotation = camera.rotation * glam::Quat::from_euler(glam::EulerRot::YXZ, (t * 91.0).sin() * jolt, (t * 73.0).sin() * jolt - jolt, 0.0);
             kick = (kick - frame_time.as_secs_f32() * 10.0).max(0.0);
         }
+        // In photo mode, its own camera, near the player's eye; its split, exposure, and lens.
+        if let (Some(ph), Some(view)) = (&photo, current.views.first()) {
+            camera = Camera { eye: view.eye + ph.offset, rotation: ph.rotation(), fov_y: ph.fov.to_radians(), near: Camera::DEFAULT_NEAR };
+            renderer.set_split(ph.split(screen.size()));
+            renderer.set_exposure_scale(2f32.powf(ph.stops));
+        }
         // Under the title, the camera follows its path, at the path's hour.
         if let (Some(t), Some(path)) = (&title, &title_path) {
             if let Some(key) = path.at(t.seconds()) {
@@ -751,13 +796,22 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         // none under the title.
         if let Some(player) = current.players.first() {
             for (key, place) in view_model.place(player, camera.eye, camera.rotation, &current.arrows, started.elapsed().as_secs_f32(), frame_time.as_secs_f32()) {
-                renderer.scene_mut().place_kit(key, if title.is_some() { None } else { place });
+                let hidden = title.is_some() || photo.as_ref().is_some_and(|p| !p.hands);
+                renderer.scene_mut().place_kit(key, if hidden { None } else { place });
             }
         }
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
-        if let Some(t) = &title {
+        if let Some(ph) = &photo {
+            let density = window.pixel_density() * settings.interface_scale();
+            let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
+            let hint = vellmark_platform::prompts::prompt_key(Action::Inventory, actions.last_device, style, &bindings)
+                .map(|k| vellmark_ui::Shown::filled(&strings, sid!("ui.photo.hint"), &[("hide", vellmark_ui::Part::Shown(vellmark_ui::Shown::from_table(&strings, vellmark_content::StringId::from_key(&k))))]));
+            let note = if photo_note > 0.0 { Some(vellmark_ui::Shown::from_table(&strings, sid!("ui.photo.saved"))) } else { hint };
+            ph.draw(&mut canvas, &assets.glyphs, &strings, screen.size(), density, note);
+            photo_note = (photo_note - frame_time.as_secs_f32()).max(0.0);
+        } else if let Some(t) = &title {
             t.draw(&mut canvas, &assets.glyphs, &strings, screen.size(), window.pixel_density() * settings.interface_scale());
         } else if let Some(player) = current.players.first() {
             let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
@@ -861,7 +915,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 time_of_day: hour,
                 seconds: started.elapsed().as_secs_f32(),
                 glyph_layer,
-                close_reading: close_reading * close_reading * (3.0 - 2.0 * close_reading),
+                close_reading: if photo.as_ref().is_some_and(|p| p.view == vellmark_ui::photo::View::Text) { 1.0 } else { close_reading * close_reading * (3.0 - 2.0 * close_reading) },
                 dive: 0.0,
                 lamps,
                 tuning,
@@ -881,6 +935,17 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let mut encoder = gpu.device.create_command_encoder(&Default::default());
             timers.begin_frame();
             renderer.render(&gpu, &mut encoder, &target, screen.size(), &input, &mut timers);
+            // The picture: the same frame without the panel, saved before this one shows.
+            if std::mem::take(&mut take_picture) {
+                let folder = settings.picture_folder.as_ref().map(std::path::PathBuf::from).unwrap_or_else(crate::picture::default_folder);
+                match crate::picture::save(&gpu, &mut renderer, &input, screen.size(), &folder) {
+                    Ok(path) => {
+                        log::line(&format!("picture saved: {}", path.display()));
+                        photo_note = 2.5;
+                    }
+                    Err(e) => log::line(&format!("the picture could not be saved: {e}")),
+                }
+            }
             timers.end_frame(&gpu, &mut encoder);
             gpu.queue.submit([encoder.finish()]);
             timers.after_submit();

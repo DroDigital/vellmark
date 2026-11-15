@@ -27,6 +27,8 @@ pub enum Outcome {
     Save,
     Load,
     Quit,
+    /// Photo mode, from the pause menu.
+    Photo,
     /// The settings changed: apply them and write them.
     Changed,
 }
@@ -108,6 +110,7 @@ impl Menu {
             Page::Pause => vec![
                 e(sid!("ui.menu.resume"), Value::Button),
                 e(sid!("ui.menu.settings"), Value::Button),
+                e(sid!("ui.menu.photo"), Value::Button),
                 e(sid!("ui.menu.save"), Value::Button),
                 e(sid!("ui.menu.load"), Value::Button),
                 e(sid!("ui.menu.quit"), Value::Button),
@@ -221,8 +224,9 @@ impl Menu {
                         open(&mut self.stack, Page::Settings);
                         Outcome::None
                     }
-                    2 => Outcome::Save,
-                    3 => Outcome::Load,
+                    2 => Outcome::Photo,
+                    3 => Outcome::Save,
+                    4 => Outcome::Load,
                     _ => Outcome::Quit,
                 };
             }

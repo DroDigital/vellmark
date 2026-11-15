@@ -470,6 +470,17 @@ impl Renderer {
         self.magic.observe(snapshot, seconds);
     }
 
+    /// Photo mode's split frame: realistic on one side of a divider and text on the other.
+    /// `angle` turns the divider, in radians; `offset` moves it from the middle, in pixels.
+    pub fn set_split(&mut self, split: Option<(f32, f32)>) {
+        self.world.split = split;
+    }
+
+    /// Photo mode's exposure, as a multiple of the hour's own: 1 is as the eye sees it.
+    pub fn set_exposure_scale(&mut self, scale: f32) {
+        self.world.exposure_scale = scale.clamp(0.125, 8.0);
+    }
+
     /// Fewer flashes of light, for players sensitive to them.
     pub fn set_fewer_flashes(&mut self, on: bool) {
         self.magic.fewer_flashes = on;

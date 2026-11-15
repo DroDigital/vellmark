@@ -209,6 +209,23 @@ const BOTTOM_LEVEL_DIVE: i32 = -4;
 // written. Set by the caller before `glyph_surface`; 0 everywhere else.
 var<private> wave_reveal: f32 = 0.0;
 
+// Close reading at this pixel, set by each fragment entry before anything else: the
+// whole view's, or in photo mode's split frame, text on one side of a divider and the
+// realistic frame on the other.
+var<private> reading_here: f32 = 0.0;
+
+// The divider: `viewport_origin.z` its angle, `viewport_origin.w` 1 while it is on, and
+// `effects.w` how far it sits from the middle of the view, in pixels.
+fn reading_at(p: vec2<f32>) -> f32 {
+    if view.viewport_origin.w < 0.5 {
+        return view.switches.y;
+    }
+    let local = p - view.viewport_origin.xy - view.viewport.xy * 0.5;
+    let a = view.viewport_origin.z;
+    let d = dot(local, vec2<f32>(cos(a), sin(a))) - view.effects.w;
+    return smoothstep(-0.75, 0.75, d);
+}
+
 fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, page: u32, albedo: vec3<f32>, light: f32, heat: f32) -> GlyphResult {
     var result = GlyphResult(1.0, vec2<f32>(0.0), 0.0, 0.0);
     let m = materials.entries[material];
@@ -220,7 +237,7 @@ fn glyph_surface(anchor: vec2<f32>, footprint: AnchorFootprint, material: u32, p
     if squeeze <= 0.0 {
         return result;
     }
-    let reading = view.switches.y;
+    let reading = reading_here;
     let dive = view.effects.x;
     let h0 = CELL_0 / squeeze * view.switches.w;
 

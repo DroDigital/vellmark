@@ -90,4 +90,22 @@
     // The title sequence.
     "title.name": "VELLMARK",
     "title.press": "Press any button.",
+    // Photo mode.
+    "ui.photo.title": "Photo mode",
+    "ui.photo.view": "View",
+    "ui.photo.view.real": "As seen",
+    "ui.photo.view.text": "Text",
+    "ui.photo.view.split": "Split",
+    "ui.photo.fov": "Field of view",
+    "ui.photo.tilt": "Tilt",
+    "ui.photo.exposure": "Exposure",
+    "ui.photo.divider_turn": "Divider turn",
+    "ui.photo.divider_place": "Divider place",
+    "ui.photo.hands": "Hands",
+    "ui.photo.save": "Save picture",
+    "ui.photo.leave": "Leave photo mode",
+    "ui.photo.divider_mark": "|",
+    "ui.photo.hint": "{hide} Hide panel",
+    "ui.photo.saved": "Picture saved.",
+    "ui.menu.photo": "Photo mode",
 }
