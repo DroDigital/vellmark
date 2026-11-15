@@ -21,6 +21,8 @@ pub struct Args {
     pub preset: Option<String>,
     /// Start from the saved game.
     pub continue_game: bool,
+    /// Start without the title sequence.
+    pub no_title: bool,
 }
 
 impl Args {
@@ -32,6 +34,7 @@ impl Args {
             match arg.as_str() {
                 "--software" => args.software = true,
                 "--continue" => args.continue_game = true,
+                "--no-title" => args.no_title = true,
                 "--fullscreen" => args.fullscreen = true,
                 "--size" => {
                     let v = value("--size")?;

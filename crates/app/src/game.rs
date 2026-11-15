@@ -294,6 +294,23 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     // A gust a tool asked for: which sentence, and when it began, in seconds since start.
     #[allow(unused_mut)]
     let mut forced_gust: Option<(u32, f32)> = None;
+    // The title sequence, where the scene has a camera path for it: the world holds still
+    // and the camera follows the path until a button is pressed with the title up.
+    let title_path = base.get(AssetKind::CameraPath, AssetId::from_key(&format!("path.title_{}", scene_key.trim_start_matches("scene.")))).and_then(|b| CameraPath::from_bytes(b).ok());
+    let mut title = match &title_path {
+        Some(path) if !args.no_title && perf.is_none() && args.frames.is_none() => {
+            // The game begins at the hour the title leaves off, unless a save says otherwise.
+            if !args.continue_game {
+                if let Some(last) = path.keys.last() {
+                    world.set_time_of_day(last.hour);
+                    previous = world.snapshot();
+                    current = previous.clone();
+                }
+            }
+            Some(vellmark_ui::title::Title::new(&assets.glyphs, &strings, settings.reduced_motion))
+        }
+        _ => None,
+    };
     let mut canvas = Canvas::new();
     let mut close_reading = 0.0f32;
     let mut lamps_lit = true;
@@ -373,9 +390,21 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
         let menu_was_open = menu.is_some();
+        let title_was_up = title.is_some();
         let mut menu_opened = false;
+        // The title: any button hurries it, or once it is up, begins the game.
+        if let Some(t) = title.as_mut() {
+            if raw.iter().any(|r| matches!(r, RawInput::Key { down: true, .. } | RawInput::MouseButton { down: true, .. } | RawInput::PadButton { down: true, .. })) {
+                t.press();
+            }
+            if t.update(frame_time.as_secs_f32()) == vellmark_ui::title::TitleState::Done {
+                title = None;
+                log::line("the title is over");
+            }
+        }
         // While a menu is open, it has the input.
-        if menu.is_some() {
+        if title.is_some() {
+        } else if menu.is_some() {
         } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
             pack = None;
         } else if actions.pressed(Action::Inventory) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None && p.talking.is_none()) {
@@ -426,7 +455,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             mouse_captured = false;
             platform.capture_mouse(&window, false);
         }
-        if menu.is_none() && !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0 || menu_was_open) {
+        if menu.is_none() && title.is_none() && !mouse_captured && perf.is_none() && (actions.pressed(Action::MainHand) || frame_index == 0 || menu_was_open || title_was_up) {
             mouse_captured = true;
             platform.capture_mouse(&window, true);
         }
@@ -651,7 +680,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
 
         // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
         // play the world holds still while the pack or a menu is open.
-        let plan = clock.advance(if pack.is_some() || menu.is_some() { 0 } else { frame_time.as_nanos() as u64 });
+        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             if step == 0 {
@@ -698,17 +727,27 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             camera.rotation = camera.rotation * glam::Quat::from_euler(glam::EulerRot::YXZ, (t * 91.0).sin() * jolt, (t * 73.0).sin() * jolt - jolt, 0.0);
             kick = (kick - frame_time.as_secs_f32() * 10.0).max(0.0);
         }
+        // Under the title, the camera follows its path, at the path's hour.
+        if let (Some(t), Some(path)) = (&title, &title_path) {
+            if let Some(key) = path.at(t.seconds()) {
+                camera = Camera::looking(key.eye.into(), key.yaw, key.pitch);
+                hour = key.hour;
+            }
+        }
         view_model.still = settings.reduced_motion;
-        // The hands and what they hold, placed for this frame from the first player's view.
+        // The hands and what they hold, placed for this frame from the first player's view;
+        // none under the title.
         if let Some(player) = current.players.first() {
             for (key, place) in view_model.place(player, camera.eye, camera.rotation, &current.arrows, started.elapsed().as_secs_f32(), frame_time.as_secs_f32()) {
-                renderer.scene_mut().place_kit(key, place);
+                renderer.scene_mut().place_kit(key, if title.is_some() { None } else { place });
             }
         }
         #[cfg(feature = "dev")]
         dev_tools.override_camera(&mut camera, &actions, &bindings, frame_time.as_secs_f32());
         canvas.clear();
-        if let Some(player) = current.players.first() {
+        if let Some(t) = &title {
+            t.draw(&mut canvas, &assets.glyphs, &strings, screen.size(), window.pixel_density() * settings.interface_scale());
+        } else if let Some(player) = current.players.first() {
             let style = actions.pad.map_or(Default::default(), |p| platform.pad_style(p));
             vellmark_ui::reading_view::ReadingView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
                 .draw(&mut canvas, player, &actions, &bindings, style);

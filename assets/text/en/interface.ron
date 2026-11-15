@@ -87,4 +87,7 @@
     "ui.talk.offer": "{key} Talk to {name}",
     "ui.talk.continue": "{key} Continue",
     "ui.talk.choose": "{key} Choose",
+    // The title sequence.
+    "title.name": "VELLMARK",
+    "title.press": "Press any button.",
 }

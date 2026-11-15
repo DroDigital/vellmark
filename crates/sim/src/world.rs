@@ -810,6 +810,11 @@ impl World {
         self.rebuild_statics();
     }
 
+    /// Sets the hour, as the title does when it leaves the player at dawn.
+    pub fn set_time_of_day(&mut self, hour: f32) {
+        self.time_of_day = hour.rem_euclid(24.0);
+    }
+
     /// The dialogue table: who says what.
     pub fn set_dialogue(&mut self, table: vellmark_content::DialogueTable) {
         self.dialogue = Some(Arc::new(table));

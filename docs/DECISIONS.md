@@ -2,6 +2,14 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: the title sequence (S06-T13a)
+
+- **Drawn on the interface's canvas, over the world.** The dive is quads of the atlas's own glyphs, placed where each letter above them has ink; the world behind is the real valley from a camera path, revealed as the black thins. No video, as the brief asks of cinematics.
+- **The letters are the title's own.** The enormous character is the `V` of VELLMARK, and every level is written in VELLMARK's letters.
+- **160 letters across the enormous one, then 32 across each below**, so that a stroke is several letters thick at every level and reads as letters made of letters.
+- **The game begins where the title leaves off**: its path ends at the player's eye on Tithe Hill at dawn, and the world's clock starts at that hour (a save's hour wins).
+- **Smoke from the village** is not built yet, so the title gathers from letters rising out of the valley below the frame.
+
 ## 2026-11-14: the score (S06-T14)
 
 - **The theme is OPEN, WHOLE, LIT, CALM**, in that order, because it then begins and ends on D, the mode's home. It is read from the word sheets, so it follows any change to a motif.

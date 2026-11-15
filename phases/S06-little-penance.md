@@ -37,6 +37,8 @@ Do the tasks of one lane in order, following the task loop in `CLAUDE.md`. Lanes
 - [ ] **S06-T11** [Sim] Build the supper with the Oakes and Tamsin's stones from the script as written, including reading her sleeve
 - [ ] **S06-T12** [Sim] Build the Line as a set piece: Obelus down the road, the struck hedge, milestone, and village edge, and the player getting clear
 - [ ] **S06-T13** [Render] Build the title sequence as a dive through letters into the valley, and the door dive for entering interiors
+  - [x] **S06-T13a** The title sequence: the dive, the ink thinning to dawn, the letters parting round the valley, the title, and the plain fade with reduced motion
+  - [ ] **S06-T13b** The door dive into interiors (**after** S06-T02, the interiors)
 - [x] **S06-T14** [Shell] Compose the Vale's theme from the motifs of its words, and add the generated score that follows the hour and the danger
 - [ ] **S06-T15** [Shell] With the owner's choice recorded, either generate the approved lines for these scenes as one batch or add the murmur for every line
 - [ ] **S06-T16** [Sim] Extend the bot to play the whole tour, place the loot, and tune every fight
