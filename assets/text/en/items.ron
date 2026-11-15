@@ -83,4 +83,5 @@
     "item.stat.armour": "Armour {n}",
     "item.stat.weight": "Weight {n}",
     "item.stat.value": "Worth {n} Marks",
+    "item.stat.kills": "Slain {n}",
 }

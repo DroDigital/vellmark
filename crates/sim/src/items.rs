@@ -74,6 +74,9 @@ pub struct Item {
     pub made: u32,
     /// A Canonical item, by its index in the table's list: its own name and effect.
     pub canonical: Option<usize>,
+    /// What it has done in its owner's hands: the creatures it has slain. A weapon, bow,
+    /// staff, or shield prints it on itself.
+    pub kills: u32,
 }
 
 /// An item's name, as string keys: each part, or none.
@@ -164,7 +167,7 @@ pub fn generate(table: &LootTable, source: &str, seed: u64, known: &[String]) ->
     } else {
         None
     };
-    Some(Item { id: seed, kind, material, tier, bonuses, clauses, word_clause, look: (r.next() % 12) as u32, made: 4060 + (r.next() % 52) as u32, canonical: None })
+    Some(Item { id: seed, kind, material, tier, bonuses, clauses, word_clause, look: (r.next() % 12) as u32, made: 4060 + (r.next() % 52) as u32, canonical: None, kills: 0 })
 }
 
 impl Item {
@@ -173,14 +176,14 @@ impl Item {
     pub fn plain(table: &LootTable, kind: &str, material: &str, id: u64) -> Option<Item> {
         let kind = table.types.iter().position(|t| t.key == kind)?;
         let material = table.materials.iter().position(|m| m.key == material)?;
-        Some(Item { id, kind, material, tier: Tier::Plain, bonuses: Vec::new(), clauses: Vec::new(), word_clause: None, look: 0, made: 4100, canonical: None })
+        Some(Item { id, kind, material, tier: Tier::Plain, bonuses: Vec::new(), clauses: Vec::new(), word_clause: None, look: 0, made: 4100, canonical: None, kills: 0 })
     }
 
     /// A Canonical item, by its key: it has its one authored source.
     pub fn canonical(table: &LootTable, key: &str, id: u64) -> Option<Item> {
         let k = table.canonical.iter().position(|c| c.key == key)?;
         let c = &table.canonical[k];
-        Some(Item { id, kind: c.kind as usize, material: c.material as usize, tier: Tier::Canonical, bonuses: Vec::new(), clauses: Vec::new(), word_clause: None, look: 0, made: 4071, canonical: Some(k) })
+        Some(Item { id, kind: c.kind as usize, material: c.material as usize, tier: Tier::Canonical, bonuses: Vec::new(), clauses: Vec::new(), word_clause: None, look: 0, made: 4071, canonical: Some(k), kills: 0 })
     }
 
     /// A Canonical item's own effect, if it is one.

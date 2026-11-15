@@ -1996,6 +1996,16 @@ impl World {
                 }
             }
         }
+        // What each weapon has done: a creature slain is counted on what slew it, the
+        // shield for a bash and the main hand's for the rest.
+        for hit in self.hits.iter().filter(|h| h.killed) {
+            if let Some(p) = self.players.iter_mut().find(|p| p.id.0 == hit.player) {
+                let slot = if hit.kind == crate::melee::SwingKind::Bash { p.inventory.off } else { p.inventory.main };
+                if let Some(item) = slot.and_then(|i| p.inventory.items.get_mut(i)) {
+                    item.kills = item.kills.saturating_add(1);
+                }
+            }
+        }
         // What a blow carries passes to what it struck; a shattering blow ends the frost.
         let mut changed = false;
         for hit in &self.hits {

@@ -59,7 +59,9 @@ fn the_pack_lists_what_is_carried_and_pages_the_focused_item() {
         let item = generate(&loot, if seed % 2 == 0 { "boss" } else { "chest" }, seed, &["COLD".into()]).unwrap();
         if !seen[item.tier as usize] && (item.tier as usize != 4 || item.word_clause.is_some()) {
             seen[item.tier as usize] = true;
-            inv.take(item);
+            // The Illuminated one has seen use: its count is on its page.
+            let kills = if item.tier as usize == 4 { 37 } else { 0 };
+            inv.take(Item { kills, ..item });
         }
     }
     for seed in 0..10u64 {

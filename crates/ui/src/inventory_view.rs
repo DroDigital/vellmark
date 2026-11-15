@@ -102,6 +102,9 @@ impl InventoryView<'_> {
             if item.damage(self.loot) > 0.0 {
                 line(canvas, &mut y, &stat(sid!("item.stat.damage"), item.damage(self.loot)), kit::ink());
             }
+            if item.kills > 0 {
+                line(canvas, &mut y, &stat(sid!("item.stat.kills"), item.kills as f32), kit::gold());
+            }
             if item.armour(self.loot) > 0.0 {
                 line(canvas, &mut y, &stat(sid!("item.stat.armour"), item.armour(self.loot)), kit::ink());
             }

@@ -82,7 +82,7 @@ fn better_steel_strikes_harder_and_armour_takes_its_share() {
     let iron = first_blow(&mut plain);
     let mut better = world();
     let me = better.snapshot().players[0].id;
-    let fine = Item { id: 9, kind: 0, material: 1, tier: Tier::Fair, bonuses: vec![0], clauses: vec![], word_clause: None, look: 0, made: 4100, canonical: None };
+    let fine = Item { id: 9, kind: 0, material: 1, tier: Tier::Fair, bonuses: vec![0], clauses: vec![], word_clause: None, look: 0, made: 4100, canonical: None, kills: 0 };
     let i = better.give_item(me, fine).unwrap();
     better.equip(me, i);
     let steel = first_blow(&mut better);
@@ -127,4 +127,33 @@ fn the_hands_are_kept_as_a_favourite_and_a_sold_thing_is_forgotten() {
     let mut inv = w.inventory(me).unwrap().clone();
     inv.remove(bow);
     assert_eq!(inv.favourites, vec![(Some(coat - 1), Favourite::Empty)]);
+}
+
+#[test]
+fn a_weapon_counts_what_it_has_slain_and_keeps_the_count_in_a_save() {
+    let mut w = world();
+    let me = w.snapshot().players[0].id;
+    for k in 0..2 {
+        let mut c = Creature::new(60 + k, Vec3::new(0.0, 0.0, -1.6), 0.4, 1.8, 5.0, 100.0);
+        c.aware = true;
+        w.add_creature(c);
+        go(&mut w, 3, buttons::ATTACK_MAIN);
+        go(&mut w, 40, 0);
+    }
+    let sword = w.inventory(me).unwrap().main.unwrap();
+    assert_eq!(w.inventory(me).unwrap().items[sword].kills, 2, "two slain with the sword");
+    // A creature struck and not slain is not counted.
+    let mut c = Creature::new(70, Vec3::new(0.0, 0.0, -1.6), 0.4, 1.8, 5000.0, 100.0);
+    c.aware = true;
+    w.add_creature(c);
+    go(&mut w, 3, buttons::ATTACK_MAIN);
+    go(&mut w, 40, 0);
+    assert_eq!(w.inventory(me).unwrap().items[sword].kills, 2);
+    let save = w.save();
+    let back = vellmark_sim::save::SaveGame::from_bytes(&save.to_bytes()).unwrap();
+    let mut again = world();
+    again.load(&back);
+    let me = again.snapshot().players[0].id;
+    let sword = again.inventory(me).unwrap().main.unwrap();
+    assert_eq!(again.inventory(me).unwrap().items[sword].kills, 2, "kept in the save");
 }

@@ -12,7 +12,9 @@ use glam::{Quat, Vec3};
 
 use crate::items::{Item, Tier};
 
-const MAGIC: &[u8; 8] = b"VLMKSAV4";
+const MAGIC: &[u8; 8] = b"VLMKSAV5";
+/// The version before items kept their kills: still read, with none counted.
+const MAGIC_4: &[u8; 8] = b"VLMKSAV4";
 /// The version before Redactors struck things: still read, with nothing struck.
 const MAGIC_3: &[u8; 8] = b"VLMKSAV3";
 /// The version before the story's flags were kept: still read, with none set.
@@ -133,11 +135,13 @@ impl W {
         self.u32(i.look);
         self.u32(i.made);
         self.opt_u32(i.canonical.map(|c| c as u32));
+        self.u32(i.kills);
     }
 }
 
 /// Bytes in.
-struct R<'a>(&'a [u8], usize);
+/// The bytes, how far through them, and the save's version.
+struct R<'a>(&'a [u8], usize, u32);
 
 impl R<'_> {
     fn take(&mut self, n: usize) -> Result<&[u8], String> {
@@ -200,7 +204,9 @@ impl R<'_> {
             clauses.push(self.u32()? as usize);
         }
         let word_clause = self.opt_u32()?.map(|w| w as usize);
-        Ok(Item { id, kind, material, tier, bonuses, clauses, word_clause, look: self.u32()?, made: self.u32()?, canonical: self.opt_u32()?.map(|c| c as usize) })
+        let (look, made, canonical) = (self.u32()?, self.u32()?, self.opt_u32()?.map(|c| c as usize));
+        let kills = if self.2 >= 5 { self.u32()? } else { 0 };
+        Ok(Item { id, kind, material, tier, bonuses, clauses, word_clause, look, made, canonical, kills })
     }
 }
 
@@ -311,12 +317,13 @@ impl SaveGame {
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
         let version = match &bytes.get(..8) {
-            Some(m) if *m == MAGIC => 4,
+            Some(m) if *m == MAGIC => 5,
+            Some(m) if *m == MAGIC_4 => 4,
             Some(m) if *m == MAGIC_3 => 3,
             Some(m) if *m == MAGIC_2 => 2,
             _ => return Err("not a Vellmark save".into()),
         };
-        let mut r = R(bytes, 8);
+        let mut r = R(bytes, 8, version);
         let mut s = SaveGame { seconds: r.f64()?, time_of_day: r.f32()?, day: r.u32()?, mornings: r.u32()?, rng: r.u64()?, ..Default::default() };
         for _ in 0..r.count()? {
             let feet = r.v3()?;
