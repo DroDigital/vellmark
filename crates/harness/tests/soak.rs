@@ -151,16 +151,30 @@ fn soak(minutes: u64) -> Report {
         if p.health <= 0.0 {
             report.deaths += 1;
             w.load(&vellmark_sim::save::SaveGame::from_bytes(&save).unwrap());
-            if w.snapshot().players[0].health <= 0.0 {
-                w.place_player(me, spawn, 0.0);
-            }
+            // And then away from the fight that killed it, as a player would go, or the
+            // save taken in that fight would kill it again at once, over and over.
+            w.place_player(me, spawn, 0.0);
+            window_start = spawn;
+        }
+        // Each minute, with VELLMARK_SOAK_TRACE set: the wall time and the size of all
+        // that could grow, to find what makes a long soak slow.
+        if report.seconds % 60 == 0 && std::env::var_os("VELLMARK_SOAK_TRACE").is_some() {
+            let alive = s.creatures.iter().filter(|c| c.alive()).count();
+            eprintln!(
+                "minute {}: {:.1} s; deaths {}, kills {}; creatures {} ({} alive), letters {}, broken {}, props {}, heat {}, targets {}, dropped {}, arrows {}, struck {}",
+                report.seconds / 60, started.elapsed().as_secs_f32(), report.deaths, report.kills, s.creatures.len(), alive, s.letters.len(), s.broken.len(), s.props.len(), s.heat.len(), s.targets.len(), s.dropped.len(), s.arrows.len(), s.struck.len()
+            );
         }
         // Each minute: a save, read back at once as a loaded game.
         if report.seconds % 60 == 0 && w.snapshot().players[0].health > 0.0 {
             save = w.save().to_bytes();
             let back = vellmark_sim::save::SaveGame::from_bytes(&save).expect("a save reads back");
             assert_eq!(back.to_bytes(), save, "a save writes back as it was read");
+            let loading = std::time::Instant::now();
             w.load(&back);
+            if std::env::var_os("VELLMARK_SOAK_TRACE").is_some() {
+                eprintln!("  loaded in {:.2} s", loading.elapsed().as_secs_f32());
+            }
             report.saves += 1;
         }
         // Every five minutes, to the Inklings' yards off the bridge road, as the scripted
@@ -198,7 +212,7 @@ fn the_long_soak() {
     let text = format!(
         "The sim soak (crates/harness/tests/soak.rs), in the valley, with nothing rendered.\n\
          Game time: {} min ({} s), run in {:.0} s of wall time.\n\
-         Saves made and loaded back: {}. Deaths, each back to the last save: {}.\n\
+         Saves made and loaded back: {}. Deaths, each back to the last save and away from the fight: {}.\n\
          Creatures killed: {}. Words that landed: {}.\n\
          Most letters at once: {}. Most items lying about: {}. Most arrows: {}.\n\
          Longest stretch walking and going nowhere: {:.0} s (the bot turns round after 20 s).\n\
