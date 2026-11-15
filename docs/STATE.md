@@ -106,6 +106,8 @@
 
 ## Lane: Shell
 
+**In progress:** S07-T09, the demo page. Drafted: `docs/store/showcase_page.md`, to the brief's rules for how the game is presented, for the owner to edit. Nothing is pushed to itch or published; the private itch build needs the owner's credentials and approval, and the page waits for the Showcase Gate.
+
 **Done:** S06-T15a, the murmur (`crates/audio/src/murmur.rs`, `assets/data/voices.ron` baked to `voices.table`): every line not voiced is spoken under its text as wordless speech in its speaker's voice, from the cast file's bases and presets (pitch, size, pace, breath, gravel; a crowd voice moved by its own fixed offset). It follows the line itself: a syllable for each vowel, hiss, click, or hum for consonants, pauses at spaces and punctuation, the phrase falling, or rising at a question. The score steps back under it. Evidence: `docs/evidence/S06/murmur.wav` (Wick, Mabel, Tamsin, lines from the script). Tests: `crates/audio/src/murmur.rs`, `crates/audio/tests/no_allocation.rs`.
 **Waiting on the owner:** S06-T15b, whether the opening and supper are voiced (one approved batch through `full-game/tools/generate_voice.py`) or murmured.
 
