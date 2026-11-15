@@ -36,7 +36,7 @@ pub enum Outcome {
 }
 
 /// The actions a player may move to another button, in the order the page lists them.
-pub const REMAPPABLE: [Action; 15] = [
+pub const REMAPPABLE: [Action; 16] = [
     Action::MainHand,
     Action::OffHand,
     Action::Interact,
@@ -48,6 +48,7 @@ pub const REMAPPABLE: [Action; 15] = [
     Action::PreviousWord,
     Action::NextWord,
     Action::Inventory,
+    Action::Favourites,
     Action::MoveForward,
     Action::MoveBack,
     Action::MoveLeft,
@@ -70,6 +71,7 @@ fn action_label(action: Action) -> StringId {
         Action::MoveBack => sid!("ui.action.move_back"),
         Action::MoveLeft => sid!("ui.action.move_left"),
         Action::MoveRight => sid!("ui.action.move_right"),
+        Action::Favourites => sid!("ui.action.favourites"),
         _ => sid!("ui.action.inventory"),
     }
 }

@@ -362,6 +362,11 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut pack: Option<vellmark_ui::kit::Focus> = None;
     let mut pack_nav = vellmark_ui::kit::NavRepeat::default();
     let mut pack_nav_repeat = vellmark_ui::menu::MenuRepeat::default();
+    // The favourites wheel while its button is held; the pairing chosen, for the next
+    // step; and the pack's note after a pairing is kept or forgotten, with its time left.
+    let mut wheel: Option<vellmark_ui::favourites_view::Wheel> = None;
+    let mut favourite_pick: u8 = 0;
+    let mut pack_note: Option<(vellmark_content::StringId, f32)> = None;
     // The pause menu and the settings, while open. The world holds still in solo play.
     let mut menu: Option<vellmark_ui::pages::Menu> = None;
     // A conversation: the choice the focus rests on, the choice taken this frame, the line
@@ -486,10 +491,17 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                 trade = None;
             }
         }
-        if title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() {
+        if title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() || wheel.is_some() {
         } else if menu.is_some() {
         } else if pack.is_some() && (actions.pressed(Action::Pause) || actions.pressed(Action::Inventory)) {
             pack = None;
+            pack_note = None;
+        } else if pack.is_some() && actions.pressed(Action::Favourites) {
+            if let Some(kept) = current.players.first().and_then(|p| world.keep_hands(p.id)) {
+                pack_note = Some((if kept { sid!("ui.favourites.kept") } else { sid!("ui.favourites.forgotten") }, 2.5));
+            }
+        } else if pack.is_none() && actions.pressed(Action::Favourites) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None && p.talking.is_none()) {
+            wheel = Some(Default::default());
         } else if actions.pressed(Action::Inventory) && current.players.first().is_some_and(|p| p.reading == vellmark_sim::reading::ReadingSnap::None && p.talking.is_none()) {
             pack = Some(Default::default());
             pack_nav = Default::default();
@@ -834,6 +846,31 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             hold_interact = false;
         }
 
+        // The favourites wheel: aimed by the mouse or either stick, and let go to take the
+        // pairing aimed at; Escape lets it go without one.
+        if let (Some(wh), Some(me)) = (wheel.as_mut(), current.players.first().map(|p| p.id)) {
+            let (dx, dy) = actions.mouse_motion();
+            wh.mouse(dx, dy);
+            let (left, right) = actions.sticks();
+            wh.stick(left.0, left.1);
+            wh.stick(right.0, right.1);
+            if actions.pressed(Action::Pause) {
+                wheel = None;
+            } else if !actions.held(Action::Favourites) {
+                let count = world.inventory(me).map_or(0, |i| i.favourites.len().min(vellmark_ui::favourites_view::SLOTS));
+                if let Some(k) = wh.slot(count) {
+                    favourite_pick = k as u8 + 1;
+                }
+                wheel = None;
+            }
+        }
+        if let Some((_, left)) = pack_note.as_mut() {
+            *left -= frame_time.as_secs_f32();
+            if *left <= 0.0 {
+                pack_note = None;
+            }
+        }
+
         // The pack: move the focus, and equip what it rests on.
         if let (Some(focus), Some(me)) = (pack.as_mut(), current.players.first().map(|p| p.id)) {
             let len = world.inventory(me).map_or(0, |i| i.items.len());
@@ -852,11 +889,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         }
         // Simulation: whole fixed steps, then draw between the last two snapshots. In solo
         // play the world holds still while the pack or a menu is open.
-        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() { 0 } else { frame_time.as_nanos() as u64 });
+        let plan = clock.advance(if pack.is_some() || menu.is_some() || title.is_some() || photo.is_some() || credits.is_some() || trade.is_some() || wheel.is_some() { 0 } else { frame_time.as_nanos() as u64 });
         for step in 0..plan.steps {
             let mut input = player_input(&actions, &bindings, frame_time.as_secs_f32(), step == 0);
             if step == 0 {
                 input.say = std::mem::take(&mut say);
+                input.favourite = std::mem::take(&mut favourite_pick);
             }
             if settings.read_toggle {
                 input.buttons = (input.buttons & !vellmark_sim::buttons::READ) | if read_latch { vellmark_sim::buttons::READ } else { 0 };
@@ -1019,9 +1057,14 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
             if let (Some(focus), Some(inv), Some(loot)) = (pack, world.inventory(player.id), world.loot()) {
                 let key = |action| vellmark_platform::prompts::prompt_key(action, actions.last_device, style, &bindings);
-                let (equip, close) = (key(Action::Interact), key(Action::Inventory));
-                vellmark_ui::inventory_view::InventoryView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
-                    .draw(&mut canvas, inv, focus, (equip.as_deref(), close.as_deref()));
+                let (equip, close, keep) = (key(Action::Interact), key(Action::Inventory), key(Action::Favourites));
+                vellmark_ui::inventory_view::InventoryView { atlas: &assets.glyphs, strings: &strings, loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale(), note: pack_note.map(|n| n.0) }
+                    .draw(&mut canvas, inv, focus, (equip.as_deref(), close.as_deref(), keep.as_deref()));
+            }
+            if let (Some(wh), Some(inv), Some(loot)) = (wheel, world.inventory(player.id), world.loot()) {
+                let keep = vellmark_platform::prompts::prompt_key(Action::Favourites, actions.last_device, style, &bindings);
+                vellmark_ui::favourites_view::FavouritesView { atlas: &assets.glyphs, strings: &strings, rules: world.word_rules(), loot, size: screen.size(), density: window.pixel_density() * settings.interface_scale() }
+                    .draw(&mut canvas, &wh, inv, keep.as_deref());
             }
             if let Some(m) = &menu {
                 let entries = m.entries(&settings, &bindings, actions.last_device, style);

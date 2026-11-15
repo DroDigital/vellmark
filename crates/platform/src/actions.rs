@@ -72,6 +72,8 @@ pub enum Action {
     NextWord,
     PreviousWord,
     PhotoMode,
+    /// Hold for the favourites wheel; in the pack, keep what the hands hold as a favourite.
+    Favourites,
     /// The movement keys, so that they can be moved to other keys. A stick moves as it is.
     MoveForward,
     MoveBack,
@@ -136,6 +138,7 @@ impl Default for Bindings {
                 (Key::Q, PreviousWord),
                 (Key::F, NextWord),
                 (Key::P, PhotoMode),
+                (Key::C, Favourites),
                 (Key::Grave, DevConsole),
                 (Key::F1, DevProfiler),
                 (Key::F2, DevFreeCamera),
@@ -161,6 +164,7 @@ impl Default for Bindings {
                 (PadButton::Start, Pause),
                 (PadButton::Back, Inventory),
                 (PadButton::DPadUp, PhotoMode),
+                (PadButton::DPadDown, Favourites),
             ],
             left_trigger: OffHand,
             right_trigger: MainHand,
@@ -336,6 +340,18 @@ impl ActionState {
         let x = (keys.0 + self.stick_move.0).clamp(-1.0, 1.0);
         let y = (keys.1 - self.stick_move.1).clamp(-1.0, 1.0);
         (x, y)
+    }
+
+    /// This frame's mouse movement in counts, right and down positive, for aiming on the
+    /// interface rather than turning.
+    pub fn mouse_motion(&self) -> (f32, f32) {
+        self.mouse_look
+    }
+
+    /// Where the two sticks point, each -1 to 1, right and down positive: the moving
+    /// stick and the looking stick.
+    pub fn sticks(&self) -> ((f32, f32), (f32, f32)) {
+        (self.stick_move, self.stick_look)
     }
 
     /// Turn and tilt for a frame of `dt` seconds, in radians. Right and up are positive.

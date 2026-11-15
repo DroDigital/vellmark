@@ -109,3 +109,22 @@ fn a_favourite_pairing_is_taken_up_at_once() {
     w.step(&[PlayerInput { favourite: 2, ..Default::default() }]);
     assert_eq!(w.snapshot().players[0].weapon, WeaponKind::Sword);
 }
+
+#[test]
+fn the_hands_are_kept_as_a_favourite_and_a_sold_thing_is_forgotten() {
+    let mut w = world();
+    let me = w.snapshot().players[0].id;
+    let bow = w.give_item(me, Item::plain(&table(), "bow", "iron", 3).unwrap()).unwrap();
+    let coat = w.give_item(me, Item::plain(&table(), "heavy_coat", "iron", 4).unwrap()).unwrap();
+    let held = w.inventory(me).unwrap().main;
+    assert_eq!(w.keep_hands(me), Some(true), "kept");
+    assert_eq!(w.inventory(me).unwrap().favourites, vec![(held, Favourite::Empty)]);
+    assert_eq!(w.keep_hands(me), Some(false), "kept again, it is forgotten");
+    assert!(w.inventory(me).unwrap().favourites.is_empty());
+    w.add_favourite(me, Some(bow), Favourite::Empty);
+    w.add_favourite(me, Some(coat), Favourite::Empty);
+    // The bow goes: its pairing is forgotten, and the coat's follows it down the list.
+    let mut inv = w.inventory(me).unwrap().clone();
+    inv.remove(bow);
+    assert_eq!(inv.favourites, vec![(Some(coat - 1), Favourite::Empty)]);
+}

@@ -86,7 +86,7 @@ fn the_pack_lists_what_is_carried_and_pages_the_focused_item() {
     assert_eq!(foot.at, inv.items.len() - 1);
     for (name, focus) in [("pack", focus), ("pack_scrolled", foot)] {
         let mut canvas = Canvas::new();
-        InventoryView { atlas: &assets.glyphs, strings: &strings, loot: &loot, size: (w, h), density: 1.0 }.draw(&mut canvas, &inv, focus, (Some("prompt.key.e"), Some("prompt.key.tab")));
+        InventoryView { atlas: &assets.glyphs, strings: &strings, loot: &loot, size: (w, h), density: 1.0, note: Some(StringId::from_key("ui.favourites.kept")) }.draw(&mut canvas, &inv, focus, (Some("prompt.key.e"), Some("prompt.key.tab"), Some("prompt.key.c")));
         // Every glyph is at least 12 px tall, as the brief asks of menus at 1280x800.
         // A glyph's cell grows with its size, so the smallest cell is measured against the
         // cells of the same letters set at 12 px in each face.

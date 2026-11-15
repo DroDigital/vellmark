@@ -170,6 +170,16 @@ impl Inventory {
         for t in &mut self.trinkets {
             fix(t);
         }
+        // A pairing that named the thing is forgotten; the rest follow it down the list.
+        self.favourites.retain(|(main, off)| *main != Some(index) && *off != Favourite::Item(index));
+        for (main, off) in &mut self.favourites {
+            fix(main);
+            if let Favourite::Item(i) = off {
+                if *i > index {
+                    *i -= 1;
+                }
+            }
+        }
         Some(item)
     }
 

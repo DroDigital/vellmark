@@ -17,6 +17,7 @@ pub mod photo;
 pub mod captions;
 pub mod credits_view;
 pub mod trade_view;
+pub mod favourites_view;
 use std::borrow::Cow;
 use vellmark_content::{Face, GlyphAtlas, StringId, StringTable};
 

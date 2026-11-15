@@ -573,6 +573,24 @@ impl World {
         }
     }
 
+    /// Keeps what a player's hands hold now as a favourite, or forgets it if it is kept
+    /// already. Returns whether it is kept, or `None` for no such player.
+    pub fn keep_hands(&mut self, id: PlayerId) -> Option<bool> {
+        let p = self.players.iter().find(|p| p.id == id)?;
+        let off = match (p.inventory.off, p.caster.holding[1]) {
+            (Some(i), _) => crate::inventory::Favourite::Item(i),
+            (None, crate::casting::Holding::Word(w)) => crate::inventory::Favourite::Word(w),
+            _ => crate::inventory::Favourite::Empty,
+        };
+        let pairing = (p.inventory.main, off);
+        if let Some(k) = p.inventory.favourites.iter().position(|f| *f == pairing) {
+            self.players.iter_mut().find(|p| p.id == id)?.inventory.favourites.remove(k);
+            return Some(false);
+        }
+        self.add_favourite(id, pairing.0, pairing.1);
+        Some(true)
+    }
+
     /// Takes up a favourite pairing, by its place in the list.
     fn take_favourite(p: &mut Player, table: &vellmark_content::LootTable, k: usize) {
         let Some((main, off)) = p.inventory.favourites.get(k).copied() else { return };

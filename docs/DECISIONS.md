@@ -2,6 +2,13 @@
 
 Newest first. One entry for each choice that is not already made by the brief.
 
+## 2026-11-15: the favourites wheel
+
+- **Kept from the hands, not chosen item by item**: equip in the pack, then C keeps what both hands hold. One press, and the pairing is exactly what was tried.
+- **Held open, let go to take**, aimed by the mouse or either stick; the world holds still while it is open in solo play, as with the pack, so choosing never costs a blow.
+- **On C and D-pad down**, the free key beside the movement keys and the free D-pad direction; it can be moved.
+- **A sold thing's pairings are forgotten** rather than left pointing at whatever moved into its place.
+
 ## 2026-11-15: the trade screen
 
 - **Opened by a conversation**, through a node's `trade` event, so Tobit's lines decide when he trades, as his script has it; not by a separate prompt on the cart.

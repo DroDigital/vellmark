@@ -17,6 +17,8 @@ pub struct InventoryView<'a> {
     pub loot: &'a LootTable,
     pub size: (u32, u32),
     pub density: f32,
+    /// A line said after the last thing done, such as a pairing kept as a favourite.
+    pub note: Option<StringId>,
 }
 
 /// The rows of the list at this size, so that the caller can keep the focus on screen.
@@ -46,8 +48,9 @@ fn equipped(inv: &Inventory, i: usize) -> bool {
 }
 
 impl InventoryView<'_> {
-    /// `keys` are the prompt keys for equipping and closing, as the platform names them.
-    pub fn draw(&self, canvas: &mut Canvas, inv: &Inventory, focus: Focus, keys: (Option<&str>, Option<&str>)) {
+    /// `keys` are the prompt keys for equipping, closing, and keeping the hands as a
+    /// favourite, as the platform names them.
+    pub fn draw(&self, canvas: &mut Canvas, inv: &Inventory, focus: Focus, keys: (Option<&str>, Option<&str>, Option<&str>)) {
         let d = self.density.max(1.0);
         let (w, h) = (self.size.0 as f32, self.size.1 as f32);
         let (panel, list) = layout(self.size, self.density);
@@ -112,10 +115,13 @@ impl InventoryView<'_> {
             }
         }
 
-        // Prompts, along the foot of the page.
+        // Prompts, along the foot of the page, and the note above them.
         let mut px = x;
         let py = panel[1] + panel[3] - pad - 4.0 * d;
-        for (key, id) in [(keys.0, sid!("ui.inventory.equip")), (keys.1, sid!("ui.inventory.close"))] {
+        if let Some(note) = self.note {
+            canvas.text(self.atlas, px, py - 24.0 * d, &TextStyle { colour: kit::gold(), ..small }, &Shown::from_table(self.strings, note));
+        }
+        for (key, id) in [(keys.0, sid!("ui.inventory.equip")), (keys.2, sid!("ui.favourites.keep")), (keys.1, sid!("ui.inventory.close"))] {
             let Some(key) = key else { continue };
             if id == sid!("ui.inventory.equip") && inv.items.is_empty() {
                 continue;
