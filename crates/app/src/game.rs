@@ -391,6 +391,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     // Captions for the sounds that matter, and whether a Redactor's approach is captioned.
     let mut captions = vellmark_ui::captions::Captions::default();
     let mut redactor_heard = false;
+    let mut birds_hushed = false;
     // Reading by a press rather than a hold: whether Read is latched on.
     let mut read_latch = false;
     world.set_close_reading_slows(settings.close_reading_slows);
@@ -936,6 +937,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
                     captions.heard(sid!("caption.sound.redactor"), None);
                 }
                 redactor_heard = near;
+                // By day the birds stop first, as the sound does.
+                let hush = (6.0..20.0).contains(&current.time_of_day) && current.players.first().is_some_and(|p| current.redactors.iter().any(|r| r.at.distance(p.feet) < 240.0));
+                if hush && !birds_hushed {
+                    captions.heard(sid!("caption.sound.birds_stop"), None);
+                }
+                birds_hushed = hush;
             }
             // Hit stop: a blow that lands holds the striker's view a moment and kicks it.
             // Only the view: the shared world never pauses. Reduced screen response and
@@ -1100,7 +1107,7 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
         }
 
-        sound.update(camera.eye, &current.weather, hour, terrain.as_deref());
+        sound.update(camera.eye, &current.weather, hour, terrain.as_deref(), &current.redactors);
         // Open doors swing, eased; closed ones swing back.
         for t in current.targets.iter() {
             let Some((key, place)) = door_places.iter().find(|(k, _)| k.0 == t.id) else { continue };

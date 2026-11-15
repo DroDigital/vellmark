@@ -16,6 +16,12 @@ const VALE_THEME: [&str; 4] = ["OPEN", "WHOLE", "LIT", "CALM"];
 const WATER_REACH: f32 = 45.0;
 const TREE_REACH: f32 = 28.0;
 
+/// The birds fall quiet as a Redactor comes nearer than the first distance, and are
+/// silent within the second, in metres: "The birds stop." They are heard before the
+/// strokes are captioned, at 200 m.
+const HUSH_FAR: f32 = 280.0;
+const HUSH_NEAR: f32 = 170.0;
+
 pub struct Sound {
     _out: Option<AudioOut>,
     controls: Arc<Controls>,
@@ -186,7 +192,7 @@ impl Sound {
         }
     }
 
-    pub fn update(&mut self, eye: Vec3, weather: &vellmark_sim::Weather, hour: f32, terrain: Option<&vellmark_world::Terrain>) {
+    pub fn update(&mut self, eye: Vec3, weather: &vellmark_sim::Weather, hour: f32, terrain: Option<&vellmark_world::Terrain>, redactors: &[vellmark_sim::RedactorSnap]) {
         self.frame += 1;
         // Water is looked for a few times a second, in rings about the listener.
         if self.frame % 15 == 1 {
@@ -200,7 +206,13 @@ impl Sound {
         c.water.set(self.water);
         c.trees.set((trees / 6.0).min(1.0));
         c.daylight.set(daylight(hour));
+        c.open.set(birds_dare(eye, redactors));
     }
+}
+
+/// How far the birds dare sing, 0 to 1, for the Redactors about: silent near the nearest.
+fn birds_dare(eye: Vec3, redactors: &[vellmark_sim::RedactorSnap]) -> f32 {
+    redactors.iter().map(|r| smooth(HUSH_NEAR, HUSH_FAR, r.at.distance(eye))).fold(1.0, f32::min)
 }
 
 fn tree_key(mesh: vellmark_content::AssetId) -> bool {
@@ -242,4 +254,19 @@ fn water_near(terrain: &vellmark_world::Terrain, eye: Vec3) -> f32 {
         nearest = 0.0;
     }
     (1.0 - nearest / WATER_REACH).clamp(0.0, 1.0).powf(1.6)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_birds_stop_as_a_redactor_comes() {
+        let r = |z: f32| vellmark_sim::RedactorSnap { id: 1, at: Vec3::new(0.0, 0.0, z), heading: Vec3::Z };
+        assert_eq!(birds_dare(Vec3::ZERO, &[]), 1.0, "they sing with none about");
+        assert_eq!(birds_dare(Vec3::ZERO, &[r(400.0)]), 1.0, "far off");
+        let half = birds_dare(Vec3::ZERO, &[r(225.0)]);
+        assert!(half > 0.2 && half < 0.8, "falling quiet: {half}");
+        assert_eq!(birds_dare(Vec3::ZERO, &[r(400.0), r(100.0)]), 0.0, "silent near the nearest");
+    }
 }
