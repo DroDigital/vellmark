@@ -196,7 +196,10 @@ impl InputSource for Platform {
                 Event::TextInput { text, .. } => {
                     out.extend(text.chars().filter(|c| (' '..='~').contains(c)).map(RawInput::Text));
                 }
-                Event::MouseMotion { xrel, yrel, .. } => out.push(RawInput::MouseMove { dx: xrel, dy: yrel }),
+                Event::MouseMotion { x, y, xrel, yrel, .. } => {
+                    out.push(RawInput::MouseMove { dx: xrel, dy: yrel });
+                    out.push(RawInput::Pointer { x, y });
+                }
                 Event::MouseButtonDown { mouse_btn, .. } => {
                     if let Some(button) = mouse_button_of(mouse_btn) {
                         out.push(RawInput::MouseButton { button, down: true });

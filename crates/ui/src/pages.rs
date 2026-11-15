@@ -224,6 +224,9 @@ impl Menu {
         }
         let page = self.page();
         let Some((_, focus)) = self.stack.last_mut() else { return Outcome::Resume };
+        if let Some(k) = input.pick.filter(|k| *k < len) {
+            focus.at = k;
+        }
         focus.step(input.step, len, rows);
         let at = focus.at;
         if input.back {
@@ -334,10 +337,10 @@ mod tests {
         menu.update(input, s, len, 8)
     }
 
-    const DOWN: MenuInput = MenuInput { step: 1, change: 0, confirm: false, back: false };
-    const RIGHT: MenuInput = MenuInput { step: 0, change: 1, confirm: false, back: false };
-    const OK: MenuInput = MenuInput { step: 0, change: 0, confirm: true, back: false };
-    const BACK: MenuInput = MenuInput { step: 0, change: 0, confirm: false, back: true };
+    const DOWN: MenuInput = MenuInput { step: 1, change: 0, confirm: false, back: false, pick: None };
+    const RIGHT: MenuInput = MenuInput { step: 0, change: 1, confirm: false, back: false, pick: None };
+    const OK: MenuInput = MenuInput { step: 0, change: 0, confirm: true, back: false, pick: None };
+    const BACK: MenuInput = MenuInput { step: 0, change: 0, confirm: false, back: true, pick: None };
 
     #[test]
     fn the_pages_open_change_settings_and_close() {

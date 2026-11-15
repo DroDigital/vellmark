@@ -40,6 +40,8 @@ pub enum PadAxis {
 pub enum RawInput {
     Key { key: Key, down: bool },
     MouseMove { dx: f32, dy: f32 },
+    /// Where the cursor is in the window, in the window's points, while it is free.
+    Pointer { x: f32, y: f32 },
     MouseButton { button: MouseButton, down: bool },
     MouseWheel { dy: f32 },
     /// `pad` identifies the controller for as long as it stays plugged in.
@@ -190,6 +192,8 @@ pub struct ActionState {
     mouse_look: (f32, f32),
     triggers: (bool, bool),
     pub last_device: DeviceKind,
+    pointer: Option<(f32, f32)>,
+    pointer_moved: bool,
     /// The controller this player holds, if any. Input from other controllers is
     /// ignored, so a second controller never moves the first player.
     pub pad: Option<u32>,
@@ -213,6 +217,17 @@ impl ActionState {
         self.pressed = 0;
         self.released = 0;
         self.mouse_look = (0.0, 0.0);
+        self.pointer_moved = false;
+    }
+
+    /// Where the cursor is, in the window's points, once it has moved; and whether it
+    /// moved this frame.
+    pub fn pointer(&self) -> Option<(f32, f32)> {
+        self.pointer
+    }
+
+    pub fn pointer_moved(&self) -> bool {
+        self.pointer_moved
     }
 
     fn set(&mut self, action: Action, down: bool) {
@@ -241,6 +256,11 @@ impl ActionState {
                 self.last_device = DeviceKind::KeyboardMouse;
                 self.mouse_look.0 += dx;
                 self.mouse_look.1 += dy;
+            }
+            RawInput::Pointer { x, y } => {
+                self.last_device = DeviceKind::KeyboardMouse;
+                self.pointer = Some((x, y));
+                self.pointer_moved = true;
             }
             RawInput::MouseButton { button, down } => {
                 self.last_device = DeviceKind::KeyboardMouse;

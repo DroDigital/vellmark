@@ -31,7 +31,7 @@ fn the_tithe_hill_stone_writes_what_happens_as_it_happens() {
     };
     let stone = Vec3::new(-102.45, 48.1, 105.5);
     let mut frames: Vec<Image> = Vec::new();
-    let mut shoot = |w: &mut World, o: &mut Option<Offscreen>, frames: &mut Vec<Image>| {
+    let shoot = |w: &mut World, o: &mut Option<Offscreen>, frames: &mut Vec<Image>| {
         let s = w.snapshot();
         let to = stone - s.views[0].eye;
         w.step(&[PlayerInput { look_yaw: to.x.atan2(-to.z) - s.players[0].yaw, look_pitch: (to.y / Vec3::new(to.x, 0.0, to.z).length()).atan() - s.players[0].pitch, ..Default::default() }]);

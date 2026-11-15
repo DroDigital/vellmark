@@ -11,9 +11,9 @@ use vellmark_ui::menu::{MenuInput, MenuView};
 use vellmark_ui::pages::{Menu, Page};
 use vellmark_ui::{Canvas, Part, Shown};
 
-const DOWN: MenuInput = MenuInput { step: 1, change: 0, confirm: false, back: false };
-const OK: MenuInput = MenuInput { step: 0, change: 0, confirm: true, back: false };
-const BACK: MenuInput = MenuInput { step: 0, change: 0, confirm: false, back: true };
+const DOWN: MenuInput = MenuInput { step: 1, change: 0, confirm: false, back: false, pick: None };
+const OK: MenuInput = MenuInput { step: 0, change: 0, confirm: true, back: false, pick: None };
+const BACK: MenuInput = MenuInput { step: 0, change: 0, confirm: false, back: true, pick: None };
 
 fn go(menu: &mut Menu, s: &mut Settings, inputs: &[MenuInput]) {
     for i in inputs {
@@ -125,4 +125,49 @@ fn every_page_is_written_and_drawn() {
         ui: Some(&canvas),
     };
     offscreen.frame(&input).save(&out.join("access_high.png")).unwrap();
+}
+
+#[test]
+fn the_cursor_picks_a_row_and_a_click_confirms_it() {
+    use vellmark_platform::{ActionState, MouseButton, RawInput};
+    let pack = baked_base_pack().expect("the base pack bakes");
+    let strings = StringTable::from_bytes(pack.get(AssetKind::StringTable, vellmark_bake::string_table_id(vellmark_bake::BASE_LANGUAGE)).unwrap()).unwrap();
+    let assets = LoadedAssets::from_pack(&pack).unwrap();
+    let mut s = Settings::default();
+    let mut menu = Menu::open();
+    let len = menu.entries(&s, &Bindings::default(), DeviceKind::KeyboardMouse, PadStyle::Xbox).len();
+    // At twice the density, as on a Mac's screen: the window's points are half the pixels.
+    let view = MenuView { atlas: &assets.glyphs, strings: &strings, size: (2560, 1600), density: 2.0 };
+    let middle = |k: usize| -> (f32, f32) {
+        // Search a column down the middle of the page for the row's band, in pixels.
+        (0..1600).map(|y| (1280.0, y as f32)).find(|p| view.row_at(len, menu.focus(), *p) == Some(k)).expect("the row is on the page")
+    };
+    let (x, y) = middle(1);
+    assert_eq!(view.row_at(len, menu.focus(), (5.0, 5.0)), None, "nothing off the page");
+    let bindings = Bindings::default();
+    let mut actions = ActionState::default();
+    actions.begin_frame();
+    let raw = [RawInput::Pointer { x: x * 0.5, y: (y + 4.0) * 0.5 }];
+    for r in raw {
+        actions.feed(&bindings, r);
+    }
+    let focus = menu.focus();
+    let input = MenuInput::default().with_pointer(&raw, &actions, 2.0, |p| view.row_at(len, focus, p));
+    assert_eq!(input.pick, Some(1), "resting on the second row picks it");
+    assert!(!input.confirm);
+    menu.update(input, &mut s, len, view.rows(len, &assets.glyphs));
+    assert_eq!(menu.focus().at, 1);
+    assert_eq!(menu.page(), Page::Pause);
+    // A click on the row opens it: the second row is the settings.
+    actions.begin_frame();
+    let raw = [RawInput::MouseButton { button: MouseButton::Left, down: true }];
+    let focus = menu.focus();
+    let input = MenuInput::default().with_pointer(&raw, &actions, 2.0, |p| view.row_at(len, focus, p));
+    assert!(input.confirm, "a click on a row confirms it");
+    menu.update(input, &mut s, len, view.rows(len, &assets.glyphs));
+    assert_eq!(menu.page(), Page::Settings);
+    // The wheel steps.
+    let raw = [RawInput::MouseWheel { dy: -1.0 }];
+    let input = MenuInput::default().with_pointer(&raw, &actions, 2.0, |_| None);
+    assert_eq!(input.step, 1);
 }

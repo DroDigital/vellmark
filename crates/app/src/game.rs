@@ -377,6 +377,8 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
     let mut say: u8 = 0;
     let mut hurried: Option<u64> = None;
     let mut hold_interact = false;
+    // A click that closed a menu is not a blow: the main hand waits for its release.
+    let mut hold_main = false;
     // Photo mode, while open, and how long its "Picture saved." has left to show.
     let mut photo: Option<vellmark_ui::photo::Photo> = None;
     let mut photo_note = 0.0f32;
@@ -546,9 +548,10 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             let outcome = if m.capturing() {
                 m.capture(&raw, &mut settings)
             } else {
-                let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut m.repeat, frame_time.as_secs_f32());
                 let len = m.entries(&settings, &bindings, actions.last_device, style).len();
                 let view = vellmark_ui::menu::MenuView { atlas: &assets.glyphs, strings: &strings, size: screen.size(), density: window.pixel_density() * settings.interface_scale() };
+                let focus = m.focus();
+                let input = vellmark_ui::menu::MenuInput::read(&raw, &actions, &mut m.repeat, frame_time.as_secs_f32()).with_pointer(&raw, &actions, window.pixel_density(), |p| view.row_at(len, focus, p));
                 m.update(input, &mut settings, len, view.rows(len, &assets.glyphs))
             };
             match outcome {
@@ -846,6 +849,12 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
         if !actions.held(Action::Interact) {
             hold_interact = false;
         }
+        if menu_was_open && menu.is_none() && actions.held(Action::MainHand) {
+            hold_main = true;
+        }
+        if !actions.held(Action::MainHand) {
+            hold_main = false;
+        }
 
         // The favourites wheel: aimed by the mouse or either stick, and let go to take the
         // pairing aimed at; Escape lets it go without one.
@@ -902,6 +911,9 @@ pub fn run(args: &Args, launched: Instant) -> Result<(), ()> {
             }
             if hold_interact {
                 input.buttons &= !vellmark_sim::buttons::INTERACT;
+            }
+            if hold_main {
+                input.buttons &= !vellmark_sim::buttons::ATTACK_MAIN;
             }
             let take: String = typed.drain(..typed.len().min(4)).collect();
             input.typed = PlayerInput::pack_typed(&take);

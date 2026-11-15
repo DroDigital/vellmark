@@ -37,6 +37,8 @@ pub struct MenuInput {
     pub change: i32,
     pub confirm: bool,
     pub back: bool,
+    /// A row the cursor rests on, counted from the top of the whole list.
+    pub pick: Option<usize>,
 }
 
 /// The repeats of a held direction, up and down and across.
@@ -80,6 +82,28 @@ impl MenuInput {
         m
     }
 
+    /// The cursor's part: the row it moves onto is picked, a left click on a row picks and
+    /// confirms it, and the wheel steps. `row_at` finds the row under a point in pixels;
+    /// `scale` turns the window's points into pixels.
+    pub fn with_pointer(mut self, raw: &[RawInput], actions: &ActionState, scale: f32, row_at: impl Fn((f32, f32)) -> Option<usize>) -> Self {
+        let Some((x, y)) = actions.pointer() else { return self };
+        let under = row_at((x * scale, y * scale));
+        if actions.pointer_moved() && under.is_some() {
+            self.pick = under;
+        }
+        for r in raw {
+            match *r {
+                RawInput::MouseButton { button: vellmark_platform::MouseButton::Left, down: true } if under.is_some() => {
+                    self.pick = under;
+                    self.confirm = true;
+                }
+                RawInput::MouseWheel { dy } if dy != 0.0 && self.step == 0 => self.step = if dy > 0.0 { -1 } else { 1 },
+                _ => {}
+            }
+        }
+        self
+    }
+
     pub fn read(raw: &[RawInput], actions: &ActionState, repeat: &mut MenuRepeat, dt: f32) -> Self {
         let mut m = Self::from_keys(raw);
         let (x, y) = actions.movement();
@@ -119,6 +143,19 @@ impl MenuView<'_> {
         let ph = (rows as f32 * self.line() + pad * 2.0 + 90.0 * d).min(h * 0.9);
         let panel = [(w - pw) * 0.5, (h - ph) * 0.5, pw, ph];
         (panel, [panel[0] + pad, panel[1] + pad + 46.0 * d, pw - pad * 2.0, ph - pad * 2.0 - 80.0 * d])
+    }
+
+    /// The row of a page of `entries` under a point in pixels, with the list scrolled as
+    /// `focus` has it.
+    pub fn row_at(&self, entries: usize, focus: Focus, point: (f32, f32)) -> Option<usize> {
+        let (_, list) = self.layout(entries);
+        let (x, y) = point;
+        if x < list[0] || x > list[0] + list[2] || y < list[1] {
+            return None;
+        }
+        let k = ((y - list[1]) / self.line()).floor() as usize;
+        let shown = self.rows(entries, self.atlas);
+        (k < shown && focus.scroll + k < entries).then_some(focus.scroll + k)
     }
 
     /// The rows a page can show at once.
