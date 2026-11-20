@@ -102,10 +102,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Package
         run: scripts/package-macos.sh "${{ github.run_number }}"
+      # The archive itself: an artifact of the folder would lose the executable bit.
       - uses: actions/upload-artifact@v4
         with:
           name: vellmark-macos-${{ github.run_number }}
-          path: build/macos
+          path: build/vellmark-macos-${{ github.run_number }}.zip
           if-no-files-found: error
 
   packages:
@@ -141,5 +142,35 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: vellmark-${{ matrix.platform }}-${{ github.run_number }}
-          path: build/${{ matrix.platform }}
+          path: build/vellmark-${{ matrix.platform }}-${{ github.run_number }}.*
           if-no-files-found: error
+
+  # The three desktop builds of main, kept in one draft release for the owner: drafts are
+  # seen only by those who can push to the repository, so nothing is published until the
+  # owner publishes it. A new draft replaces the last on each green push to main.
+  desktop-builds:
+    name: Desktop builds (draft release)
+    if: github.ref == 'refs/heads/main'
+    needs: [test, licenses, macos-app, packages]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vellmark-*-${{ github.run_number }}
+          path: dist
+          merge-multiple: true
+      - name: Replace the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist
+          # Older drafts of these builds go; a build the owner published is never touched.
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft and (.tag_name | startswith("showcase-build-"))) | .id' |
+            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"; done
+          gh release create "showcase-build-${{ github.run_number }}" --draft --target "$GITHUB_SHA" \
+            --title "Showcase build ${{ github.run_number }} (latest main)" \
+            --notes-file packaging/RELEASE_NOTES.md dist/*
