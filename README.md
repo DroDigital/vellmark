@@ -4,29 +4,33 @@ An open-world RPG where you rewrite reality with a word. This repository is buil
 
 Start with [START_HERE.md](START_HERE.md).
 
-## Running it on a Mac
+## Running it
 
-**Without installing anything:** on GitHub, open **Actions**, the newest green **CI** run, and download `vellmark-macos-N` under **Artifacts**. Unzip it, right-click `Vellmark.app`, and choose **Open** twice. Double-click `valley.command` to start in the valley instead of the yard.
+**Ready-made builds, nothing to install:** on GitHub, open **Releases** and take the newest
+**Showcase build**. It is a draft that only people with push access can see, made from the newest green `main`,
+with a build for each system:
 
-**From the source:** you need Apple's command line tools, CMake, and Rust. SDL3 is built from source, which is why CMake is needed; a build that stops with "is `cmake` not installed?" is missing it.
+- **macOS:** unzip `vellmark-macos-*.zip`, right-click `Vellmark.app`, choose **Open** twice. `valley.command` starts in the valley.
+- **Windows:** extract `vellmark-windows-*.zip`, double-click `Vellmark.exe`, or `Valley.bat` for the valley.
+- **Linux:** unpack `vellmark-linux-*.tar.gz`, run `Vellmark/vellmark`, or `Vellmark/valley.sh` for the valley.
 
-```bash
-xcode-select --install
-brew install cmake
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
+**From the source, in one double-click:** `run-mac.command` (right-click, **Open** the first
+time), `run-windows.bat`, or `run-linux.sh`. Each checks what the build needs and says how to
+install what is missing, takes the newest code if this is a git checkout, builds (several
+minutes the first time), and starts in the valley. A folder whose path has a space in it is
+handled: the build goes elsewhere. What they need:
 
-Keep the folder's path free of spaces: CMake builds can fail in a folder such as `vellmark-main 2`. Then, inside the folder, the yard:
+- **macOS:** Apple's command line tools (`xcode-select --install`), CMake (`brew install cmake`), and Rust (https://rustup.rs).
+- **Windows:** Rust from https://rustup.rs with its default Visual Studio build tools, and CMake (`winget install Kitware.CMake`).
+- **Linux:** Rust, CMake, and the libraries in the `apt-get` line the script prints.
 
-```bash
-cargo run --release -p vellmark-app --features dev
-```
-
-Or the valley:
+By hand, from the folder (keep its path free of spaces):
 
 ```bash
 cargo run --release -p vellmark-app --features dev -- --scene valley
 ```
+
+Leave out `-- --scene valley` to start in the yard.
 
 `--features dev` brings the development tools: the F keys and the console below. Without it the build is the one a player would get.
 
@@ -36,7 +40,7 @@ The first build takes several minutes.
 |---|---|
 | W A S D, mouse | Move and look |
 | R (hold) | Close reading |
-| F6 | Step through the depth looks: living (the default), flat, atoms, lattice, source |
+| F6 (fn + F6 on a Mac) | Step through the depth looks: living (the default), flat, atoms, lattice, source. Seen within arm's reach; hold R |
 | \` then `heat door 0.9` | Heat a thing; up close its letters say so (`-0.8` freezes it) |
 | \` then `rain 1` | Rain, from `0` (dry) to `1` (a downpour); the ground soaks over a minute and dries over eight |
 | \` then `preset low` | Choose a preset: `low`, `medium` (the default), or `high`. `--preset high` at launch does the same |

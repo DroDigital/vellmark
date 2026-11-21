@@ -29,6 +29,13 @@ else
   chmod +x "$OUT/vellmark"
 fi
 cp build/packs/*.vpk "$OUT/packs/"
+# A launcher that starts in the valley.
+if [ "$PLATFORM" = "windows" ]; then
+  cp packaging/windows/Valley.bat "$OUT/"
+else
+  cp packaging/linux/valley.sh "$OUT/"
+  chmod +x "$OUT/valley.sh"
+fi
 cp THIRD_PARTY_NOTICES.txt "$OUT/"
 cp third_party/fonts/tiny5/OFL.txt "$OUT/licenses/Tiny5-OFL.txt"
 cp third_party/fonts/imfellenglish/OFL.txt "$OUT/licenses/IMFellEnglish-OFL.txt"
